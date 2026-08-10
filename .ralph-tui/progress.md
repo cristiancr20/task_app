@@ -193,6 +193,19 @@ after each iteration and it's included in prompts for context.
   `Error` carrying the route's own Spanish message, and answer «El servidor devolvió una
   respuesta inesperada» for a well-formed response of the wrong shape. A new route the
   browser calls gets a helper next to these, not a `fetch` inside a component.
+- **A paginated Linear connection is followed to the end, never read as one page.**
+  `listTeamsAndProjects` walks `teams` by cursor and, for a team whose `projects` did
+  not fit in its nested page, finishes that team with its own `TeamProjects` query —
+  the common workspace costs exactly one request. Silently keeping the first page
+  would hide the very project the user is looking for, which is worse than being slow.
+  Every cursor loop is bounded by `MAX_PAGES` so a looping cursor cannot hang a route,
+  and `readConnection` only reports `hasNextPage` when an `endCursor` came with it, so
+  a malformed `pageInfo` ends the walk instead of refetching page one forever.
+- **A cursor mid-parse is a return value, never module state.** Route handlers run
+  concurrently in one server process, so a `Map` at module scope shared between two
+  in-flight requests would let one clear the other's pagination. `readTeam` returns
+  `{ team, projectsCursor }` and the caller threads it — the concurrency bug this rule
+  exists to prevent never reproduces on a single manual request.
 
 ---
 
@@ -1064,4 +1077,59 @@ count over.
   string is the version that survives a formatter.
 - Playwright: `getByText('1 cambio manual')` also matches the dialog's «Se perderá 1
   cambio manual», so badge assertions are only trustworthy while the dialog is closed.
+---
+
+## 2026-08-09 - US-015 Linear client: teams and projects
+
+**What was implemented**
+- `lib/linear.ts`: `LinearProject` / `LinearTeam` types and `listTeamsAndProjects(apiKey)`,
+  built on the existing `linearGraphQL` helper — so the API key keeps travelling in
+  `Authorization` verbatim (no `Bearer`) and GraphQL errors returned inside an HTTP 200
+  body keep being detected by `graphqlError` and thrown as `LinearApiError`. Teams are
+  paginated by cursor (`TEAM_PAGE_SIZE = 50`); each team's projects come nested
+  (`PROJECT_PAGE_SIZE = 100`) and only a team that overflows that page costs a second
+  `TeamProjects` query. Teams and projects are sorted by name (`localeCompare('es')`)
+  because Linear's own order is unspecified and a dropdown should be stable.
+- `app/api/linear/projects/route.ts`: `GET /api/linear/projects` → `{ teams }`, reading the
+  key from `getConfig()` server-side exactly like `/api/linear/verify`, with a 400 +
+  Spanish message when no key is stored. Everything else goes through `errorResponse`.
+
+**Files changed**
+- `lib/linear.ts` (modified), `app/api/linear/projects/route.ts` (new)
+
+**Verification**
+- `pnpm typecheck` passes. `pnpm build` passes, lists the new `ƒ /api/linear/projects`
+  route, and its fs-tracing warnings still show only App Route + Server Component traces.
+- Driven end to end against a stub Linear GraphQL server (`LINEAR_API_URL` pointed at it)
+  with a scratch `.data/config.json` holding a fake key, over a deliberately awkward
+  workspace — 51 teams (2 team pages) where team-0 owns 150 projects (nested page + 1
+  follow-up query) named in reverse order:
+  - 51 teams returned with `id`/`name`/`key`, 200 projects in total, team-0's 150 project
+    ids all distinct (so the follow-up page is appended, not the first page refetched).
+  - Teams and projects come out alphabetical; the reverse-named projects sort correctly.
+  - The stub recorded exactly 3 requests, every one with `authorization: lin_api_STUBKEY123`
+    — verbatim, no `Bearer` prefix.
+  - A `{ data: null, errors: [...] }` body served with HTTP **200** → route answers
+    `502 {"error":"Linear: Access denied to teams"}`.
+  - No key stored → `400` with the Spanish «No hay ninguna API key de Linear guardada…».
+  - Stub killed → `503` «No se pudo conectar con Linear…».
+- The scratch `.data/` and the `/tmp` stub were removed afterwards; `.data/` did not exist
+  before this run and does not exist after it.
+
+**Learnings**
+- The AC "GraphQL errors returned in a HTTP 200 body are detected" needed no new code:
+  `linearGraphQL` (US-007) already checks the body *before* `response.ok`. Reusing it is
+  what makes that guarantee automatic for every query added from here on — a hand-rolled
+  `fetch` for the teams query would have quietly reintroduced the bug.
+- Linear's nested connections are the trap: `teams { nodes { projects(first: N) } }` gives
+  a *per-team* page, so a workspace with one big team looks complete while missing
+  projects. The nested `pageInfo` has to be read per team, not once for the response.
+- Sharing a cursor through module-scope state is a concurrency bug that manual testing
+  cannot surface — one request per shell. Caught it by reading, not by running, which is
+  the argument for keeping request-scoped data in return values on principle.
+- `first` is capped at 250 by Linear; the page sizes here stay well under it so the single
+  request that fills a dropdown does not become the slow one.
+- The client-side helper (`lib/*-client.ts` pattern) is deliberately *not* added yet:
+  nothing in the browser calls this route until US-017 builds the push panel, and the
+  helper's error copy belongs with the component that renders it.
 ---

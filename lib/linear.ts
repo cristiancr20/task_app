@@ -1,6 +1,7 @@
 /**
- * Talking to the Linear GraphQL API. Only the workspace lookup that backs the
- * «Probar» button lives here for now; issue creation (US-013) joins it later.
+ * Talking to the Linear GraphQL API: the workspace lookup that backs the
+ * «Probar» button and the teams/projects listing that fills the destination
+ * picker. Issue creation joins them later.
  */
 
 /**
@@ -57,6 +58,136 @@ export async function fetchLinearOrganization(apiKey: string): Promise<LinearOrg
     throw new LinearApiError(502, 'Linear respondió sin datos de la organización.')
   }
   return organization
+}
+
+/** A project as shown in the destination dropdown. */
+export type LinearProject = {
+  id: string
+  name: string
+}
+
+/** A team with the projects that belong to it. */
+export type LinearTeam = {
+  id: string
+  name: string
+  key: string
+  projects: LinearProject[]
+}
+
+/**
+ * How many nodes one page asks for. Linear caps `first` at 250; staying well
+ * under it keeps a workspace with hundreds of projects from timing out on the
+ * single request that fills a dropdown.
+ */
+const TEAM_PAGE_SIZE = 50
+const PROJECT_PAGE_SIZE = 100
+
+/**
+ * A broken or looping cursor must not spin forever: at these page sizes the cap
+ * still covers 1000 teams and 2000 projects per team, far past any real workspace.
+ */
+const MAX_PAGES = 20
+
+const TEAMS_QUERY = `query Teams($after: String) {
+  teams(first: ${TEAM_PAGE_SIZE}, after: $after) {
+    nodes {
+      id
+      name
+      key
+      projects(first: ${PROJECT_PAGE_SIZE}) {
+        nodes { id name }
+        pageInfo { hasNextPage endCursor }
+      }
+    }
+    pageInfo { hasNextPage endCursor }
+  }
+}`
+
+const TEAM_PROJECTS_QUERY = `query TeamProjects($teamId: String!, $after: String) {
+  team(id: $teamId) {
+    projects(first: ${PROJECT_PAGE_SIZE}, after: $after) {
+      nodes { id name }
+      pageInfo { hasNextPage endCursor }
+    }
+  }
+}`
+
+/**
+ * Every team the key can see, each with its projects. This is the whole
+ * workspace structure the push panel needs: the user picks a team only when
+ * there is more than one, and a project out of that team's list.
+ *
+ * Both connections are paginated — a workspace with more projects than one page
+ * holds would otherwise silently lose the very project the user is looking for.
+ */
+export async function listTeamsAndProjects(apiKey: string): Promise<LinearTeam[]> {
+  const parsed: ParsedTeam[] = []
+  let after: string | null = null
+
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const body: unknown = await linearGraphQL(apiKey, TEAMS_QUERY, after ? { after } : {})
+    const connection = readConnection(body, 'teams')
+    if (!connection) {
+      throw new LinearApiError(502, 'Linear respondió sin la lista de equipos.')
+    }
+
+    for (const node of connection.nodes) {
+      const team = readTeam(node)
+      if (team) parsed.push(team)
+    }
+
+    if (!connection.hasNextPage || !connection.endCursor) break
+    after = connection.endCursor
+  }
+
+  // A team whose projects did not fit in one page finishes on its own query;
+  // the common case (every team under the page size) makes no extra request.
+  const teams: LinearTeam[] = []
+  for (const { team, projectsCursor } of parsed) {
+    if (projectsCursor) {
+      team.projects.push(...(await restOfProjects(apiKey, team.id, projectsCursor)))
+    }
+    team.projects.sort(byName)
+    teams.push(team)
+  }
+  teams.sort(byName)
+
+  return teams
+}
+
+/**
+ * A team as read off one page of the response, plus where its own project
+ * pagination stopped — a cursor that never leaves this module.
+ */
+type ParsedTeam = {
+  team: LinearTeam
+  projectsCursor: string | null
+}
+
+/** The projects after `after`, following the cursor until Linear runs out. */
+async function restOfProjects(
+  apiKey: string,
+  teamId: string,
+  after: string,
+): Promise<LinearProject[]> {
+  const projects: LinearProject[] = []
+  let cursor: string | null = after
+
+  for (let page = 0; page < MAX_PAGES && cursor; page++) {
+    const body: unknown = await linearGraphQL(apiKey, TEAM_PROJECTS_QUERY, { teamId, after: cursor })
+    const team = isRecord(body) ? body.team : null
+    const connection = readConnection(team, 'projects')
+    if (!connection) break
+
+    for (const node of connection.nodes) {
+      const project = readProject(node)
+      if (project) projects.push(project)
+    }
+
+    cursor = connection.hasNextPage ? connection.endCursor : null
+  }
+
+  return projects
 }
 
 /**
@@ -147,6 +278,61 @@ function readOrganization(body: unknown): LinearOrganization | null {
     name,
     urlKey: typeof urlKey === 'string' ? urlKey : '',
   }
+}
+
+/** A team node, or null when it is missing the fields the picker needs. */
+function readTeam(node: unknown): ParsedTeam | null {
+  if (!isRecord(node)) return null
+
+  const { id, name, key } = node
+  if (typeof id !== 'string' || !id) return null
+  if (typeof name !== 'string' || !name) return null
+
+  const connection = readConnection(node, 'projects')
+  const projects: LinearProject[] = []
+  for (const entry of connection?.nodes ?? []) {
+    const project = readProject(entry)
+    if (project) projects.push(project)
+  }
+
+  return {
+    team: { id, name, key: typeof key === 'string' ? key : '', projects },
+    projectsCursor: connection?.hasNextPage ? connection.endCursor : null,
+  }
+}
+
+function readProject(node: unknown): LinearProject | null {
+  if (!isRecord(node)) return null
+
+  const { id, name } = node
+  if (typeof id !== 'string' || !id) return null
+  if (typeof name !== 'string' || !name) return null
+
+  return { id, name }
+}
+
+/** A GraphQL Relay connection (`{ nodes, pageInfo }`) under `key`. */
+function readConnection(
+  parent: unknown,
+  key: string,
+): { nodes: unknown[]; hasNextPage: boolean; endCursor: string | null } | null {
+  if (!isRecord(parent)) return null
+
+  const connection = parent[key]
+  if (!isRecord(connection)) return null
+
+  const { nodes, pageInfo } = connection
+  if (!Array.isArray(nodes)) return null
+
+  const info = isRecord(pageInfo) ? pageInfo : {}
+  const endCursor = typeof info.endCursor === 'string' && info.endCursor ? info.endCursor : null
+
+  return { nodes, hasNextPage: info.hasNextPage === true && endCursor !== null, endCursor }
+}
+
+/** Dropdowns read better alphabetically, and the API's own order is unspecified. */
+function byName(a: { name: string }, b: { name: string }): number {
+  return a.name.localeCompare(b.name, 'es')
 }
 
 /** A trailing slash would make the request path double up. */
