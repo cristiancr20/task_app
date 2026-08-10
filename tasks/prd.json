@@ -1,0 +1,407 @@
+{
+  "name": "Tasks App — transcripts to Linear issues",
+  "description": "Local Next.js tool that browses a folder of meeting transcripts, extracts action items with a local Ollama model or the Claude API, lets the user edit them, and creates them as issues in Linear. Runs on port 3300. UI copy in Spanish; extracted tasks in English.",
+  "branchName": "ralph/transcripts-to-linear",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Project setup: typecheck gate, port 3300, data folder",
+      "description": "As a developer, I need the project baseline in place so every later story has a working quality gate.",
+      "acceptanceCriteria": [
+        "package.json has a `typecheck` script running `tsc --noEmit`",
+        "package.json `dev` script runs Next on port 3300 (`next dev -p 3300`)",
+        "`yaml` is installed as a dependency (used later for frontmatter parsing)",
+        ".gitignore includes `.data/` so local config and history are never committed",
+        "A `.data/` folder is created at runtime if missing, not committed to git",
+        "pnpm typecheck passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "",
+      "dependsOn": [],
+      "completionNotes": "Completed by agent"
+    },
+    {
+      "id": "US-002",
+      "title": "Config store: read/write local JSON state",
+      "description": "As a developer, I need a persistence layer so settings and push history survive restarts.",
+      "acceptanceCriteria": [
+        "Module `lib/store.ts` reads and writes `.data/config.json`",
+        "Shape includes: `recentFolders: string[]`, `contextRoot: string | null`, `provider: 'ollama' | 'claude'`, `ollamaModel: string`, `claudeApiKey: string`, `linearApiKey: string`, `lastProjectId: string | null`",
+        "Shape includes `history: Record<string, { pushedAt: string; issues: { id: string; identifier: string; url: string; title: string }[] }[]>` keyed by transcript relative path",
+        "Reading a missing or malformed file returns defaults instead of throwing",
+        "Writes are atomic (write to temp file, then rename) so a crash cannot corrupt the file",
+        "Exported helpers: `getConfig()`, `updateConfig(partial)`, `addHistoryEntry(relPath, entry)`, `getHistory(relPath)`",
+        "pnpm typecheck passes"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-001"
+      ]
+    },
+    {
+      "id": "US-003",
+      "title": "Filesystem scanner with path-traversal guard",
+      "description": "As a developer, I need to safely list .md files under a user-chosen root so the explorer has data.",
+      "acceptanceCriteria": [
+        "Module `lib/transcripts.ts` exports `resolveInsideRoot(root, relPath)` that throws when the resolved path escapes the root",
+        "Exports `listFolder(root, relPath)` returning subfolders and .md files for one folder level (not recursive)",
+        "Only files ending in `.md` are returned; dotfiles and `node_modules` are skipped",
+        "Each file entry includes: relPath, fileName, title, date, attendees, words, approxTokens, hasFrontmatter",
+        "YAML frontmatter is parsed with the `yaml` package; title/date/attendees come from it when present",
+        "When frontmatter is absent, title is derived from the filename and date from a leading YYYY-MM-DD pattern",
+        "Malformed frontmatter is treated as body text rather than throwing",
+        "Exports `readTranscript(root, relPath)` returning the parsed metadata and the body without frontmatter",
+        "pnpm typecheck passes"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-001"
+      ]
+    },
+    {
+      "id": "US-004",
+      "title": "API routes for browsing folders and reading a transcript",
+      "description": "As a frontend, I need HTTP endpoints so the explorer can list folders and load file contents.",
+      "acceptanceCriteria": [
+        "`GET /api/browse?path=<relPath>` returns subfolders and .md files for that folder under the configured contextRoot",
+        "`GET /api/transcript?path=<relPath>` returns the transcript metadata and body",
+        "Both routes return HTTP 400 with a clear message when contextRoot is not configured",
+        "Both routes return HTTP 400 when the requested path escapes the root",
+        "Both routes return HTTP 404 when the path does not exist",
+        "pnpm typecheck passes"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-002",
+        "US-003"
+      ]
+    },
+    {
+      "id": "US-005",
+      "title": "Settings UI: context folder path with recents",
+      "description": "As a user, I want to type the path to my context folder and reuse recent ones so I do not retype it.",
+      "acceptanceCriteria": [
+        "Settings page at `/settings` with a text input for the absolute folder path",
+        "An 'Abrir' button validates the folder exists and is readable, then saves it as contextRoot",
+        "Invalid or unreadable paths show an inline error and are not saved",
+        "Successfully opened folders are added to a recents list (max 8, most recent first, no duplicates)",
+        "Clicking a recent entry switches contextRoot to it",
+        "The currently active folder is visually marked in the recents list",
+        "pnpm typecheck passes",
+        "Verify in the browser at http://localhost:3300/settings that entering a valid path saves it and an invalid path shows an error"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-004"
+      ]
+    },
+    {
+      "id": "US-006",
+      "title": "Settings UI: extraction provider selector",
+      "description": "As a user, I want to choose between local Ollama and the Claude API so I can trade cost for quality.",
+      "acceptanceCriteria": [
+        "Radio or segmented control choosing provider: 'Ollama (local, gratis)' or 'Claude API (de pago)'. Ollama is the default",
+        "When Ollama is selected, a dropdown lists installed models fetched from `GET {OLLAMA_URL}/api/tags`",
+        "When Ollama is unreachable or returns zero models, the dropdown is replaced by a message telling the user to run `ollama pull qwen3:8b`",
+        "`qwen3:8b` is preselected when present in the list",
+        "When Claude is selected, a password-type input accepts the Anthropic API key",
+        "A visible warning next to the Claude option reads that usage is billed per token against an Anthropic API account and is NOT included in a Claude Pro/Max subscription",
+        "Provider, model and API key persist via the config store",
+        "pnpm typecheck passes",
+        "Verify in the browser at http://localhost:3300/settings that switching providers shows the right controls and that the Ollama model list is populated"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-002"
+      ]
+    },
+    {
+      "id": "US-007",
+      "title": "Settings UI: Linear API key",
+      "description": "As a user, I want to store my Linear API key so the app can create issues.",
+      "acceptanceCriteria": [
+        "Password-type input for the Linear API key on the settings page, persisted via the config store",
+        "A 'Probar' button calls a new `GET /api/linear/verify` route that queries the Linear GraphQL API for the organization name",
+        "On success the workspace name is shown; on failure the error message from Linear is shown",
+        "The key is never sent to the browser after being saved; the input shows a masked placeholder when a key is already stored",
+        "A short note states the key is stored unencrypted in the local .data folder",
+        "pnpm typecheck passes",
+        "Verify in the browser at http://localhost:3300/settings that saving a key and pressing 'Probar' reports the workspace name"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-002"
+      ]
+    },
+    {
+      "id": "US-008",
+      "title": "Explorer UI: folder tree and file list",
+      "description": "As a user, I want to navigate my context folder and see which files are meetings so I can pick one.",
+      "acceptanceCriteria": [
+        "Main page shows a left panel with the folder tree of contextRoot, expandable and collapsible",
+        "Selecting a folder shows its .md files in a center list",
+        "Each file row shows title, date when known, attendee names when known, and approximate word count",
+        "Files are sorted by date descending, then by title",
+        "When contextRoot is not configured, the page shows a call to action linking to /settings",
+        "An empty folder shows an explicit empty state rather than a blank panel",
+        "pnpm typecheck passes",
+        "Verify in the browser at http://localhost:3300 that the tree navigates and the file list shows metadata"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-004",
+        "US-005"
+      ]
+    },
+    {
+      "id": "US-009",
+      "title": "Transcript preview and already-processed notice",
+      "description": "As a user, I want to read the transcript and know whether I already created issues from it.",
+      "acceptanceCriteria": [
+        "Selecting a file loads its body into a scrollable preview panel",
+        "Markdown is rendered readably; long transcripts scroll without breaking the layout",
+        "When the config history has entries for that file, a notice appears above the preview reading how many tasks were created and on what date",
+        "The notice lists each previously created issue as a clickable link to Linear using its stored url and identifier",
+        "When there is no history for the file, no notice is shown",
+        "pnpm typecheck passes",
+        "Verify in the browser at http://localhost:3300 that selecting a file renders its content in the preview"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-008",
+        "US-002"
+      ]
+    },
+    {
+      "id": "US-010",
+      "title": "Ollama extractor",
+      "description": "As a developer, I need an extractor that turns a transcript into structured tasks using a local model.",
+      "acceptanceCriteria": [
+        "Module `lib/extractors/ollama.ts` exports `extractWithOllama(transcript, meta, model)` returning a typed task array",
+        "The request sets `options.num_ctx` to at least 32768 so long transcripts are not silently truncated",
+        "The request sets `think: false` and uses Ollama structured output via the `format` field with a JSON Schema",
+        "Each task has: title, description, priority (urgent|high|medium|low|none), mentioned (string or null), evidence (verbatim quote)",
+        "The system prompt instructs the model to extract only real commitments, never invent tasks, and to answer in English",
+        "Tasks with an empty title are dropped; an unknown priority falls back to 'none'",
+        "A non-200 response or unparseable JSON throws an Error with an actionable message naming Ollama and the model",
+        "pnpm typecheck passes"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-001"
+      ]
+    },
+    {
+      "id": "US-011",
+      "title": "Claude API extractor",
+      "description": "As a developer, I need the same extraction available through the Anthropic API for higher quality.",
+      "acceptanceCriteria": [
+        "Module `lib/extractors/claude.ts` exports `extractWithClaude(transcript, meta, apiKey)` returning the same typed task array as the Ollama extractor",
+        "Calls the Anthropic Messages API at https://api.anthropic.com/v1/messages with headers `x-api-key` and `anthropic-version: 2023-06-01`",
+        "Uses model `claude-sonnet-5`",
+        "Uses structured outputs via `output_config.format` with the same JSON Schema as the Ollama extractor",
+        "Does NOT send `temperature`, `top_p` or `top_k`, which current models reject with HTTP 400",
+        "Checks `stop_reason` and throws a clear error when it is `refusal`, before reading content",
+        "A 401 response throws an error saying the Anthropic API key is invalid",
+        "Both extractors share one schema and one task TypeScript type, declared in a single module",
+        "pnpm typecheck passes"
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-010"
+      ]
+    },
+    {
+      "id": "US-012",
+      "title": "Extraction API route with provider dispatch",
+      "description": "As a frontend, I need one endpoint that runs extraction with whichever provider is configured.",
+      "acceptanceCriteria": [
+        "`POST /api/extract` accepts `{ path: string }` and returns `{ tasks: Task[] }`",
+        "Reads the configured provider from the config store and calls the matching extractor",
+        "Returns HTTP 400 with a clear message when the Claude provider is selected but no API key is stored",
+        "Returns HTTP 502 with the underlying message when the provider call fails",
+        "The transcript body sent to the extractor excludes YAML frontmatter",
+        "pnpm typecheck passes"
+      ],
+      "priority": 12,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-011",
+        "US-006",
+        "US-004"
+      ]
+    },
+    {
+      "id": "US-013",
+      "title": "Editable task table",
+      "description": "As a user, I want to review, edit and curate the generated tasks before anything reaches Linear.",
+      "acceptanceCriteria": [
+        "A 'Generar tareas' button calls /api/extract for the selected transcript and shows a loading state while running",
+        "Results render as a table with an include checkbox, editable title, editable description, and a priority dropdown per row",
+        "The evidence quote and mentioned person are visible per row, read-only",
+        "Rows can be deleted, and a blank row can be added manually",
+        "All rows are checked by default",
+        "A counter shows how many tasks are selected out of the total",
+        "An extraction error is shown inline with the message from the API, and the previous table is not cleared",
+        "pnpm typecheck passes",
+        "Verify in the browser at http://localhost:3300 that generating produces an editable table and edits persist while navigating within the page"
+      ],
+      "priority": 13,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-012",
+        "US-009"
+      ]
+    },
+    {
+      "id": "US-014",
+      "title": "Regenerate guard for manual edits",
+      "description": "As a user, I do not want to silently lose edits when I regenerate tasks.",
+      "acceptanceCriteria": [
+        "The app tracks whether any row was edited, added or deleted since the last extraction",
+        "Pressing 'Generar tareas' again with pending edits shows a confirmation naming how many manual changes will be discarded",
+        "Cancelling leaves the current table untouched",
+        "Confirming replaces the table with the newly extracted tasks and resets the edited flag",
+        "With no manual edits, regenerating proceeds without a confirmation",
+        "pnpm typecheck passes",
+        "Verify in the browser at http://localhost:3300 that editing a row then regenerating prompts for confirmation"
+      ],
+      "priority": 14,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-013"
+      ]
+    },
+    {
+      "id": "US-015",
+      "title": "Linear client: teams and projects",
+      "description": "As a developer, I need to read the workspace structure so the user can pick a destination project.",
+      "acceptanceCriteria": [
+        "Module `lib/linear.ts` exports `listTeamsAndProjects(apiKey)` querying the Linear GraphQL API",
+        "The Authorization header carries the API key verbatim, with no 'Bearer ' prefix",
+        "Returns teams with id, name, key and each team's projects with id and name",
+        "GraphQL errors returned in a HTTP 200 body are detected and thrown as errors",
+        "`GET /api/linear/projects` exposes the result to the frontend",
+        "pnpm typecheck passes"
+      ],
+      "priority": 15,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-007"
+      ]
+    },
+    {
+      "id": "US-016",
+      "title": "Linear client: create issue, with optional parent",
+      "description": "As a developer, I need to create issues and attach them to a parent so a meeting groups its tasks.",
+      "acceptanceCriteria": [
+        "`lib/linear.ts` exports `createIssue(apiKey, input)` using the `issueCreate` GraphQL mutation",
+        "Input supports teamId, title, description, priority, optional projectId and optional parentId",
+        "Priority maps to Linear integers: none=0, urgent=1, high=2, medium=3, low=4",
+        "Returns the created issue id, identifier and url",
+        "The description body appends a traceability block containing the source meeting title, its date, the mentioned person when present, and the evidence quote",
+        "Errors from Linear are surfaced with the message text, not a generic failure",
+        "pnpm typecheck passes"
+      ],
+      "priority": 16,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-015"
+      ]
+    },
+    {
+      "id": "US-017",
+      "title": "Push panel: project selector and parent task option",
+      "description": "As a user, I want to choose the destination project and whether tasks group under a parent issue.",
+      "acceptanceCriteria": [
+        "A panel below the task table shows a project dropdown populated from /api/linear/projects",
+        "The last used project is preselected from the config store and saved whenever it changes",
+        "When the workspace has exactly one team, it is used silently; when it has several, a team dropdown appears and filters the project list",
+        "A checkbox 'Crear tarea padre' is checked by default",
+        "When checked, a text input holds the parent title, prefilled with the transcript title and editable",
+        "The push button is disabled when no project is selected, no tasks are checked, or the Linear API key is missing, with the reason shown",
+        "pnpm typecheck passes",
+        "Verify in the browser at http://localhost:3300 that the project dropdown loads and the parent title prefills from the transcript"
+      ],
+      "priority": 17,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-016",
+        "US-013"
+      ]
+    },
+    {
+      "id": "US-018",
+      "title": "Push execution with progress, per-row status and retry",
+      "description": "As a user, I want to see what happened to each task and retry only what failed.",
+      "acceptanceCriteria": [
+        "`POST /api/linear/push` creates the parent issue first when requested, then each selected task as a sub-issue of it",
+        "Issues are created sequentially and progress is streamed or polled so the UI can show 'Creando N de M'",
+        "A failure on one task does not stop the run; remaining tasks are still attempted",
+        "Three consecutive failures abort the run and report that something is systematically wrong",
+        "Each row ends as created (with identifier and url), failed (with the error message), or pending",
+        "After a run with failures, the button becomes 'Reintentar N fallidas' and retries only failed rows",
+        "Rows already created are never sent again on retry",
+        "pnpm typecheck passes",
+        "Verify in the browser at http://localhost:3300 that pushing shows progress and per-row results"
+      ],
+      "priority": 18,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-017"
+      ]
+    },
+    {
+      "id": "US-019",
+      "title": "Push results summary and history persistence",
+      "description": "As a user, I want the created issues linked and remembered so I do not duplicate work later.",
+      "acceptanceCriteria": [
+        "On completion a summary reads 'N tareas creadas' and lists every created issue as a link showing its identifier and title",
+        "The parent issue, when created, is listed first and labelled as the parent",
+        "Every successful push appends an entry to the config history keyed by the transcript relative path, storing pushedAt and the created issues",
+        "Reopening that transcript later shows the already-processed notice from US-009 populated with these entries",
+        "Failed tasks are not written to history",
+        "pnpm typecheck passes",
+        "Verify in the browser at http://localhost:3300 that after a push the summary lists links and reopening the file shows the notice"
+      ],
+      "priority": 19,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-018",
+        "US-009"
+      ]
+    }
+  ],
+  "metadata": {
+    "updatedAt": "2026-08-10T02:42:35.293Z"
+  }
+}

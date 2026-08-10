@@ -1,0 +1,139 @@
+{
+  "version": 1,
+  "sessionId": "aa2f0814-5602-46fb-af15-58d2ca621517",
+  "status": "running",
+  "startedAt": "2026-08-10T02:40:32.134Z",
+  "updatedAt": "2026-08-10T02:42:35.293Z",
+  "currentIteration": 0,
+  "maxIterations": 0,
+  "tasksCompleted": 0,
+  "isPaused": false,
+  "agentPlugin": "claude",
+  "trackerState": {
+    "plugin": "json",
+    "executionScopes": [],
+    "prdPath": "./tasks/prd.json",
+    "totalTasks": 19,
+    "tasks": [
+      {
+        "id": "US-001",
+        "title": "Project setup: typecheck gate, port 3300, data folder",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-002",
+        "title": "Config store: read/write local JSON state",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-003",
+        "title": "Filesystem scanner with path-traversal guard",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-004",
+        "title": "API routes for browsing folders and reading a transcript",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-005",
+        "title": "Settings UI: context folder path with recents",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-006",
+        "title": "Settings UI: extraction provider selector",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-007",
+        "title": "Settings UI: Linear API key",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-008",
+        "title": "Explorer UI: folder tree and file list",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-009",
+        "title": "Transcript preview and already-processed notice",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-010",
+        "title": "Ollama extractor",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-011",
+        "title": "Claude API extractor",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-012",
+        "title": "Extraction API route with provider dispatch",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-013",
+        "title": "Editable task table",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-014",
+        "title": "Regenerate guard for manual edits",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-015",
+        "title": "Linear client: teams and projects",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-016",
+        "title": "Linear client: create issue, with optional parent",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-017",
+        "title": "Push panel: project selector and parent task option",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-018",
+        "title": "Push execution with progress, per-row status and retry",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-019",
+        "title": "Push results summary and history persistence",
+        "status": "open",
+        "completedInSession": false
+      }
+    ]
+  },
+  "iterations": [],
+  "skippedTaskIds": [],
+  "cwd": "/Users/cristian/dev/tasks-app",
+  "activeTaskIds": [],
+  "subagentPanelVisible": false
+}
