@@ -389,11 +389,12 @@
         "Verify in the browser at http://localhost:3300 that pushing shows progress and per-row results"
       ],
       "priority": 18,
-      "passes": false,
+      "passes": true,
       "notes": "",
       "dependsOn": [
         "US-017"
-      ]
+      ],
+      "completionNotes": "Completed by agent"
     },
     {
       "id": "US-019",
@@ -415,9 +416,56 @@
         "US-018",
         "US-009"
       ]
+    },
+    {
+      "id": "US-020",
+      "title": "Theme toggle: light, dark and system",
+      "description": "As a user, I want to switch between light and dark themes instead of being locked to whatever my OS uses.",
+      "acceptanceCriteria": [
+        "globals.css declares `@custom-variant dark (&:where(.dark, .dark *))` so existing `dark:` classes respond to a class on <html> instead of prefers-color-scheme",
+        "`:root` sets `color-scheme: light dark` so native controls (scrollbars, form widgets) follow the active theme",
+        "Module `lib/theme.ts` exports THEME_COOKIE, the THEMES tuple ['light','dark','system'], the Theme type, and `themeClass(theme)` returning '' for 'system'. It must not import next/headers so client components can use it",
+        "Module `lib/theme-server.ts` is marked `server-only` and exports `getTheme()` reading the cookie, defaulting to 'system'",
+        "A server action `setTheme(theme)` validates the value against THEMES before writing the cookie, sets maxAge one year and path '/', then calls revalidatePath('/', 'layout')",
+        "The root layout reads the theme server-side and applies the class to the <html> element, so there is no flash of the wrong theme on first paint",
+        "A visible toggle in the app shell cycles or selects light / dark / system and shows which one is active",
+        "With 'system' selected no class is applied and the OS preference governs",
+        "The existing 296 `dark:` utility variants keep working unchanged; no component styling is rewritten in this story",
+        "pnpm typecheck passes",
+        "Verify in the browser at http://localhost:3300 that switching to light repaints the whole UI, that the choice survives a reload, and that 'system' follows the OS setting"
+      ],
+      "priority": 20,
+      "passes": false,
+      "notes": "Mirror the implementation in ~/dev/gym (lib/theme.ts, lib/theme-server.ts, lib/theme-action.ts). Light mode is already written across the components; only the switching mechanism is missing.",
+      "dependsOn": [
+        "US-001"
+      ]
+    },
+    {
+      "id": "US-021",
+      "title": "Adopt the shared design tokens and accent colour",
+      "description": "As a user, I want this tool to look like the team's other apps instead of using raw zinc utilities.",
+      "acceptanceCriteria": [
+        "globals.css defines the house token vocabulary with the `light-dark()` function, matching ~/dev/gym: bg, surface, surface-2, line, line-strong, content, muted, accent, accent-soft, accent-wash, on-accent, ok, warn, danger, info and the matching -wash variants",
+        "The neutral ramp reuses the existing house values: bg light-dark(#f7f8fa, #0b0c0e), surface light-dark(#ffffff, #16181d), surface-2 light-dark(#f1f2f4, #1e2127), content light-dark(#16181d, #e6e7e9), muted light-dark(#5c6470, #9aa0a6)",
+        "The accent is light-dark(#0f766e, #2dd4bf), distinct from gym's crimson, portafolio-web's gold and password_save's indigo",
+        "Tokens are exposed to Tailwind via `@theme inline` so classes like bg-surface, text-muted and border-line work",
+        "Every `zinc-*`, `bg-white`, `bg-black` and `text-white` utility across app/**/*.tsx is replaced by the semantic token equivalent, and the paired `dark:` variant is removed because light-dark() handles both",
+        "Status colours use the semantic tokens: errors use danger, success uses ok, warnings use warn",
+        "The primary action buttons use accent with on-accent text",
+        "No raw Tailwind palette colour (zinc, gray, slate, red, green, blue) remains in app/**/*.tsx",
+        "pnpm typecheck passes",
+        "Verify in the browser at http://localhost:3300 that both themes render correctly and that text keeps sufficient contrast against surfaces in each"
+      ],
+      "priority": 21,
+      "passes": false,
+      "notes": "Roughly 712 colour utility occurrences across 20 files. Mechanical but wide: work file by file and re-check the browser as you go. Reference the token list in ~/dev/gym/app/globals.css and ~/orca/docmentor/frontend/tailwind.config.js.",
+      "dependsOn": [
+        "US-020"
+      ]
     }
   ],
   "metadata": {
-    "updatedAt": "2026-08-10T04:16:36.595Z"
+    "updatedAt": "2026-08-10T04:36:37.284Z"
   }
 }

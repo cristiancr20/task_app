@@ -9,6 +9,7 @@ import { TaskTable } from './task-table'
 import { TranscriptPreview } from './transcript-preview'
 import { useFolderListings } from './use-folder-listings'
 import { usePushOptions } from './use-push-options'
+import { parentIssueOf, usePushRun } from './use-push-run'
 import { usePushTarget } from './use-push-target'
 import { useTaskDrafts } from './use-task-drafts'
 import { useTranscript } from './use-transcript'
@@ -48,11 +49,42 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
   // selection; the parent options belong to one note and are keyed by path.
   const target = usePushTarget({ hasLinearApiKey, lastProjectId })
   const pushOptions = usePushOptions(selectedFile)
+  const run = usePushRun(selectedFile)
 
   // The parent issue stands for the meeting, so its title starts as the note's
   // own — and only until the user types, which is what the null means.
   const meetingTitle = transcript?.status === 'ready' ? transcript.transcript.meta.title : ''
   const parentTitle = pushOptions.options.parentTitle ?? meetingTitle
+
+  const rows = drafts.state?.rows ?? []
+  const results = run.state.rows
+  // What the button would send: checked rows Linear does not already have. This
+  // is what makes a retry a retry — a created row is out of the request, not
+  // merely skipped by the server.
+  const pending = rows.filter((row) => row.include && results[row.id]?.state !== 'created')
+  const failed = rows.filter((row) => row.include && results[row.id]?.state === 'failed').length
+  const created = rows.filter((row) => results[row.id]?.state === 'created').length
+  const parentIssue = parentIssueOf(run.state)
+
+  function startPush() {
+    run.push({
+      teamId: target.teamId,
+      projectId: target.projectId || null,
+      // The parent is created once per note: a retry hangs its tasks from the
+      // one that already exists instead of filing a second copy of the meeting.
+      parentTitle:
+        pushOptions.options.createParent && !parentIssue ? parentTitle.trim() || null : null,
+      parentId: pushOptions.options.createParent ? (parentIssue?.id ?? null) : null,
+      tasks: pending.map((row) => ({
+        id: row.id,
+        title: row.title,
+        description: row.description,
+        priority: row.priority,
+        mentioned: row.mentioned,
+        evidence: row.evidence,
+      })),
+    })
+  }
 
   // The root starts selected and expanded, so the first paint already shows its
   // files. `open` skips folders that have been asked for, so this runs once.
@@ -131,6 +163,8 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
           >
             <TaskTable
               state={drafts.state}
+              results={results}
+              busy={run.state.status === 'running'}
               onGenerate={drafts.generate}
               onConfirmGenerate={drafts.confirmGenerate}
               onCancelGenerate={drafts.cancelGenerate}
@@ -154,7 +188,16 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
                 onToggle: pushOptions.setCreateParent,
                 onTitleChange: pushOptions.setParentTitle,
               }}
-              selectedTasks={(drafts.state?.rows ?? []).filter((row) => row.include).length}
+              push={{
+                status: run.state.status,
+                pending: pending.length,
+                failed,
+                created,
+                parentCreated: parentIssue !== null,
+                progress: run.state.progress,
+                error: run.state.error,
+                onPush: startPush,
+              }}
             />
           </section>
         </>

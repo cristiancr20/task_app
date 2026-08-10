@@ -36,18 +36,24 @@ export function pathParam(request: Request): string {
 }
 
 /**
- * The `path` field of a JSON request body, for the routes that take one by
- * `POST`. Unlike `pathParam` there is no meaningful default: a body without a
- * usable `path` is a bad request, not a request for the root.
+ * The parsed JSON body of a `POST`, or a 400. A request body can only be read
+ * once, so a route that needs more than the path parses it here and reads the
+ * fields off the payload.
  */
-export async function pathFromBody(request: Request): Promise<string> {
-  let payload: unknown
+export async function jsonBody(request: Request): Promise<unknown> {
   try {
-    payload = await request.json()
+    return await request.json()
   } catch {
     throw new HttpError(400, 'El cuerpo de la petición no es JSON válido.')
   }
+}
 
+/**
+ * The `path` field of an already-parsed body. Unlike `pathParam` there is no
+ * meaningful default: a body without a usable `path` is a bad request, not a
+ * request for the root.
+ */
+export function pathOf(payload: unknown): string {
   const relPath =
     typeof payload === 'object' && payload !== null
       ? (payload as { path?: unknown }).path
@@ -57,6 +63,11 @@ export async function pathFromBody(request: Request): Promise<string> {
     throw new HttpError(400, 'Falta el campo «path» con la ruta del archivo.')
   }
   return relPath.trim()
+}
+
+/** The `path` field of a JSON request body, for the routes that take only that. */
+export async function pathFromBody(request: Request): Promise<string> {
+  return pathOf(await jsonBody(request))
 }
 
 export function jsonError(status: number, message: string): Response {

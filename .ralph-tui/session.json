@@ -1,120 +1,120 @@
 {
   "version": 1,
-  "sessionId": "aa2f0814-5602-46fb-af15-58d2ca621517",
+  "sessionId": "dbd2d121-904b-41be-9284-fd8f1c38d421",
   "status": "running",
-  "startedAt": "2026-08-10T02:40:32.134Z",
-  "updatedAt": "2026-08-10T04:16:36.596Z",
-  "currentIteration": 16,
+  "startedAt": "2026-08-10T04:30:47.188Z",
+  "updatedAt": "2026-08-10T04:36:37.285Z",
+  "currentIteration": 0,
   "maxIterations": 0,
-  "tasksCompleted": 16,
+  "tasksCompleted": 0,
   "isPaused": false,
   "agentPlugin": "claude",
   "trackerState": {
     "plugin": "json",
     "executionScopes": [],
     "prdPath": "./tasks/prd.json",
-    "totalTasks": 19,
+    "totalTasks": 21,
     "tasks": [
       {
         "id": "US-001",
         "title": "Project setup: typecheck gate, port 3300, data folder",
         "status": "completed",
-        "completedInSession": true
+        "completedInSession": false
       },
       {
         "id": "US-002",
         "title": "Config store: read/write local JSON state",
         "status": "completed",
-        "completedInSession": true
+        "completedInSession": false
       },
       {
         "id": "US-003",
         "title": "Filesystem scanner with path-traversal guard",
         "status": "completed",
-        "completedInSession": true
+        "completedInSession": false
       },
       {
         "id": "US-004",
         "title": "API routes for browsing folders and reading a transcript",
         "status": "completed",
-        "completedInSession": true
+        "completedInSession": false
       },
       {
         "id": "US-005",
         "title": "Settings UI: context folder path with recents",
         "status": "completed",
-        "completedInSession": true
+        "completedInSession": false
       },
       {
         "id": "US-006",
         "title": "Settings UI: extraction provider selector",
         "status": "completed",
-        "completedInSession": true
+        "completedInSession": false
       },
       {
         "id": "US-007",
         "title": "Settings UI: Linear API key",
         "status": "completed",
-        "completedInSession": true
+        "completedInSession": false
       },
       {
         "id": "US-008",
         "title": "Explorer UI: folder tree and file list",
         "status": "completed",
-        "completedInSession": true
+        "completedInSession": false
       },
       {
         "id": "US-009",
         "title": "Transcript preview and already-processed notice",
         "status": "completed",
-        "completedInSession": true
+        "completedInSession": false
       },
       {
         "id": "US-010",
         "title": "Ollama extractor",
         "status": "completed",
-        "completedInSession": true
+        "completedInSession": false
       },
       {
         "id": "US-011",
         "title": "Claude API extractor",
         "status": "completed",
-        "completedInSession": true
+        "completedInSession": false
       },
       {
         "id": "US-012",
         "title": "Extraction API route with provider dispatch",
         "status": "completed",
-        "completedInSession": true
+        "completedInSession": false
       },
       {
         "id": "US-013",
         "title": "Editable task table",
         "status": "completed",
-        "completedInSession": true
+        "completedInSession": false
       },
       {
         "id": "US-014",
         "title": "Regenerate guard for manual edits",
         "status": "completed",
-        "completedInSession": true
+        "completedInSession": false
       },
       {
         "id": "US-015",
         "title": "Linear client: teams and projects",
         "status": "completed",
-        "completedInSession": true
+        "completedInSession": false
       },
       {
         "id": "US-016",
         "title": "Linear client: create issue, with optional parent",
         "status": "completed",
-        "completedInSession": true
+        "completedInSession": false
       },
       {
         "id": "US-017",
         "title": "Push panel: project selector and parent task option",
-        "status": "open",
+        "status": "completed",
         "completedInSession": false
       },
       {
@@ -128,171 +128,22 @@
         "title": "Push results summary and history persistence",
         "status": "open",
         "completedInSession": false
+      },
+      {
+        "id": "US-020",
+        "title": "Theme toggle: light, dark and system",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-021",
+        "title": "Adopt the shared design tokens and accent colour",
+        "status": "open",
+        "completedInSession": false
       }
     ]
   },
-  "iterations": [
-    {
-      "iteration": 1,
-      "status": "completed",
-      "taskId": "US-001",
-      "taskTitle": "Project setup: typecheck gate, port 3300, data folder",
-      "taskCompleted": true,
-      "durationMs": 117976,
-      "startedAt": "2026-08-10T02:40:37.316Z",
-      "endedAt": "2026-08-10T02:42:35.292Z"
-    },
-    {
-      "iteration": 2,
-      "status": "completed",
-      "taskId": "US-002",
-      "taskTitle": "Config store: read/write local JSON state",
-      "taskCompleted": true,
-      "durationMs": 120825,
-      "startedAt": "2026-08-10T02:42:36.378Z",
-      "endedAt": "2026-08-10T02:44:37.203Z"
-    },
-    {
-      "iteration": 3,
-      "status": "completed",
-      "taskId": "US-003",
-      "taskTitle": "Filesystem scanner with path-traversal guard",
-      "taskCompleted": true,
-      "durationMs": 171910,
-      "startedAt": "2026-08-10T02:44:38.292Z",
-      "endedAt": "2026-08-10T02:47:30.202Z"
-    },
-    {
-      "iteration": 4,
-      "status": "completed",
-      "taskId": "US-004",
-      "taskTitle": "API routes for browsing folders and reading a transcript",
-      "taskCompleted": true,
-      "durationMs": 205966,
-      "startedAt": "2026-08-10T02:47:31.294Z",
-      "endedAt": "2026-08-10T02:50:57.260Z"
-    },
-    {
-      "iteration": 5,
-      "status": "completed",
-      "taskId": "US-005",
-      "taskTitle": "Settings UI: context folder path with recents",
-      "taskCompleted": true,
-      "durationMs": 357295,
-      "startedAt": "2026-08-10T02:50:58.349Z",
-      "endedAt": "2026-08-10T02:56:55.644Z"
-    },
-    {
-      "iteration": 6,
-      "status": "completed",
-      "taskId": "US-006",
-      "taskTitle": "Settings UI: extraction provider selector",
-      "taskCompleted": true,
-      "durationMs": 368340,
-      "startedAt": "2026-08-10T02:56:56.726Z",
-      "endedAt": "2026-08-10T03:03:05.066Z"
-    },
-    {
-      "iteration": 7,
-      "status": "completed",
-      "taskId": "US-007",
-      "taskTitle": "Settings UI: Linear API key",
-      "taskCompleted": true,
-      "durationMs": 437032,
-      "startedAt": "2026-08-10T03:03:06.153Z",
-      "endedAt": "2026-08-10T03:10:23.185Z"
-    },
-    {
-      "iteration": 8,
-      "status": "completed",
-      "taskId": "US-008",
-      "taskTitle": "Explorer UI: folder tree and file list",
-      "taskCompleted": true,
-      "durationMs": 646120,
-      "startedAt": "2026-08-10T03:10:24.271Z",
-      "endedAt": "2026-08-10T03:21:10.391Z"
-    },
-    {
-      "iteration": 9,
-      "status": "completed",
-      "taskId": "US-009",
-      "taskTitle": "Transcript preview and already-processed notice",
-      "taskCompleted": true,
-      "durationMs": 559815,
-      "startedAt": "2026-08-10T03:21:11.485Z",
-      "endedAt": "2026-08-10T03:30:31.300Z"
-    },
-    {
-      "iteration": 10,
-      "status": "completed",
-      "taskId": "US-010",
-      "taskTitle": "Ollama extractor",
-      "taskCompleted": true,
-      "durationMs": 393197,
-      "startedAt": "2026-08-10T03:30:32.390Z",
-      "endedAt": "2026-08-10T03:37:05.587Z"
-    },
-    {
-      "iteration": 11,
-      "status": "completed",
-      "taskId": "US-011",
-      "taskTitle": "Claude API extractor",
-      "taskCompleted": true,
-      "durationMs": 251507,
-      "startedAt": "2026-08-10T03:37:06.745Z",
-      "endedAt": "2026-08-10T03:41:18.252Z"
-    },
-    {
-      "iteration": 12,
-      "status": "completed",
-      "taskId": "US-012",
-      "taskTitle": "Extraction API route with provider dispatch",
-      "taskCompleted": true,
-      "durationMs": 197836,
-      "startedAt": "2026-08-10T03:41:19.351Z",
-      "endedAt": "2026-08-10T03:44:37.187Z"
-    },
-    {
-      "iteration": 13,
-      "status": "completed",
-      "taskId": "US-013",
-      "taskTitle": "Editable task table",
-      "taskCompleted": true,
-      "durationMs": 411534,
-      "startedAt": "2026-08-10T03:44:38.271Z",
-      "endedAt": "2026-08-10T03:51:29.805Z"
-    },
-    {
-      "iteration": 14,
-      "status": "completed",
-      "taskId": "US-014",
-      "taskTitle": "Regenerate guard for manual edits",
-      "taskCompleted": true,
-      "durationMs": 443326,
-      "startedAt": "2026-08-10T03:51:30.885Z",
-      "endedAt": "2026-08-10T03:58:54.211Z"
-    },
-    {
-      "iteration": 15,
-      "status": "completed",
-      "taskId": "US-015",
-      "taskTitle": "Linear client: teams and projects",
-      "taskCompleted": true,
-      "durationMs": 238153,
-      "startedAt": "2026-08-10T03:58:55.309Z",
-      "endedAt": "2026-08-10T04:02:53.462Z"
-    },
-    {
-      "iteration": 16,
-      "status": "completed",
-      "taskId": "US-016",
-      "taskTitle": "Linear client: create issue, with optional parent",
-      "taskCompleted": true,
-      "durationMs": 170603,
-      "startedAt": "2026-08-10T04:02:54.546Z",
-      "endedAt": "2026-08-10T04:05:45.149Z"
-    }
-  ],
+  "iterations": [],
   "skippedTaskIds": [],
   "cwd": "/Users/cristian/dev/tasks-app",
   "activeTaskIds": [],

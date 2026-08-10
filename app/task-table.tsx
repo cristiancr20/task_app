@@ -4,6 +4,7 @@ import { useEffect } from 'react'
 
 import { PRIORITIES, type Priority } from '@/lib/extractors/task'
 
+import type { PushRowResult } from './use-push-run'
 import {
   countManualChanges,
   type ManualChanges,
@@ -14,6 +15,14 @@ import {
 type Props = {
   /** The selected file's drafts, or undefined when no file is selected. */
   state: TaskDraftState | undefined
+  /**
+   * How each row ended in the last push, by row id. Empty until one runs, which
+   * is when the «Estado» column appears — a table nobody has pushed has nothing
+   * to say in it.
+   */
+  results: Record<string, PushRowResult>
+  /** A push is in flight: the rows it is creating must not change underneath it. */
+  busy: boolean
   onGenerate: () => void
   onConfirmGenerate: () => void
   onCancelGenerate: () => void
@@ -45,6 +54,8 @@ const FIELD =
  */
 export function TaskTable({
   state,
+  results,
+  busy,
   onGenerate,
   onConfirmGenerate,
   onCancelGenerate,
@@ -56,6 +67,9 @@ export function TaskTable({
   const selected = rows.filter((row) => row.include).length
   const generating = state?.generating ?? false
   const changes = countManualChanges(state)
+  // The column only exists once there is a push to report on; before that every
+  // row would read «Pendiente», which says nothing.
+  const showStatus = Object.keys(results).length > 0
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
@@ -79,7 +93,7 @@ export function TaskTable({
           <button
             type="button"
             onClick={onAddRow}
-            disabled={!state}
+            disabled={!state || busy}
             className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium transition-colors hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-900"
           >
             Añadir tarea
@@ -87,7 +101,7 @@ export function TaskTable({
           <button
             type="button"
             onClick={onGenerate}
-            disabled={!state || generating}
+            disabled={!state || generating || busy}
             className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
           >
             {generating ? 'Generando…' : 'Generar tareas'}
@@ -137,6 +151,11 @@ export function TaskTable({
                 <th scope="col" className="px-3 py-2 font-medium">
                   Evidencia
                 </th>
+                {showStatus ? (
+                  <th scope="col" className="w-44 px-3 py-2 font-medium">
+                    Estado
+                  </th>
+                ) : null}
                 <th scope="col" className="w-10 px-3 py-2 font-medium">
                   <span className="sr-only">Eliminar</span>
                 </th>
@@ -147,6 +166,9 @@ export function TaskTable({
                 <Row
                   key={row.id}
                   row={row}
+                  result={showStatus ? results[row.id] : undefined}
+                  showStatus={showStatus}
+                  busy={busy}
                   onUpdate={(changes) => onUpdateRow(row.id, changes)}
                   onRemove={() => onRemoveRow(row.id)}
                 />
@@ -255,10 +277,17 @@ function breakdown(changes: ManualChanges): string {
 
 function Row({
   row,
+  result,
+  showStatus,
+  busy,
   onUpdate,
   onRemove,
 }: {
   row: TaskDraft
+  /** How this row ended in the last push; undefined means it is still pending. */
+  result: PushRowResult | undefined
+  showStatus: boolean
+  busy: boolean
   onUpdate: (changes: Partial<TaskDraft>) => void
   onRemove: () => void
 }) {
@@ -273,6 +302,7 @@ function Row({
           type="checkbox"
           checked={row.include}
           onChange={(event) => onUpdate({ include: event.target.checked })}
+          disabled={busy}
           aria-label={`Incluir ${label}`}
           className="mt-2 h-4 w-4 accent-zinc-900 dark:accent-zinc-100"
         />
@@ -283,6 +313,7 @@ function Row({
           type="text"
           value={row.title}
           onChange={(event) => onUpdate({ title: event.target.value })}
+          disabled={busy}
           aria-label="Título"
           placeholder="Título de la tarea"
           className={FIELD}
@@ -293,6 +324,7 @@ function Row({
         <textarea
           value={row.description}
           onChange={(event) => onUpdate({ description: event.target.value })}
+          disabled={busy}
           aria-label="Descripción"
           rows={2}
           placeholder="Contexto de la tarea"
@@ -304,6 +336,7 @@ function Row({
         <select
           value={row.priority}
           onChange={(event) => onUpdate({ priority: event.target.value as Priority })}
+          disabled={busy}
           aria-label="Prioridad"
           className={FIELD}
         >
@@ -332,10 +365,17 @@ function Row({
         )}
       </td>
 
+      {showStatus ? (
+        <td className={`${CELL} text-sm`}>
+          <RowStatus result={result} />
+        </td>
+      ) : null}
+
       <td className={CELL}>
         <button
           type="button"
           onClick={onRemove}
+          disabled={busy}
           aria-label={`Eliminar ${label}`}
           title="Eliminar"
           className="mt-1 rounded-md border border-transparent px-2 py-1 text-sm text-zinc-500 transition-colors hover:border-red-300 hover:text-red-600 dark:text-zinc-400 dark:hover:border-red-900 dark:hover:text-red-400"
@@ -344,6 +384,46 @@ function Row({
         </button>
       </td>
     </tr>
+  )
+}
+
+/**
+ * What the push did with this row. The three outcomes are the three things the
+ * user can do next: follow the link, read the error and retry, or wait.
+ *
+ * A created issue is shown as its identifier linking to Linear, because that is
+ * how the task is referred to from now on — and it is also the proof the row
+ * does not need pushing again.
+ */
+function RowStatus({ result }: { result: PushRowResult | undefined }) {
+  if (!result) {
+    return <span className="text-zinc-400 dark:text-zinc-600">Pendiente</span>
+  }
+
+  if (result.state === 'creating') {
+    return <span className="text-zinc-500 dark:text-zinc-400">Creando…</span>
+  }
+
+  if (result.state === 'created') {
+    const label = result.issue.identifier || 'Creada'
+    return result.issue.url ? (
+      <a
+        href={result.issue.url}
+        target="_blank"
+        rel="noreferrer"
+        className="font-medium text-emerald-700 underline dark:text-emerald-400"
+      >
+        {label}
+      </a>
+    ) : (
+      <span className="font-medium text-emerald-700 dark:text-emerald-400">{label}</span>
+    )
+  }
+
+  return (
+    <span title={result.error} className="block text-red-700 dark:text-red-400">
+      {result.error}
+    </span>
   )
 }
 
