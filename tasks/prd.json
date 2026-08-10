@@ -145,11 +145,12 @@
         "Verify in the browser at http://localhost:3300/settings that saving a key and pressing 'Probar' reports the workspace name"
       ],
       "priority": 7,
-      "passes": false,
+      "passes": true,
       "notes": "",
       "dependsOn": [
         "US-002"
-      ]
+      ],
+      "completionNotes": "Completed by agent"
     },
     {
       "id": "US-008",
@@ -407,6 +408,6 @@
     }
   ],
   "metadata": {
-    "updatedAt": "2026-08-10T03:03:05.067Z"
+    "updatedAt": "2026-08-10T03:10:23.186Z"
   }
 }

@@ -66,6 +66,25 @@ after each iteration and it's included in prompts for context.
   passes `hasClaudeApiKey`/`hasLinearApiKey` booleans, never the key; the input shows a
   masked placeholder, an empty submit keeps the stored value, and a «Borrar» submit
   button (`name="intent"`) is what erases it.
+- **All Linear traffic goes through `lib/linear.ts`.** `linearGraphQL(apiKey, query, vars)`
+  is the single request helper (personal API keys go in `Authorization` *without* a
+  `Bearer` prefix) and `fetchLinearOrganization(apiKey)` is the workspace lookup behind
+  «Probar». `LINEAR_API_URL` is overridable by the env var of the same name so the app
+  can be pointed at a stub. Failures split in two: `LinearUnreachableError` (network,
+  → 503) and `LinearApiError` (Linear answered and refused; carries the status our
+  routes should return — 401 for the whole auth range, 502 otherwise).
+- **A remote API's own error text is passed through, not translated.** Only Linear knows
+  whether a key is invalid, revoked or short a permission, so `describeError` forwards
+  its English message prefixed with `Linear: `. Our Spanish copy covers what *we* know
+  (no key stored, no connection).
+- **Anything checking a stored secret is a `GET` route that reads it server-side.** The
+  browser triggers `/api/linear/verify` and reads back only the workspace name — the key
+  is never in a URL, a query string or a request body. The «Probar» button therefore
+  tests what is *stored*, and stays disabled while the input holds unsaved text.
+- **Drive the dev server at `http://localhost:3300`, never `127.0.0.1`.** Next 16 blocks
+  cross-origin dev resources by default, so `127.0.0.1` gets the JS chunks refused and
+  the page never hydrates — every click silently does nothing and the failure looks like
+  a bug in the component.
 
 ---
 
@@ -363,4 +382,74 @@ Settings UI: extraction provider selector.
 - Decision: no hard validation when Claude is selected without a key — the save
   succeeds and the form says a key is needed. Blocking the save would also block the
   «Borrar» button, and US-011/012 have to handle a missing key at extraction time anyway.
+---
+
+## 2026-08-09 - US-007
+
+Settings UI: Linear API key.
+
+**What was implemented**
+- `lib/linear.ts` — the Linear GraphQL API as seen from the app: `LINEAR_API_URL`
+  (env `LINEAR_API_URL`, default `https://api.linear.app/graphql`, trailing slashes
+  stripped), `linearGraphQL(apiKey, query, variables)` (POST, 15 s timeout,
+  `cache: 'no-store'`, returns the `data` payload) and `fetchLinearOrganization(apiKey)`
+  → `{ id, name, urlKey }`. Two error types: `LinearUnreachableError` (never reached
+  Linear) and `LinearApiError` (Linear refused, carrying its own message plus the
+  status our routes should answer).
+- `app/api/linear/verify/route.ts` — `GET /api/linear/verify` → `{ organization }`.
+  Reads the key from the config server-side; 400 with a Spanish message when none is
+  stored, everything else through the shared `errorResponse`.
+- `lib/api.ts` — `describeError` maps `LinearUnreachableError` to 503 and
+  `LinearApiError` to its own status, forwarding Linear's wording untouched.
+- `app/settings/actions.ts` — `saveLinearKeyAction`, write-only like the Anthropic key:
+  an empty submit keeps what is stored, `intent=clear-linear-key` erases it, then
+  `refresh()`.
+- `app/settings/linear-form.tsx` — client component: password input, «Guardar»,
+  «Probar» (fetches the route and shows «Conectado al espacio de trabajo «X».» or the
+  error), «Borrar» when a key is stored, and the note that the key is saved unencrypted
+  in the local `.data` folder.
+- `app/settings/page.tsx` — renders `LinearForm` with `hasLinearApiKey`, a boolean.
+
+**Files changed**
+- `lib/linear.ts`, `app/api/linear/verify/route.ts`, `app/settings/linear-form.tsx` (new)
+- `lib/api.ts`, `app/settings/actions.ts`, `app/settings/page.tsx` (modified)
+
+**Verification**
+- `pnpm typecheck` passes.
+- Drove a real Chrome against `pnpm dev` with Playwright — 28 assertions, all passing,
+  with `LINEAR_API_URL` pointed at a stub reproducing Linear's exact response shapes:
+  password input and `lin_api_…` placeholder in the empty state; «Probar» disabled
+  with no key and while the input holds unsaved text (with the inline hint); save →
+  «Guardado.», field cleared, key in `.data/config.json`; masked placeholder afterwards
+  and the key absent from both the page HTML and the RSC payload of `/settings`;
+  «Probar» → «Conectado al espacio de trabajo «Acme Inc».» and the route answering
+  `{ organization }` with no key in it; the verdict not surviving a reload nor an edit;
+  an invalid key → 401 and Linear's own message inline; «Borrar» emptying the key and
+  disabling «Probar»; no key → 400 in Spanish.
+- Then re-ran against the **real** `api.linear.app` with an invalid key: the UI showed
+  `Linear: Authentication required, not authenticated` and the route answered 401 —
+  same text `curl` gets from Linear directly. The success path was exercised against
+  the stub only; verifying it against a real workspace needs a real personal API key,
+  which this environment does not have.
+- Dev server and stub stopped, `.data/` removed afterwards.
+
+**Learnings**
+- Gotcha, cost the first test run: Next 16 blocks cross-origin dev resources, and
+  `http://127.0.0.1:3300` counts as cross-origin against a server that reports
+  `localhost`. The JS chunks are refused, the client component never hydrates, and the
+  symptom is a page that renders fine while every button does nothing. Use `localhost`.
+- Linear replies **HTTP 400 or 401** with `{ errors: [{ message }] }` to a bad personal
+  API key, and reports GraphQL-level failures with a 200 — so the body has to be
+  inspected before the status, not after.
+- Personal API keys go in `Authorization` verbatim; the `Bearer` prefix is for OAuth
+  tokens and makes Linear reject an otherwise valid key.
+- Decision: «Probar» checks the *stored* key rather than the typed one. A GET route
+  keeps the secret out of URLs and bodies, and the button stays disabled while there is
+  an unsaved edit so its verdict can never describe a key that is not in use.
+- Decision: `LINEAR_API_URL` is env-overridable purely so the app can be driven against
+  a stub. Same shape as `OLLAMA_URL`, and it is what made the success path testable
+  without a real workspace.
+- A save invalidates the last «Probar» verdict, so the component clears it on a
+  successful save and hides it as soon as the input is touched — a stale green line is
+  worse than none.
 ---

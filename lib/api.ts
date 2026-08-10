@@ -1,3 +1,4 @@
+import { LinearApiError, LinearUnreachableError } from './linear'
 import { OllamaUnreachableError } from './ollama'
 import { getConfig } from './store'
 import { PathEscapesRootError } from './transcripts'
@@ -68,6 +69,17 @@ export function describeError(
       message: `No se pudo conectar con Ollama en ${err.url}. Comprueba que está en marcha.`,
     }
   }
+
+  if (err instanceof LinearUnreachableError) {
+    return {
+      status: 503,
+      message: 'No se pudo conectar con Linear. Comprueba tu conexión a internet.',
+    }
+  }
+
+  // Linear's own wording travels to the UI untouched: it is the only thing that
+  // says whether the key is invalid, revoked or merely lacks a permission.
+  if (err instanceof LinearApiError) return { status: err.status, message: err.message }
 
   switch (errnoCode(err)) {
     case 'ENOENT':

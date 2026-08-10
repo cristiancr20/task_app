@@ -3,10 +3,10 @@
   "sessionId": "aa2f0814-5602-46fb-af15-58d2ca621517",
   "status": "running",
   "startedAt": "2026-08-10T02:40:32.134Z",
-  "updatedAt": "2026-08-10T03:03:05.068Z",
-  "currentIteration": 5,
+  "updatedAt": "2026-08-10T03:10:23.186Z",
+  "currentIteration": 6,
   "maxIterations": 0,
-  "tasksCompleted": 5,
+  "tasksCompleted": 6,
   "isPaused": false,
   "agentPlugin": "claude",
   "trackerState": {
@@ -48,8 +48,8 @@
       {
         "id": "US-006",
         "title": "Settings UI: extraction provider selector",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-007",
@@ -181,6 +181,16 @@
       "durationMs": 357295,
       "startedAt": "2026-08-10T02:50:58.349Z",
       "endedAt": "2026-08-10T02:56:55.644Z"
+    },
+    {
+      "iteration": 6,
+      "status": "completed",
+      "taskId": "US-006",
+      "taskTitle": "Settings UI: extraction provider selector",
+      "taskCompleted": true,
+      "durationMs": 368340,
+      "startedAt": "2026-08-10T02:56:56.726Z",
+      "endedAt": "2026-08-10T03:03:05.066Z"
     }
   ],
   "skippedTaskIds": [],

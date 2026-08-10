@@ -5,6 +5,7 @@ import { DEFAULT_OLLAMA_MODEL } from '@/lib/ollama'
 import { getConfig } from '@/lib/store'
 
 import { ContextFolderForm } from './context-folder-form'
+import { LinearForm } from './linear-form'
 import { ProviderForm } from './provider-form'
 
 // The config is read from disk on every render and changes while the app runs,
@@ -16,7 +17,8 @@ export const metadata: Metadata = {
 }
 
 export default function SettingsPage() {
-  const { contextRoot, recentFolders, provider, ollamaModel, claudeApiKey } = getConfig()
+  const { contextRoot, recentFolders, provider, ollamaModel, claudeApiKey, linearApiKey } =
+    getConfig()
 
   return (
     <div className="flex flex-1 justify-center bg-zinc-50 font-sans dark:bg-black">
@@ -43,6 +45,8 @@ export default function SettingsPage() {
             hasClaudeApiKey={claudeApiKey.trim() !== ''}
             defaultModel={DEFAULT_OLLAMA_MODEL}
           />
+
+          <LinearForm hasLinearApiKey={linearApiKey.trim() !== ''} />
         </div>
       </main>
     </div>

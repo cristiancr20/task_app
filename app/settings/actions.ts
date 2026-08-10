@@ -86,6 +86,40 @@ export async function saveProviderAction(
   }
 }
 
+/** What the Linear form renders after an attempt to save. */
+export type SaveLinearKeyState = {
+  /** Spanish message shown inline, or null when the key was saved. */
+  error: string | null
+  /** True right after a successful save, so the form can confirm it. */
+  saved: boolean
+  /** Counts attempts — see `OpenFolderState.attempt`. */
+  attempt: number
+}
+
+/**
+ * Persist the Linear API key. Write-only like the Anthropic one: an empty
+ * field keeps whatever is stored, and «Borrar» submits `intent=clear-linear-key`.
+ */
+export async function saveLinearKeyAction(
+  previous: SaveLinearKeyState,
+  formData: FormData,
+): Promise<SaveLinearKeyState> {
+  const attempt = previous.attempt + 1
+  const typedKey = field(formData, 'linearApiKey')?.trim() ?? ''
+  const linearApiKey =
+    field(formData, 'intent') === 'clear-linear-key' ? '' : typedKey || getConfig().linearApiKey
+
+  try {
+    updateConfig({ linearApiKey })
+    // The page reads the config on the server, so it has to re-render for the
+    // key's masked state to show up.
+    refresh()
+    return { error: null, saved: true, attempt }
+  } catch (err) {
+    return { error: describeError(err, '').message, saved: false, attempt }
+  }
+}
+
 function field(formData: FormData, name: string): string | null {
   const value = formData.get(name)
   return typeof value === 'string' ? value : null
