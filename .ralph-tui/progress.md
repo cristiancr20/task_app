@@ -162,6 +162,20 @@ after each iteration and it's included in prompts for context.
   blank `path` with a 400 instead of defaulting to the root, which a `POST` never means.
   The route still hands the raw string to `readTranscript`, so `resolveInsideRoot` stays
   the only place a request becomes a path.
+- **The task table's drafts are keyed by path and live in `Explorer`, not in the table.**
+  `useTaskDrafts(relPath)` (`app/use-task-drafts.ts`) holds a
+  `Record<path, { rows, generating, error, extracted }>` for every transcript visited
+  since the page loaded, so browsing to another note and back shows the edits again. A
+  row is `ExtractedTask & { id, include }` — `id` is a page-lifetime counter, `include`
+  starts `true`. Unlike `useTranscript`, an extraction is **never** re-run on selection:
+  it costs minutes and money, so it only happens on «Generar tareas». A failure patches
+  `{ generating, error }` and leaves `rows` alone — the table is what the user has been
+  curating and clearing it on error is the bug this rule exists to prevent.
+- **Client → route helpers all read the same.** `lib/browse-client.ts`,
+  `lib/transcript-client.ts` and `lib/extract-client.ts` each wrap one route, throw an
+  `Error` carrying the route's own Spanish message, and answer «El servidor devolvió una
+  respuesta inesperada» for a well-formed response of the wrong shape. A new route the
+  browser calls gets a helper next to these, not a `fetch` inside a component.
 
 ---
 
@@ -887,4 +901,80 @@ Ollama extractor.
   env var is set before the server starts.
 - `next dev` answers 405 for an unimplemented method on an existing route handler, so
   there is nothing to write for "GET is not allowed here".
+---
+
+## 2026-08-09 - US-013
+
+**Implemented**
+- `lib/extract-client.ts`: `extractTasks(relPath)` — `POST /api/extract` with `{ path }`
+  from the browser, same contract as `fetchFolder`/`fetchTranscript` (the route's Spanish
+  message travels as the `Error`'s message; a body that is not `{ tasks: [...] }` is «El
+  servidor devolvió una respuesta inesperada»).
+- `app/use-task-drafts.ts`: `useTaskDrafts(relPath)` — the table's state for *every*
+  transcript visited since the page loaded, kept in a map keyed by path so the edits are
+  still there after browsing away and back. A row is `ExtractedTask & { id, include }`;
+  `generate()` writes the answer under the path it was asked for, `updateRow`,
+  `removeRow` and `addRow` act on the selected one. State per path is
+  `{ rows, generating, error, extracted }`.
+- `app/task-table.tsx`: the panel. Header with «Tareas», the `N de M seleccionadas`
+  counter, «Añadir tarea» and «Generar tareas» (which reads «Generando…» and is disabled
+  while the request is in flight). Per row: an include checkbox, an editable title, an
+  editable description, a priority `<select>` over `PRIORITIES` with Spanish labels, the
+  mentioned person and the evidence quote read-only, and a delete button. An extraction
+  error renders as a `role="alert"` band *above* the table, which is left untouched.
+- `app/explorer.tsx`: the drafts hook lives here (it outlives the selection) and the
+  table is a full-width `h-[42dvh]` section under the three panels, rendered only when a
+  file is selected.
+
+**Files changed**
+- `lib/extract-client.ts`, `app/use-task-drafts.ts`, `app/task-table.tsx` (new)
+- `app/explorer.tsx` (modified)
+
+**Verification**
+- `pnpm typecheck` passes. `pnpm build` passes with only the pre-existing
+  `lib/transcripts.ts` fs-tracing warnings — the traces are still App Route + Server
+  Component only, so the three new client modules pulled no node code into the bundle
+  (`lib/extractors/task.ts` is safe to import from a client component: its only import is
+  `import type { TranscriptMeta }`).
+- Driven in a real browser at `http://localhost:3300` (Playwright + Chromium) against the
+  dev server with `OLLAMA_URL` pointed at a stub returning three tasks, a scratch
+  `.data/config.json` and two fixture transcripts — 33 assertions, all passing:
+  the panel appears only with a file selected; the button shows «Generando…» and is
+  disabled during the call; three rows render with all boxes checked and the counter at
+  «3 de 3 seleccionadas»; the evidence and the mentioned person render as text, not
+  inputs; editing the title/description and switching the priority to «Urgente» works;
+  unchecking → «2 de 3», deleting → «1 de 2», «Añadir tarea» → a blank checked row with
+  priority `none` → «2 de 3»; navigating to the other transcript shows «Aún no hay
+  tareas» and coming back restores every edit (title, priority, the unchecked row and the
+  manual row); with the stub switched to failing, the inline alert reads «Ollama respondió
+  500 al extraer con el modelo «stub-model» («el modelo se cayó»)» — the API's own message
+  — with all three rows and their edits still on screen and the button usable again; and a
+  successful retry replaces the rows with the model's.
+- `.data/` did not exist before this run and was removed afterwards, so no local state was
+  left behind.
+
+**Learnings**
+- Where the drafts live *is* the acceptance criterion. Holding them in the table means
+  selecting another file unmounts it and the edits are gone; holding them in `Explorer`
+  keyed by path is what makes «edits persist while navigating within the page» true, and
+  it is also what US-014 needs to compare a table against the last extraction.
+- The extraction is deliberately not re-run when the selection changes — the opposite of
+  `useTranscript`, which reloads on every selection. Reading a file is cheap and its push
+  history goes stale; an extraction costs minutes and money, so it only ever happens on
+  the button.
+- A failed regeneration must patch `{ generating, error }` and leave `rows` alone. Writing
+  the whole state on failure is the easy bug here, and it throws away exactly the work the
+  screen exists to protect.
+- The table wants the full width, so it goes *under* the three panels rather than inside
+  the transcript column: seven columns in the ~840px left over next to the tree and the
+  file list is unreadable. The height stays definite (`h-[42dvh]` on the section, the
+  panel row `min-h-0 flex-1`) — same rule as `app/page.tsx`: a `flex-1` child sized by its
+  content never scrolls.
+- Playwright gotcha for this repo: `getByLabel('Título')` matches by substring, so it also
+  hits the `aria-label`s «Incluir tarea sin título» and «Eliminar tarea sin título» on the
+  same row — `{ exact: true }` is required. The browser is driven with
+  `/opt/homebrew/lib/node_modules/@playwright/cli/node_modules/playwright/index.mjs`
+  (there is no local `playwright` dependency).
+- Also: the inline error clears the instant a retry starts, so waiting for the alert to
+  disappear proves nothing about the retry. Wait for the *rows* to change instead.
 ---
