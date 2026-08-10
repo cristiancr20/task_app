@@ -3,10 +3,10 @@
   "sessionId": "aa2f0814-5602-46fb-af15-58d2ca621517",
   "status": "running",
   "startedAt": "2026-08-10T02:40:32.134Z",
-  "updatedAt": "2026-08-10T03:21:10.393Z",
-  "currentIteration": 7,
+  "updatedAt": "2026-08-10T03:30:31.302Z",
+  "currentIteration": 8,
   "maxIterations": 0,
-  "tasksCompleted": 7,
+  "tasksCompleted": 8,
   "isPaused": false,
   "agentPlugin": "claude",
   "trackerState": {
@@ -60,8 +60,8 @@
       {
         "id": "US-008",
         "title": "Explorer UI: folder tree and file list",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-009",
@@ -201,6 +201,16 @@
       "durationMs": 437032,
       "startedAt": "2026-08-10T03:03:06.153Z",
       "endedAt": "2026-08-10T03:10:23.185Z"
+    },
+    {
+      "iteration": 8,
+      "status": "completed",
+      "taskId": "US-008",
+      "taskTitle": "Explorer UI: folder tree and file list",
+      "taskCompleted": true,
+      "durationMs": 646120,
+      "startedAt": "2026-08-10T03:10:24.271Z",
+      "endedAt": "2026-08-10T03:21:10.391Z"
     }
   ],
   "skippedTaskIds": [],

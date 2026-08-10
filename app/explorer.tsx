@@ -4,7 +4,9 @@ import { useEffect, useState } from 'react'
 
 import { FileList } from './file-list'
 import { FolderTree } from './folder-tree'
+import { TranscriptPreview } from './transcript-preview'
 import { useFolderListings } from './use-folder-listings'
+import { useTranscript } from './use-transcript'
 
 type Props = {
   /** Absolute path of the configured context folder, for the tree's root row. */
@@ -12,8 +14,9 @@ type Props = {
 }
 
 /**
- * The two panels of the explorer: the folder tree on the left and the `.md`
- * files of the selected folder in the centre.
+ * The three panels of the explorer: the folder tree on the left, the `.md`
+ * files of the selected folder in the centre, and the selected transcript on
+ * the right.
  *
  * Folders are listed from the browser through `/api/browse` rather than on the
  * server, so expanding a node costs one request instead of a re-render of the
@@ -25,6 +28,7 @@ export function Explorer({ contextRoot }: Props) {
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set(['']))
   const [selected, setSelected] = useState('')
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
+  const { state: transcript, reload: reloadTranscript } = useTranscript(selectedFile)
 
   // The root starts selected and expanded, so the first paint already shows its
   // files. `open` skips folders that have been asked for, so this runs once.
@@ -72,7 +76,7 @@ export function Explorer({ contextRoot }: Props) {
         </nav>
       </aside>
 
-      <section className="flex min-h-0 flex-1 flex-col bg-white dark:bg-black">
+      <section className="flex w-96 shrink-0 min-h-0 flex-col border-r border-zinc-200 bg-white dark:border-zinc-800 dark:bg-black">
         <FileList
           state={states[selected]}
           breadcrumb={breadcrumb(rootLabel, selected)}
@@ -80,6 +84,13 @@ export function Explorer({ contextRoot }: Props) {
           onSelectFile={setSelectedFile}
           onRetry={() => reload(selected)}
         />
+      </section>
+
+      <section
+        aria-label="Transcripción"
+        className="flex min-h-0 min-w-0 flex-1 flex-col bg-white dark:bg-black"
+      >
+        <TranscriptPreview state={transcript} onRetry={reloadTranscript} />
       </section>
     </div>
   )

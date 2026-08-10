@@ -100,6 +100,22 @@ after each iteration and it's included in prompts for context.
   `min-h-full flex flex-col`, so a `flex-1` child is sized by its content and
   `overflow-y-auto` inside it never scrolls — the page grows instead. Views with
   independently scrolling panels set `h-dvh` on their root (see `app/page.tsx`).
+- **Markdown is parsed by `lib/markdown.ts` and rendered by `<Markdown>`
+  (`app/markdown.tsx`).** `parseMarkdown(source)` returns a tree of plain data and the
+  component turns every node into a React element, so nothing from a transcript is ever
+  inserted as HTML and `dangerouslySetInnerHTML` appears nowhere. `safeHref` drops any
+  scheme that is not `http(s)`/`mailto`/relative (a `javascript:` link degrades to its
+  own text). Supported: headings, lists (nested), quotes, fences, rules, and inline
+  code/emphasis/strikethrough/links/autolinks. Not supported, on purpose: tables,
+  reference links, footnotes and raw HTML, which show up as plain text.
+- **Reading a file goes through `lib/transcript-client.ts` + `useTranscript()`.**
+  `fetchTranscript(relPath)` calls `GET /api/transcript` (same Spanish-message contract
+  as `fetchFolder`) and `useTranscript(relPath)` (`app/use-transcript.ts`) reloads on
+  every selection change. Unlike `useFolderListings` it deliberately does **not** cache:
+  the response carries the file's push history, which changes while the page is open.
+- **`GET /api/transcript` answers `{ meta, body, history }`.** The already-processed
+  notice is keyed by the very path being read, so the history rides along with the
+  transcript instead of costing a second round trip.
 
 ---
 
@@ -547,4 +563,82 @@ Explorer UI: folder tree and file list.
 - Testing gotcha: `page.waitForFunction` on `document.body.innerText` is ambiguous once
   the same folder name appears in both the tree and the breadcrumb — the collapse
   assertion has to scope to `nav[aria-label="Carpetas"]`.
+---
+
+## 2026-08-09 - US-009
+
+Transcript preview and already-processed notice.
+
+**What was implemented**
+- `lib/markdown.ts` — a small Markdown parser producing a block/inline tree of plain
+  data (no HTML, no node imports). Covers headings, fenced code, blockquotes, nested
+  bullet/numbered lists, rules, paragraphs, and inline code, `**bold**`, `_italic_`,
+  `~~strikethrough~~`, links, `<autolinks>` and bare URLs. `safeHref` allows only
+  `http(s)`, `mailto` and relative targets.
+- `app/markdown.tsx` — `<Markdown source>`, which renders that tree as React elements
+  with Tailwind classes (no typography plugin in this project, so each element is
+  styled directly).
+- `lib/transcript-client.ts` — `fetchTranscript(relPath)` plus the `TranscriptView`
+  type (`Transcript & { history }`), both type-only imports from the node-only modules.
+- `app/use-transcript.ts` — `useTranscript(relPath)`: loading/ready/error state for the
+  selected file, an attempt counter so a slow response cannot overwrite a newer
+  selection, and `reload()` behind «Reintentar». Not cached, on purpose.
+- `app/transcript-preview.tsx` — the right panel: a fixed header (title, date,
+  attendees, word count, file name), the already-processed notice, and the scrollable
+  body. Empty states for no selection and for a file that is only frontmatter.
+- `app/api/transcript/route.ts` — the response now carries `history: getHistory(path)`.
+- `app/explorer.tsx` — third panel wired in; the file list becomes a fixed `w-96`
+  column and the preview takes the rest.
+
+**Files changed**
+- `lib/markdown.ts`, `lib/transcript-client.ts`, `app/markdown.tsx`,
+  `app/transcript-preview.tsx`, `app/use-transcript.ts` (new)
+- `app/api/transcript/route.ts`, `app/explorer.tsx` (modified)
+
+**Verification**
+- `pnpm typecheck` passes. `pnpm build` passes; its fs-tracing warnings still list only
+  App Route and Server Component traces — no Client Component trace, so neither the
+  scanner nor the store leaked into the browser bundle.
+- Drove a real Chrome against `pnpm dev` with Playwright — 55 assertions, all passing,
+  over a fixture folder (a long Weekly sync with the full Markdown range, a short retro,
+  a frontmatter-only file, and a file with hostile links) plus a hand-written
+  `.data/config.json` history: the no-selection state; header metadata; the notice
+  reading «3 tareas creadas el 9 ago 2026 a las 09:32» with one link per issue pointing
+  at its stored url and showing its identifier and title; the notice sitting above the
+  body; every Markdown construct rendering to its own element (h3/h4, `ul`, nested
+  `ul ul`, `ol`, `blockquote`, `pre code`, `hr`, `strong`, `em`, `del`, inline `code`,
+  links with `target=_blank`); the bare URL linked; frontmatter absent from the body;
+  the preview scrolling (`scrollTop > 100`) while the page itself does not grow and the
+  header and tree stay put; a file pushed twice reading «3 tareas creadas en 2 envíos,
+  el último el 5 ago 2026» with each push dated and the most recent first; no notice at
+  all for a file without history; `[texto](javascript:…)` rendering as text with no
+  anchor; an embedded `<script>` shown verbatim and `window.__pwned` still undefined;
+  `snake_case` not italicised; and — after renaming a file away mid-session — «No
+  existe: riesgos.md» inline with «Reintentar» recovering it. No page errors.
+- Dev server stopped and `.data/` plus the fixtures removed afterwards.
+
+**Learnings**
+- Decision: no Markdown dependency. The parser is ~300 lines, and building React
+  elements from a data tree means a transcript can never inject HTML — with
+  `react-markdown` the same guarantee costs a plugin chain, and the app has to render
+  arbitrary files from the user's disk. Tables are the one real omission; they degrade
+  to paragraphs with pipes.
+- Gotcha: nested lists are not parsed by the list parser at all. Each item's lines are
+  dedented by that item's own content indent and re-parsed with `parseBlocks`, so a
+  sublist simply appears as a list inside the item. Trying to track depth in one pass
+  was where the first attempt got complicated.
+- Emphasis with `_` needs a word boundary before the delimiter or `snake_case_names`
+  render as italics; `*` has no such problem. Same class of bug for `2 * 3 * 4`, which
+  is why the opening delimiter must not be followed by a space.
+- Paragraphs keep their single newlines (`whitespace-pre-wrap`): meeting notes use them
+  for speaker turns, and collapsing them into spaces makes a transcript unreadable.
+- `pushedAt` is a full ISO timestamp, so `new Date(...)` is safe for it — unlike the
+  date-only `meta.date`, which still has to be split into parts to avoid the UTC-
+  midnight shift. Two different formatters in the same file for that reason.
+- The folder panel is already an `<aside>`, so the notice is a `<div role="note">`; a
+  second unlabelled complementary landmark is noise for a screen reader and made the
+  Playwright `aside` locator ambiguous too.
+- Decision: history travels inside the transcript response rather than in its own
+  route. It is keyed by the same path, always rendered with the preview, and US-019
+  needs it fresh after a push — which a re-fetch on selection already gives.
 ---
