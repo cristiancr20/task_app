@@ -3,10 +3,10 @@
   "sessionId": "aa2f0814-5602-46fb-af15-58d2ca621517",
   "status": "running",
   "startedAt": "2026-08-10T02:40:32.134Z",
-  "updatedAt": "2026-08-10T02:44:37.204Z",
-  "currentIteration": 1,
+  "updatedAt": "2026-08-10T02:47:30.203Z",
+  "currentIteration": 2,
   "maxIterations": 0,
-  "tasksCompleted": 1,
+  "tasksCompleted": 2,
   "isPaused": false,
   "agentPlugin": "claude",
   "trackerState": {
@@ -24,8 +24,8 @@
       {
         "id": "US-002",
         "title": "Config store: read/write local JSON state",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-003",
@@ -141,6 +141,16 @@
       "durationMs": 117976,
       "startedAt": "2026-08-10T02:40:37.316Z",
       "endedAt": "2026-08-10T02:42:35.292Z"
+    },
+    {
+      "iteration": 2,
+      "status": "completed",
+      "taskId": "US-002",
+      "taskTitle": "Config store: read/write local JSON state",
+      "taskCompleted": true,
+      "durationMs": 120825,
+      "startedAt": "2026-08-10T02:42:36.378Z",
+      "endedAt": "2026-08-10T02:44:37.203Z"
     }
   ],
   "skippedTaskIds": [],

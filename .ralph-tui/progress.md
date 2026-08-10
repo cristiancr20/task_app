@@ -25,6 +25,12 @@ after each iteration and it's included in prompts for context.
   throws) and writes are atomic (temp file + `renameSync` in the same folder). The
   store is sync and node-only — import it from route handlers / server components,
   not from client components.
+- **All filesystem access under `contextRoot` goes through `lib/transcripts.ts`.**
+  `resolveInsideRoot(root, relPath)` is the *only* place request input becomes a path —
+  never build one with `path.join` at a call site. `listFolder(root, relPath)` and
+  `readTranscript(root, relPath)` call it for you. `relPath` is always root-relative and
+  `/`-separated (`''` = root); a leading `/` is stripped (URL-style), so an absolute path
+  misses with ENOENT instead of escaping. Also sync and node-only.
 
 ---
 
@@ -98,4 +104,54 @@ Config store: read/write local JSON state.
   live in `.data/` alongside the target — not in `os.tmpdir()`.
 - Kept the temp filename unique per process *and* per call (`<pid>.<n>`); two writes in
   the same tick would otherwise race on one temp path.
+---
+
+## 2026-08-09 - US-003
+
+Filesystem scanner with path-traversal guard.
+
+**What was implemented**
+- `lib/transcripts.ts` — the single entry point for reading anything under `contextRoot`.
+- `resolveInsideRoot(root, relPath)` — resolves and throws on escape. Two checks: a
+  lexical one (`path.resolve` + prefix compare, catches `..` and absolute input) and a
+  `realpathSync` one (catches a symlink inside the root pointing outside it).
+- `listFolder(root, relPath)` — one level only, no recursion. Returns
+  `{ relPath, folders, files }`; skips dotfiles, `node_modules`, non-`.md` files and
+  files that fail to read. Files sorted date desc then title (what US-008 asks for).
+- `readTranscript(root, relPath)` — `{ meta, body }` with the frontmatter block removed.
+- `TranscriptMeta`: `relPath`, `fileName`, `title`, `date`, `attendees`, `words`,
+  `approxTokens`, `hasFrontmatter`. Exported types `FolderEntry`, `FolderListing`,
+  `Transcript` so US-004/US-008 type against one source of truth.
+- Frontmatter parsed with `yaml`; failures (and non-object YAML) degrade to
+  "no frontmatter", leaving the raw text as body. Fallbacks: title from the filename
+  (leading date and `-`/`_` stripped), date from a leading `YYYY-MM-DD`.
+- `attendees` accepts a YAML list or a single comma-separated line; `date` accepts
+  `YYYY-MM-DD`, a full ISO timestamp, or a `Date`.
+
+**Files changed**
+- `lib/transcripts.ts` (new)
+
+**Verification**
+- `pnpm typecheck` passes.
+- Ran a throwaway Node script (Node 26 runs `.ts` directly) against a scratch tree —
+  32 assertions, all passing: traversal via `..`, a symlink to a file outside the root
+  and an absolute path; dotfile / `node_modules` / `.txt` exclusion; non-recursion;
+  frontmatter vs filename-derived title and date; comma-separated and list attendees;
+  malformed YAML kept as body without throwing; word count on the body only; sort order;
+  root-relative `relPath` for nested files.
+
+**Learnings**
+- Gotcha: the lexical check alone is not enough. `path.resolve` cannot see symlinks, so
+  a `link.md` inside the root pointing at `../outside.md` passes the prefix compare —
+  `realpathSync` on the resolved target is what catches it. `realpathSync` throws on a
+  path that does not exist yet, so it falls back to the input and the lexical check
+  stands on its own for missing paths.
+- Decision: a leading `/` in `relPath` is stripped rather than rejected, so the API in
+  US-004 can accept URL-style `/sub/notes.md`. `/etc/passwd` becomes `<root>/etc/passwd`
+  and simply misses — it cannot reach the host path.
+- YAML 1.2's core schema (the `yaml` package default) parses `date: 2026-08-09` as a
+  **string**, not a `Date`. `toIsoDate` handles both anyway, since a future schema
+  change would silently flip the type.
+- `listFolder` reads every `.md` file in the folder to build its metadata. Fine for a
+  notes folder; if a root ever holds thousands of files this is the thing to cache.
 ---
