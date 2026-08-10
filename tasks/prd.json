@@ -410,12 +410,13 @@
         "Verify in the browser at http://localhost:3300 that after a push the summary lists links and reopening the file shows the notice"
       ],
       "priority": 19,
-      "passes": false,
+      "passes": true,
       "notes": "",
       "dependsOn": [
         "US-018",
         "US-009"
-      ]
+      ],
+      "completionNotes": "Completed by agent"
     },
     {
       "id": "US-020",
@@ -466,6 +467,6 @@
     }
   ],
   "metadata": {
-    "updatedAt": "2026-08-10T04:36:37.284Z"
+    "updatedAt": "2026-08-10T04:45:59.565Z"
   }
 }

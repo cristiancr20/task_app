@@ -2,6 +2,8 @@
 
 import Link from 'next/link'
 
+import type { PushedIssue } from '@/lib/push-events'
+
 import type { PushTargetApi } from './use-push-target'
 
 type ParentApi = {
@@ -22,8 +24,13 @@ type PushApi = {
   failed: number
   /** Tasks already created for this note, parent aside. */
   created: number
-  /** The parent already exists, so this run hangs the tasks from it instead of creating another. */
-  parentCreated: boolean
+  /** The issues created for this note, in the order they were created. Parent aside. */
+  issues: PushedIssue[]
+  /**
+   * The parent issue, once it exists: this run hangs its tasks from it instead
+   * of creating another, and the summary links to it like any other issue.
+   */
+  parentIssue: PushedIssue | null
   /** Which issue of how many is being created, 1-based. Null when not running. */
   progress: { index: number; total: number } | null
   /** Why the run stopped early, or why it never started. */
@@ -62,7 +69,7 @@ export function PushPanel({ target, parent, push }: Props) {
   const running = push.status === 'running'
   // The parent is created once per note; a retry hangs its tasks from the one
   // that already exists, so the checkbox stops describing this run.
-  const willCreateParent = parent.create && !push.parentCreated
+  const willCreateParent = parent.create && !push.parentIssue
 
   return (
     <div className="flex flex-col">
@@ -199,8 +206,14 @@ export function PushPanel({ target, parent, push }: Props) {
  * round trips to a remote API, and «Creando 4 de 12» is the difference between
  * a slow run and a hung one. The row-by-row outcome is in the table above —
  * this says what happened overall, and why it stopped when it stopped.
+ *
+ * Once it is over the summary lists what was created, linked: the table says
+ * which row became which issue, but the point of finishing a push is to open
+ * the issues, and hunting for them column by column is not that.
  */
 function RunStatus({ push }: { push: PushApi }) {
+  const finished = push.status === 'finished'
+
   return (
     <div className="flex flex-col gap-2 border-t border-zinc-200 px-5 py-2 dark:border-zinc-800">
       {push.progress && push.status === 'running' ? (
@@ -209,10 +222,21 @@ function RunStatus({ push }: { push: PushApi }) {
         </p>
       ) : null}
 
-      {push.status === 'finished' ? (
+      {finished ? (
         <p aria-live="polite" className="text-xs text-zinc-600 dark:text-zinc-300">
           {outcome(push)}
         </p>
+      ) : null}
+
+      {/* The parent goes first and says so: it is the issue the others hang
+          from, and the one the user opens to see the meeting as a whole. */}
+      {finished && (push.parentIssue || push.issues.length > 0) ? (
+        <ul className="flex flex-col gap-1 pb-1">
+          {push.parentIssue ? <IssueLink issue={push.parentIssue} label="tarea padre" /> : null}
+          {push.issues.map((issue) => (
+            <IssueLink key={issue.id} issue={issue} />
+          ))}
+        </ul>
       ) : null}
 
       {/* Why the run stopped short: the parent failed, or too many tasks failed
@@ -226,6 +250,23 @@ function RunStatus({ push }: { push: PushApi }) {
         </p>
       ) : null}
     </div>
+  )
+}
+
+/** One created issue: its identifier, its title, and a link to Linear. */
+function IssueLink({ issue, label }: { issue: PushedIssue; label?: string }) {
+  return (
+    <li className="text-xs">
+      <a
+        href={issue.url}
+        target="_blank"
+        rel="noreferrer noopener"
+        className="text-zinc-700 underline underline-offset-2 hover:text-zinc-900 dark:text-zinc-300 dark:hover:text-zinc-100"
+      >
+        <span className="font-mono">{issue.identifier}</span> <span>{issue.title}</span>
+      </a>
+      {label ? <span className="ml-1 text-zinc-500 dark:text-zinc-400">({label})</span> : null}
+    </li>
   )
 }
 
@@ -251,7 +292,7 @@ function pushBlockedBy(target: PushTargetApi, parent: ParentApi, push: PushApi):
   }
   // Linear rejects an empty title, so the push would fail on the parent and
   // never reach the tasks. Once the parent exists this no longer applies.
-  if (parent.create && !push.parentCreated && !parent.title.trim())
+  if (parent.create && !push.parentIssue && !parent.title.trim())
     return 'Escribe un título para la tarea padre.'
   return null
 }
@@ -293,7 +334,7 @@ function outcome(push: PushApi): string {
   const one = push.created === 1
   // With nothing created, the parent is not what the sentence is about.
   const created = `${push.created} tarea${one ? '' : 's'} creada${one ? '' : 's'}${
-    push.parentCreated && push.created > 0 ? ' bajo la tarea padre' : ''
+    push.parentIssue && push.created > 0 ? ' bajo la tarea padre' : ''
   }`
   return push.failed > 0
     ? `${created} · ${push.failed} fallida${push.failed === 1 ? '' : 's'}`

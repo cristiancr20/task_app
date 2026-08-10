@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { pushTasks } from '@/lib/push-client'
 import { PARENT_ROW_ID, type PushEvent, type PushRequest, type PushedIssue } from '@/lib/push-events'
@@ -35,15 +35,29 @@ export type PushPlanInput = Omit<PushRequest, 'path'>
  * Keyed by path like the drafts and the parent options: the panel is not
  * unmounted when the selection changes, so a plain `useState` would show one
  * meeting's results — and offer to retry its failures — while another note is
- * on screen. Nothing here is persisted; US-019 is what writes the created
- * issues to the history.
+ * on screen. Nothing here is persisted: the created issues are written to the
+ * history by the route, and `onCreated` is how the note re-reads it.
  */
-export function usePushRun(relPath: string | null): {
+export function usePushRun(
+  relPath: string | null,
+  /**
+   * Called with the path of a run that created at least one issue, once it is
+   * over. The history of that note has just changed on the server, so whatever
+   * shows it has to read it again.
+   */
+  onCreated?: (path: string) => void,
+): {
   state: PushRunState
   /** Starts the run. Rows already created keep their result and are not re-sent. */
   push: (plan: PushPlanInput) => void
 } {
   const [byPath, setByPath] = useState<Record<string, PushRunState>>({})
+  // Through a ref so a run that is already in flight still calls the current
+  // callback, and so `push` does not have to be rebuilt every render.
+  const notify = useRef(onCreated)
+  useEffect(() => {
+    notify.current = onCreated
+  })
 
   const patch = useCallback(
     (path: string, change: (previous: PushRunState) => PushRunState) => {
@@ -67,12 +81,27 @@ export function usePushRun(relPath: string | null): {
         error: null,
       }))
 
+      // A run that created something changed the history on the server, even
+      // when it ended badly — half a run still leaves issues behind.
+      let created = 0
+      const finish = () => {
+        if (created > 0) notify.current?.(path)
+      }
+
       // Every event is written under the path it was asked for, so a slow run
       // never lands on the note the user has moved on to.
-      pushTasks({ path, ...plan }, (event) => patch(path, (previous) => apply(previous, event))).then(
-        () => patch(path, settle),
-        (err: unknown) =>
-          patch(path, (previous) => ({ ...settle(previous), error: errorMessage(err) })),
+      pushTasks({ path, ...plan }, (event) => {
+        if (event.type === 'created') created += 1
+        patch(path, (previous) => apply(previous, event))
+      }).then(
+        () => {
+          patch(path, settle)
+          finish()
+        },
+        (err: unknown) => {
+          patch(path, (previous) => ({ ...settle(previous), error: errorMessage(err) }))
+          finish()
+        },
       )
     },
     [patch, relPath],
@@ -136,6 +165,20 @@ function onlyCreated(rows: Record<string, PushRowResult>): Record<string, PushRo
     if (result.state === 'created') kept[id] = result
   }
   return kept
+}
+
+/**
+ * The task issues created for this note, in the order Linear created them —
+ * the parent is not one of them, it is `parentIssueOf`.
+ *
+ * The record is keyed by row id and JavaScript keeps string keys in insertion
+ * order, so this is the order of the run: a retry re-inserts nothing that was
+ * already created, so the issues of the first attempt keep their place.
+ */
+export function createdIssuesOf(state: PushRunState): PushedIssue[] {
+  return Object.entries(state.rows).flatMap(([id, result]) =>
+    id !== PARENT_ROW_ID && result.state === 'created' ? [result.issue] : [],
+  )
 }
 
 /** The parent created by this run, when there is one — a retry reuses it. */

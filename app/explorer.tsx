@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 import { FileList } from './file-list'
 import { FolderTree } from './folder-tree'
@@ -9,7 +9,7 @@ import { TaskTable } from './task-table'
 import { TranscriptPreview } from './transcript-preview'
 import { useFolderListings } from './use-folder-listings'
 import { usePushOptions } from './use-push-options'
-import { parentIssueOf, usePushRun } from './use-push-run'
+import { createdIssuesOf, parentIssueOf, usePushRun } from './use-push-run'
 import { usePushTarget } from './use-push-target'
 import { useTaskDrafts } from './use-task-drafts'
 import { useTranscript } from './use-transcript'
@@ -43,13 +43,28 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set(['']))
   const [selected, setSelected] = useState('')
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
-  const { state: transcript, reload: reloadTranscript } = useTranscript(selectedFile)
+  const {
+    state: transcript,
+    reload: reloadTranscript,
+    refresh: refreshTranscript,
+  } = useTranscript(selectedFile)
   const drafts = useTaskDrafts(selectedFile)
   // The destination is workspace-wide, so it is loaded once and outlives every
   // selection; the parent options belong to one note and are keyed by path.
   const target = usePushTarget({ hasLinearApiKey, lastProjectId })
   const pushOptions = usePushOptions(selectedFile)
-  const run = usePushRun(selectedFile)
+
+  // The route writes the created issues to the history, so the already-processed
+  // notice of the note is out of date the moment a run ends — but only for the
+  // note that ran: a push finishing after the user moved on must not re-read
+  // somebody else's file.
+  const onPushed = useCallback(
+    (path: string) => {
+      if (path === selectedFile) refreshTranscript()
+    },
+    [refreshTranscript, selectedFile],
+  )
+  const run = usePushRun(selectedFile, onPushed)
 
   // The parent issue stands for the meeting, so its title starts as the note's
   // own — and only until the user types, which is what the null means.
@@ -65,6 +80,7 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
   const failed = rows.filter((row) => row.include && results[row.id]?.state === 'failed').length
   const created = rows.filter((row) => results[row.id]?.state === 'created').length
   const parentIssue = parentIssueOf(run.state)
+  const createdIssues = createdIssuesOf(run.state)
 
   function startPush() {
     run.push({
@@ -193,7 +209,8 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
                 pending: pending.length,
                 failed,
                 created,
-                parentCreated: parentIssue !== null,
+                issues: createdIssues,
+                parentIssue,
                 progress: run.state.progress,
                 error: run.state.error,
                 onPush: startPush,

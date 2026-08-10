@@ -22,13 +22,21 @@ export type TranscriptState =
 export function useTranscript(relPath: string | null): {
   state: TranscriptState | undefined
   reload: () => void
+  /** Re-read the file without blanking the panel — for a history that just changed. */
+  refresh: () => void
 } {
   const [state, setState] = useState<TranscriptState | undefined>(undefined)
   // A slow response for a file that is no longer selected must not overwrite
   // the state of the one that is.
   const attempts = useRef(0)
 
-  const load = useCallback((target: string | null) => {
+  /**
+   * `quiet` is what separates opening a file from re-reading the one already on
+   * screen: the text has not changed, so replacing it with a spinner and then
+   * with an error would take away something the user is reading in exchange for
+   * news about the notice. A quiet load only ever replaces what it has.
+   */
+  const load = useCallback((target: string | null, quiet = false) => {
     const attempt = ++attempts.current
 
     if (!target) {
@@ -36,7 +44,7 @@ export function useTranscript(relPath: string | null): {
       return
     }
 
-    setState({ status: 'loading' })
+    if (!quiet) setState({ status: 'loading' })
 
     const settle = (next: TranscriptState) => {
       if (attempts.current === attempt) setState(next)
@@ -44,7 +52,9 @@ export function useTranscript(relPath: string | null): {
 
     fetchTranscript(target).then(
       (transcript) => settle({ status: 'ready', transcript }),
-      (err: unknown) => settle({ status: 'error', message: errorMessage(err) }),
+      (err: unknown) => {
+        if (!quiet) settle({ status: 'error', message: errorMessage(err) })
+      },
     )
   }, [])
 
@@ -53,8 +63,9 @@ export function useTranscript(relPath: string | null): {
   }, [load, relPath])
 
   const reload = useCallback(() => load(relPath), [load, relPath])
+  const refresh = useCallback(() => load(relPath, true), [load, relPath])
 
-  return { state, reload }
+  return { state, reload, refresh }
 }
 
 function errorMessage(err: unknown): string {

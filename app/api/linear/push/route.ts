@@ -1,8 +1,8 @@
 import { errorResponse, HttpError, jsonBody, pathOf, requireContextRoot } from '@/lib/api'
 import { PRIORITIES, type Priority } from '@/lib/extractors/task'
 import { runPush, type PushPlan } from '@/lib/linear-push'
-import type { PushEvent, PushTaskInput } from '@/lib/push-events'
-import { getConfig } from '@/lib/store'
+import type { PushEvent, PushTaskInput, PushedIssue } from '@/lib/push-events'
+import { addHistoryEntry, getConfig } from '@/lib/store'
 import { readTranscript } from '@/lib/transcripts'
 
 /**
@@ -46,7 +46,8 @@ export async function POST(request: Request): Promise<Response> {
     // itself rather than trusted from the browser.
     const { meta } = readTranscript(requireContextRoot(), relPath)
 
-    return streamEvents(runPush(apiKey, plan, { meetingTitle: meta.title, date: meta.date }))
+    const events = runPush(apiKey, plan, { meetingTitle: meta.title, date: meta.date })
+    return streamEvents(recordingHistory(events, relPath))
   } catch (err) {
     return errorResponse(err, relPath)
   }
@@ -118,6 +119,44 @@ function priority(input: unknown): Priority {
   return (PRIORITIES as readonly string[]).includes(string(input))
     ? (input as Priority)
     : 'none'
+}
+
+/**
+ * Pass the events through, remembering what got created, and append them to the
+ * history of the note when the run is over.
+ *
+ * It is written here and not by the browser because what exists in Linear is
+ * what the *server* saw created: a tab closed mid-run, a dropped connection or
+ * a `failed` row the client never read would otherwise lose issues that do
+ * exist, and the next visit would offer to create them a second time. Hence the
+ * `finally` — an abort, an unexpected throw and a cancelled stream all still
+ * record the issues created up to that point, and only those (a task that
+ * failed never yields `created`, so it is never written).
+ *
+ * A failure to write the history does not break the run: the issues are already
+ * in Linear, and losing the notice is worth less than losing the last events of
+ * the stream.
+ */
+async function* recordingHistory(
+  events: AsyncGenerator<PushEvent>,
+  relPath: string,
+): AsyncGenerator<PushEvent> {
+  const issues: PushedIssue[] = []
+
+  try {
+    for await (const event of events) {
+      if (event.type === 'created') issues.push(event.issue)
+      yield event
+    }
+  } finally {
+    if (issues.length > 0) {
+      try {
+        addHistoryEntry(relPath, { pushedAt: new Date().toISOString(), issues })
+      } catch (err) {
+        console.error('No se pudo guardar el historial de envíos:', err)
+      }
+    }
+  }
 }
 
 const encoder = new TextEncoder()
