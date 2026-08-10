@@ -141,6 +141,14 @@ after each iteration and it's included in prompts for context.
   confidently about half the meeting. `lib/extractors/ollama.ts` floors it at 32768 and
   doubles up to 131072 from `meta.approxTokens`. `think: false` belongs next to it:
   a reasoning model otherwise wraps the JSON in its thinking block.
+- **Claude extraction never indexes `content[0]`, and checks `stop_reason` first.**
+  `claude-sonnet-5` thinks by default, so the JSON is in the first block of type
+  `text`, not the first block — `lib/extractors/claude.ts` scans for it. Two stop
+  reasons are handled *before* the content is touched: `refusal` (Anthropic declined;
+  `content` is empty or partial, and parsing it would report "no tasks" for a
+  transcript nobody read) and `max_tokens` (thinking and the JSON share one budget, so
+  a long transcript can truncate the answer mid-object). The Messages request also
+  carries no `temperature`/`top_p`/`top_k` — current models reject all three with 400.
 
 ---
 
@@ -738,4 +746,68 @@ Ollama extractor.
   --module commonjs --moduleResolution node --outDir /tmp/...` then plain `node`
   against a stub server covers the request shape and every error path in seconds;
   the real model is then only needed to check answer quality.
+---
+
+## 2026-08-09 - US-011
+
+**Implemented**
+- `lib/extractors/claude.ts`: `extractWithClaude(transcript, meta, apiKey)` returning the
+  same `ExtractedTask[]` as the Ollama extractor. It POSTs to the Anthropic Messages API
+  (`ANTHROPIC_API_URL`, default `https://api.anthropic.com/v1/messages`, overridable so it
+  can be pointed at a stub like `LINEAR_API_URL`) with `x-api-key` and
+  `anthropic-version: 2023-06-01`, model `claude-sonnet-5`, structured output through
+  `output_config.format` = `{ type: 'json_schema', schema: TASKS_JSON_SCHEMA }`, and no
+  `temperature`/`top_p`/`top_k`. `SYSTEM_PROMPT`, `buildUserPrompt` and `normalizeTasks`
+  come from `./task`, so the two providers share one schema and one type. A 401 throws
+  «La API key de Anthropic no es válida»; any other non-2xx carries Anthropic's own
+  message through; `stop_reason: 'refusal'` and `'max_tokens'` are checked before the
+  content is read; every failure is an `ExtractionError`, already mapped to 502 by
+  `describeError`.
+
+**Files changed**
+- `lib/extractors/claude.ts` (new). No other file needed touching — the shared module and
+  the 502 mapping both landed with US-010.
+
+**Verification**
+- `pnpm typecheck` passes. `pnpm build` passes with only the pre-existing
+  `lib/transcripts.ts` fs-tracing warnings (App Route + Server Component traces only).
+- Compiled to CommonJS and ran against a stub HTTP server — 40 assertions, all passing:
+  the request is a POST to `/v1/messages` with the three headers, `claude-sonnet-5`, the
+  schema byte-for-byte equal to Ollama's and the shared system/user prompts, and with
+  none of the three sampling parameters present; a thinking block before the text block
+  is skipped; `{tasks:[...]}` and a bare array both parse; an empty title is dropped and
+  `priority: 'HIGH'` normalises to `high`; `{tasks:[]}` returns `[]` rather than throwing;
+  an empty key throws without making any HTTP call; 401 says the key is invalid; 429
+  forwards «rate limited» with the status and model; a non-JSON error body still throws;
+  a refusal throws naming the `stop_details.category` **even though the body also carried
+  a parseable `{"tasks":[]}`**; `max_tokens` reports truncation; thinking-only content,
+  prose instead of JSON, and an unreadable body each throw their own message; and an
+  unreachable host throws «No se pudo conectar» without hanging.
+- **Not verified against the real Anthropic API** — no `ANTHROPIC_API_KEY` in the
+  environment and no `ant` CLI on this machine, so the live request shape (in particular
+  that the API accepts `output_config.format` with this schema) is unconfirmed. It is
+  written against the current structured-outputs docs, which state `format` takes exactly
+  `type` and `schema` and that the JSON comes back in a `text` block.
+
+**Learnings**
+- The `format` object takes `type` and `schema` only — there is no `name` field, despite
+  the SDK helper (`zodOutputFormat`) making it look like there might be. Confirmed
+  against the structured-outputs docs rather than inferred from the TypeScript helper.
+- Adaptive thinking is **on by default** on `claude-sonnet-5` when `thinking` is omitted
+  (it is off by default on Opus 4.7/4.8), and thinking tokens are billed against the same
+  `max_tokens` as the answer. That is why `MAX_TOKENS` is 16000 rather than something
+  sized for the JSON alone, and why `stop_reason: 'max_tokens'` is a handled case instead
+  of a parse failure. Left thinking on deliberately: the story's reason for this provider
+  is answer quality, and deciding which lines are real commitments is the judgment part.
+- Gotcha worth keeping: a refusal can arrive with HTTP **200** and a body that still
+  parses. Checking `stop_reason` after parsing the content would have turned "Anthropic
+  declined" into "this meeting had no action items" — the same silent-wrong-answer shape
+  as Ollama's `num_ctx` truncation, one layer up.
+- The stub-server harness from US-010 ports over unchanged: `npx tsc <files> --module
+  commonjs --moduleResolution node --esModuleInterop --outDir /tmp/...` then plain `node`.
+  Two additions: `--esModuleInterop` is required (`node:http`/`node:assert` have no
+  default export otherwise), and `tsc` only resolves from the project directory, so pass
+  an absolute path to the test file rather than `cd`-ing to it. `ANTHROPIC_API_URL` is
+  read at module load like `OLLAMA_URL`, so switching endpoints mid-test means busting
+  `require.cache`.
 ---
