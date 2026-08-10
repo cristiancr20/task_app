@@ -57,6 +57,15 @@ after each iteration and it's included in prompts for context.
   `fs.opendirSync` (ENOENT / ENOTDIR / EACCES in one call) and only then persists both
   `contextRoot` and the `recentFolders` list (most recent first, deduped,
   `MAX_RECENT_FOLDERS = 8`). Never set `contextRoot` with `updateConfig` directly.
+- **All Ollama traffic goes through `lib/ollama.ts`.** `OLLAMA_URL` (env `OLLAMA_URL`,
+  default `http://127.0.0.1:11434`), `DEFAULT_OLLAMA_MODEL` and `listOllamaModels()`,
+  which throws `OllamaUnreachableError` when the server is down and returns `[]` when it
+  is up with nothing pulled — two different states the UI must tell apart. The error is
+  mapped to a 503 + Spanish message in `describeError`, like every other failure.
+- **Secrets stored in the config are write-only from the browser.** The server component
+  passes `hasClaudeApiKey`/`hasLinearApiKey` booleans, never the key; the input shows a
+  masked placeholder, an empty submit keeps the stored value, and a «Borrar» submit
+  button (`name="intent"`) is what erases it.
 
 ---
 
@@ -292,4 +301,66 @@ Settings UI: context folder path with recents.
   Comparing the path alone cannot distinguish two consecutive failures on the same one.
 - `path.resolve` on the trimmed input is what makes "no duplicates" hold in practice:
   `/tmp/notas/` and `/tmp/notas` would otherwise be two different recents.
+---
+
+## 2026-08-09 - US-006
+
+Settings UI: extraction provider selector.
+
+**What was implemented**
+- `lib/ollama.ts` — the local Ollama server as seen from the app: `OLLAMA_URL`
+  (env `OLLAMA_URL`, default `http://127.0.0.1:11434`, trailing slashes stripped),
+  `DEFAULT_OLLAMA_MODEL = 'qwen3:8b'`, `listOllamaModels()` (`GET /api/tags`, 3 s
+  timeout, `cache: 'no-store'`, names deduped and sorted) and `OllamaUnreachableError`.
+  Reachable-with-zero-models and unreachable are deliberately different results:
+  `[]` versus a throw.
+- `app/api/ollama/models/route.ts` — `GET /api/ollama/models` → `{ url, models }`,
+  errors through the shared `errorResponse`.
+- `lib/api.ts` — `describeError` maps `OllamaUnreachableError` to 503 with the Spanish
+  message (the lib carries the URL, the mapping carries the copy).
+- `lib/store.ts` — the `ollamaModel` default now references `DEFAULT_OLLAMA_MODEL`
+  instead of repeating the literal.
+- `app/settings/provider-form.tsx` — client component: radios for
+  «Ollama (local, gratis)» / «Claude API (de pago)», the model `<select>` (only while
+  Ollama is picked), the password input for the Anthropic key, and the per-token
+  billing warning rendered next to the Claude option (visible without selecting it).
+  A `useOllamaModels(enabled)` hook fetches the list from the browser and exposes
+  `reload()` behind a «Reintentar» button.
+- `app/settings/actions.ts` — `saveProviderAction`, persisting provider + model + key
+  through `updateConfig` and calling `refresh()`.
+- `app/settings/page.tsx` — reads the config and renders `ProviderForm`, passing
+  `hasClaudeApiKey` (a boolean) and `defaultModel`, never the key itself.
+
+**Files changed**
+- `lib/ollama.ts`, `app/api/ollama/models/route.ts`, `app/settings/provider-form.tsx` (new)
+- `lib/api.ts`, `lib/store.ts`, `app/settings/actions.ts`, `app/settings/page.tsx` (modified)
+
+**Verification**
+- `pnpm typecheck` passes.
+- Drove a real Chrome against `pnpm dev` with Playwright — 35 assertions, all passing:
+  Ollama default + list populated from the real local server with `qwen3:8b`
+  preselected; the Claude warning present and visible before selecting Claude;
+  switching providers swaps `<select>` ↔ `type=password`; provider, model and key
+  persisted to `.data/config.json` and surviving a reload; the key absent from the
+  page HTML and shown as a masked placeholder; «Borrar» clearing it. With
+  `OLLAMA_URL` pointed at a dead port and then at a stub server: unreachable → the
+  `ollama pull qwen3:8b` message with the connection error, zero models → the same
+  instruction without the connection error, and «Reintentar» picking up models
+  the moment the stub started answering (`qwen3:8b` preselected out of three).
+- Dev server stopped and `.data/` removed afterwards.
+
+**Learnings**
+- Decision: the model list is fetched from the *browser* against a route rather than
+  in the server component. The settings page then renders instantly even with Ollama
+  down (no 3 s block), and «Reintentar» after `ollama pull` costs no reload.
+- Gotcha: `process.env.OLLAMA_URL` cannot be read from a client component — Next only
+  inlines `NEXT_PUBLIC_*` — so `DEFAULT_OLLAMA_MODEL` reaches the form as a prop from
+  the server page instead of by import.
+- Node resolves `localhost` to `::1` first on this machine while Ollama binds IPv4, so
+  the default URL is `127.0.0.1` on purpose.
+- Ollama answers `{ models: [{ name, model, … }] }`; `name` and `model` are the same
+  string for a plain pull, so the parser takes `name` and falls back to `model`.
+- Decision: no hard validation when Claude is selected without a key — the save
+  succeeds and the form says a key is needed. Blocking the save would also block the
+  «Borrar» button, and US-011/012 have to handle a missing key at extraction time anyway.
 ---

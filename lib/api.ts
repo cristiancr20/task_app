@@ -1,3 +1,4 @@
+import { OllamaUnreachableError } from './ollama'
 import { getConfig } from './store'
 import { PathEscapesRootError } from './transcripts'
 
@@ -59,6 +60,13 @@ export function describeError(
 
   if (err instanceof PathEscapesRootError) {
     return { status: 400, message: `La ruta sale de la carpeta de contexto: ${label(relPath)}` }
+  }
+
+  if (err instanceof OllamaUnreachableError) {
+    return {
+      status: 503,
+      message: `No se pudo conectar con Ollama en ${err.url}. Comprueba que está en marcha.`,
+    }
   }
 
   switch (errnoCode(err)) {

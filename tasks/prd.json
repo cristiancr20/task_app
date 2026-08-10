@@ -124,11 +124,12 @@
         "Verify in the browser at http://localhost:3300/settings that switching providers shows the right controls and that the Ollama model list is populated"
       ],
       "priority": 6,
-      "passes": false,
+      "passes": true,
       "notes": "",
       "dependsOn": [
         "US-002"
-      ]
+      ],
+      "completionNotes": "Completed by agent"
     },
     {
       "id": "US-007",
@@ -406,6 +407,6 @@
     }
   ],
   "metadata": {
-    "updatedAt": "2026-08-10T02:56:55.645Z"
+    "updatedAt": "2026-08-10T03:03:05.067Z"
   }
 }

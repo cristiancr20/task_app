@@ -1,9 +1,11 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 
+import { DEFAULT_OLLAMA_MODEL } from '@/lib/ollama'
 import { getConfig } from '@/lib/store'
 
 import { ContextFolderForm } from './context-folder-form'
+import { ProviderForm } from './provider-form'
 
 // The config is read from disk on every render and changes while the app runs,
 // so this page is never prerendered.
@@ -14,7 +16,7 @@ export const metadata: Metadata = {
 }
 
 export default function SettingsPage() {
-  const { contextRoot, recentFolders } = getConfig()
+  const { contextRoot, recentFolders, provider, ollamaModel, claudeApiKey } = getConfig()
 
   return (
     <div className="flex flex-1 justify-center bg-zinc-50 font-sans dark:bg-black">
@@ -31,7 +33,17 @@ export default function SettingsPage() {
           </h1>
         </header>
 
-        <ContextFolderForm contextRoot={contextRoot} recentFolders={recentFolders} />
+        <div className="flex flex-col gap-12">
+          <ContextFolderForm contextRoot={contextRoot} recentFolders={recentFolders} />
+
+          {/* The stored key stays on the server: the form only learns it exists. */}
+          <ProviderForm
+            provider={provider}
+            ollamaModel={ollamaModel}
+            hasClaudeApiKey={claudeApiKey.trim() !== ''}
+            defaultModel={DEFAULT_OLLAMA_MODEL}
+          />
+        </div>
       </main>
     </div>
   )

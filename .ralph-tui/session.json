@@ -3,10 +3,10 @@
   "sessionId": "aa2f0814-5602-46fb-af15-58d2ca621517",
   "status": "running",
   "startedAt": "2026-08-10T02:40:32.134Z",
-  "updatedAt": "2026-08-10T02:56:55.645Z",
-  "currentIteration": 4,
+  "updatedAt": "2026-08-10T03:03:05.068Z",
+  "currentIteration": 5,
   "maxIterations": 0,
-  "tasksCompleted": 4,
+  "tasksCompleted": 5,
   "isPaused": false,
   "agentPlugin": "claude",
   "trackerState": {
@@ -42,8 +42,8 @@
       {
         "id": "US-005",
         "title": "Settings UI: context folder path with recents",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-006",
@@ -171,6 +171,16 @@
       "durationMs": 205966,
       "startedAt": "2026-08-10T02:47:31.294Z",
       "endedAt": "2026-08-10T02:50:57.260Z"
+    },
+    {
+      "iteration": 5,
+      "status": "completed",
+      "taskId": "US-005",
+      "taskTitle": "Settings UI: context folder path with recents",
+      "taskCompleted": true,
+      "durationMs": 357295,
+      "startedAt": "2026-08-10T02:50:58.349Z",
+      "endedAt": "2026-08-10T02:56:55.644Z"
     }
   ],
   "skippedTaskIds": [],

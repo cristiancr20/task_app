@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 import { dataFile } from './data-dir'
+import { DEFAULT_OLLAMA_MODEL } from './ollama'
 
 export type Provider = 'ollama' | 'claude'
 
@@ -41,7 +42,7 @@ export function defaultConfig(): Config {
     recentFolders: [],
     contextRoot: null,
     provider: 'ollama',
-    ollamaModel: 'qwen3:8b',
+    ollamaModel: DEFAULT_OLLAMA_MODEL,
     claudeApiKey: '',
     linearApiKey: '',
     lastProjectId: null,
