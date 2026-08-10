@@ -1,6 +1,7 @@
 /**
- * Talking to a local Ollama server. Only the model list lives here for now;
- * the extraction call (US-010) joins it later.
+ * Talking to a local Ollama server: where it lives and which models it has.
+ * The extraction call is `lib/extractors/ollama.ts`, which reads `OLLAMA_URL`
+ * from here.
  */
 
 /** The model the app suggests and preselects when it is installed. */

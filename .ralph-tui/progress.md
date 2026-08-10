@@ -116,6 +116,31 @@ after each iteration and it's included in prompts for context.
 - **`GET /api/transcript` answers `{ meta, body, history }`.** The already-processed
   notice is keyed by the very path being read, so the history rides along with the
   transcript instead of costing a second round trip.
+- **Everything both extractors must agree on lives in `lib/extractors/task.ts`.**
+  The `ExtractedTask` type, `PRIORITIES`, `TASKS_JSON_SCHEMA` (the structured-output
+  contract), `SYSTEM_PROMPT`, `buildUserPrompt(transcript, meta)` and
+  `normalizeTasks(payload)`. A provider module (`./ollama`, `./claude`) only owns its
+  HTTP; it never writes its own prompt or schema, so a task from either one is
+  indistinguishable. The schema stays inside the subset *both* APIs accept: object at
+  the top level (a bare array is rejected by Anthropic), every property `required`,
+  `additionalProperties: false`, and nullability as `type: ['string', 'null']` rather
+  than `anyOf`.
+- **Structured output constrains shape, not content — `normalizeTasks` makes the
+  guarantees.** Empty titles dropped, unknown/missing priority → `'none'`, blank
+  `mentioned` → `null`, non-strings coerced. It also accepts a bare array, which models
+  answer with despite the schema. An empty result is a *valid* answer (a transcript
+  with no commitments), so it never throws — callers that need to tell "no tasks" from
+  "no answer" check the parse instead.
+- **Extractor failures throw `ExtractionError` (from `lib/extractors/task.ts`) and
+  `describeError` maps it to 502.** Its message is already user-facing Spanish naming
+  the provider and the model, and it carries the remote's own wording when there is any
+  (`Ollama respondió 404 … («model 'x' not found»)`), which is the only text that says
+  *why*.
+- **Ollama extraction must set `num_ctx` explicitly.** The default context is a few
+  thousand tokens and Ollama silently drops the overflow — the model then answers
+  confidently about half the meeting. `lib/extractors/ollama.ts` floors it at 32768 and
+  doubles up to 131072 from `meta.approxTokens`. `think: false` belongs next to it:
+  a reasoning model otherwise wraps the JSON in its thinking block.
 
 ---
 
@@ -641,4 +666,76 @@ Transcript preview and already-processed notice.
 - Decision: history travels inside the transcript response rather than in its own
   route. It is keyed by the same path, always rendered with the preview, and US-019
   needs it fresh after a push — which a re-fetch on selection already gives.
+---
+
+## 2026-08-09 - US-010
+
+Ollama extractor.
+
+**What was implemented**
+- `lib/extractors/task.ts` — the shared contract, ahead of US-011 which needs the same
+  schema and type: `ExtractedTask` (title, description, priority, mentioned, evidence),
+  `PRIORITIES`, `ExtractionError`, `TASKS_JSON_SCHEMA`, `SYSTEM_PROMPT`,
+  `buildUserPrompt(transcript, meta)` and `normalizeTasks(payload)`.
+- `lib/extractors/ollama.ts` — `extractWithOllama(transcript, meta, model)`. POSTs to
+  `${OLLAMA_URL}/api/chat` with `format: TASKS_JSON_SCHEMA`, `think: false`,
+  `stream: false`, `options.num_ctx` (≥ 32768, grown from `meta.approxTokens`) and
+  `temperature: 0`, then parses `message.content` and hands it to `normalizeTasks`.
+  Ten-minute timeout — a local model on CPU takes minutes on a long transcript.
+  Every failure path throws `ExtractionError` naming Ollama and the model.
+- `lib/api.ts` — `describeError` maps `ExtractionError` to 502 with its own message,
+  so US-012's route gets the mapping for free.
+- `lib/ollama.ts` — header comment updated (it no longer "joins later").
+
+**Files changed**
+- `lib/extractors/task.ts`, `lib/extractors/ollama.ts` (new)
+- `lib/api.ts`, `lib/ollama.ts` (modified)
+
+**Verification**
+- `pnpm typecheck` passes. `pnpm build` passes with only the pre-existing
+  `lib/transcripts.ts` fs-tracing warnings (App Route + Server Component traces only).
+- Compiled the two modules to CommonJS and ran them against a stub HTTP server —
+  30 assertions, all passing: the request goes to `/api/chat` with `think: false`,
+  `stream: false`, `num_ctx ≥ 32768` and the schema verbatim in `format`; the system
+  prompt carries the three required instructions; the user prompt carries title, date,
+  attendees and body; an empty title is dropped, `priority: 'HIGH'` normalises to
+  `high`, `'inventada'` falls back to `none` and a blank `mentioned` becomes `null`;
+  a 40k-token file grows `num_ctx` to 65536; a bare array is accepted; a 404 throws
+  naming Ollama, the model, the status and Ollama's own reason; unparseable content, a
+  non-JSON body, an empty message and a missing model each throw with the model named;
+  a downed server throws without hanging; and `normalizeTasks` returns `[]` for junk.
+- Ran it against the **real** local Ollama with `qwen3:8b` (~48s per transcript): a
+  Spanish meeting with three commitments plus one deferred discussion produced exactly
+  the three tasks, titles and descriptions in English, `mentioned` filled from the
+  attendee names, the TLS renewal marked `urgent`, and evidence quoted from the
+  transcript; a small-talk transcript with no commitments produced `[]`; a model that
+  is not pulled produced
+  `Ollama respondió 404 al extraer con el modelo «no-existe:1b» («model 'no-existe:1b' not found»)`.
+
+**Learnings**
+- Decision: the shared module lands with US-010 rather than being extracted during
+  US-011. The Claude extractor's ACs already demand one schema and one type, and the
+  schema is the harder half — writing it once, inside the intersection of what both
+  APIs accept, is cheaper than reconciling two later.
+- Gotcha: schema-constrained decoding does not mean the *values* are usable. First run
+  on the real model returned `description` as a verbatim Spanish copy of the evidence,
+  because "write the description in English" reads as satisfiable by translating. The
+  fix was an explicit negative in both the system prompt and the property description
+  ("never a copy of the evidence line"), which produced proper English summaries.
+- The `description` fields inside the JSON Schema are prompt, not documentation — the
+  model sees them. Spelling out what each priority level means there moved the model
+  off "everything is none" more than the system prompt bullet did.
+- Gotcha: `num_ctx` is the whole story on long files. Ollama's default window silently
+  truncates and the model still answers fluently, so the failure looks like a bad model
+  rather than a lost tail — which is why the AC pins it and why the code grows it from
+  `approxTokens` rather than trusting one constant.
+- Evidence comes back near-verbatim, not always exactly: the model trims a leading
+  clause off the quoted line. Not worth enforcing by matching against the transcript —
+  the quote is shown read-only next to the task and the user judges it.
+- `OLLAMA_URL` is read at module load, so anything testing this has to set the env var
+  before importing the module.
+- Testing gotcha: these modules can be exercised without Next. `npx tsc <files>
+  --module commonjs --moduleResolution node --outDir /tmp/...` then plain `node`
+  against a stub server covers the request shape and every error path in seconds;
+  the real model is then only needed to check answer quality.
 ---

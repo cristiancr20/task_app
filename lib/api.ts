@@ -1,3 +1,4 @@
+import { ExtractionError } from './extractors/task'
 import { LinearApiError, LinearUnreachableError } from './linear'
 import { OllamaUnreachableError } from './ollama'
 import { getConfig } from './store'
@@ -69,6 +70,10 @@ export function describeError(
       message: `No se pudo conectar con Ollama en ${err.url}. Comprueba que está en marcha.`,
     }
   }
+
+  // The extractors already word their failures for the user, naming the
+  // provider and the model; a provider that fails is a bad gateway, not a bug.
+  if (err instanceof ExtractionError) return { status: 502, message: err.message }
 
   if (err instanceof LinearUnreachableError) {
     return {

@@ -3,10 +3,10 @@
   "sessionId": "aa2f0814-5602-46fb-af15-58d2ca621517",
   "status": "running",
   "startedAt": "2026-08-10T02:40:32.134Z",
-  "updatedAt": "2026-08-10T03:30:31.302Z",
-  "currentIteration": 8,
+  "updatedAt": "2026-08-10T03:37:05.594Z",
+  "currentIteration": 9,
   "maxIterations": 0,
-  "tasksCompleted": 8,
+  "tasksCompleted": 9,
   "isPaused": false,
   "agentPlugin": "claude",
   "trackerState": {
@@ -66,8 +66,8 @@
       {
         "id": "US-009",
         "title": "Transcript preview and already-processed notice",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-010",
@@ -211,6 +211,16 @@
       "durationMs": 646120,
       "startedAt": "2026-08-10T03:10:24.271Z",
       "endedAt": "2026-08-10T03:21:10.391Z"
+    },
+    {
+      "iteration": 9,
+      "status": "completed",
+      "taskId": "US-009",
+      "taskTitle": "Transcript preview and already-processed notice",
+      "taskCompleted": true,
+      "durationMs": 559815,
+      "startedAt": "2026-08-10T03:21:11.485Z",
+      "endedAt": "2026-08-10T03:30:31.300Z"
     }
   ],
   "skippedTaskIds": [],
