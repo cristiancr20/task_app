@@ -31,6 +31,17 @@ after each iteration and it's included in prompts for context.
   `readTranscript(root, relPath)` call it for you. `relPath` is always root-relative and
   `/`-separated (`''` = root); a leading `/` is stripped (URL-style), so an absolute path
   misses with ENOENT instead of escaping. Also sync and node-only.
+- **Route handlers share `lib/api.ts`, they do not hand-roll error handling.**
+  `requireContextRoot()` (400 when unset), `pathParam(request)` (the `?path=` query,
+  trimmed, `''` = root), `jsonError(status, message)` and
+  `errorResponse(err, relPath)` — the single place that maps a thrown error to a
+  status: `HttpError` → its own status, `PathEscapesRootError` → 400, `ENOENT` → 404,
+  `ENOTDIR`/`EISDIR`/`ENAMETOOLONG` → 400, `EACCES`/`EPERM` → 403, anything else →
+  logged + 500. The body is always `{ error: string }` on failure. Throw
+  `new HttpError(status, message)` for route-specific rejections rather than
+  building a `Response` inline.
+- **API error messages are user-facing Spanish** — the UI shows them inline
+  (PRD: "UI copy in Spanish"). Data returned by the routes is not translated.
 
 ---
 
@@ -154,4 +165,56 @@ Filesystem scanner with path-traversal guard.
   change would silently flip the type.
 - `listFolder` reads every `.md` file in the folder to build its metadata. Fine for a
   notes folder; if a root ever holds thousands of files this is the thing to cache.
+---
+
+## 2026-08-09 - US-004
+
+API routes for browsing folders and reading a transcript.
+
+**What was implemented**
+- `app/api/browse/route.ts` — `GET /api/browse?path=<relPath>` returns the `FolderListing`
+  from `listFolder(contextRoot, path)` (subfolders + `.md` metadata). Omitting `path`
+  lists the root.
+- `app/api/transcript/route.ts` — `GET /api/transcript?path=<relPath>` returns
+  `{ meta, body }` from `readTranscript`. Rejects a missing `path` and any path not
+  ending in `.md`, so the route cannot serve files the explorer never listed.
+- `lib/api.ts` — shared route plumbing: `HttpError`, `requireContextRoot()`,
+  `pathParam()`, `jsonError()`, `errorResponse()` (see Patterns for the status mapping).
+- `lib/transcripts.ts` — added an exported `PathEscapesRootError`; `resolveInsideRoot`
+  now throws it instead of a bare `Error`. Same message, but the routes can answer 400
+  without matching on the message text.
+
+**Files changed**
+- `app/api/browse/route.ts` (new), `app/api/transcript/route.ts` (new)
+- `lib/api.ts` (new), `lib/transcripts.ts` (modified)
+
+**Verification**
+- `pnpm typecheck` passes.
+- Ran `pnpm dev` against a scratch root (`/tmp/ctx-root`: a frontmatter note, a plain
+  note, `sub/`, a `.txt`, a `folder.md` directory, and `link.md` → `/tmp/outside.md`)
+  and curled every criterion:
+  - 200: root listing (folder + 2 `.md`, `.txt` and the symlink excluded), `?path=sub`,
+    `?path=/sub` (leading slash), transcript with and without frontmatter.
+  - 400 escape: `?path=../..`, `?path=../outside.md`, `?path=sub/../../outside.md`,
+    `?path=link.md` (symlink out of the root).
+  - 400 no contextRoot: both routes, with the key absent and with a whitespace value.
+  - 404: `?path=nope`, `?path=missing.md`, and a `contextRoot` that no longer exists.
+  - 400 wrong kind: `browse` on a file (ENOTDIR), `transcript` on a directory named
+    `folder.md` (EISDIR), on `ignoreme.txt` and on a missing `path`.
+- `.data/config.json` and the scratch tree were removed afterwards; `git status` clean
+  apart from this story's files.
+
+**Learnings**
+- Next 16 needs no route segment config here: `GET` handlers have been dynamic by
+  default since v15 (`route.md` version table), and `nodejs` is the default runtime —
+  `export const runtime = 'edge'` is deprecated in this version.
+- Gotcha: reading the query with `new URL(request.url).searchParams` keeps the handler
+  signature to plain `Request`; `NextRequest`/`nextUrl` is only needed for cookies and
+  the parsed URL extras.
+- `listFolder` already drops symlinks for free: `withFileTypes` reports a symlink as
+  `isSymbolicLink()`, so `entry.isFile()` is false and it never reaches the listing.
+  `readTranscript` is where the symlink guard actually matters, and it returns 400.
+- The `.md` check in the transcript route runs before the traversal guard, so
+  `?path=../../etc/hosts` is refused as "not a .md" rather than as an escape. Both are
+  400 with a clear message, so the acceptance criterion holds either way.
 ---

@@ -38,6 +38,18 @@ export type Transcript = {
   body: string
 }
 
+/**
+ * Thrown when a requested path resolves outside the root. Its own type so
+ * callers (the API routes) can answer 400 instead of 500 without matching
+ * on the message.
+ */
+export class PathEscapesRootError extends Error {
+  constructor(relPath: string) {
+    super(`Path escapes the root folder: ${relPath}`)
+    this.name = 'PathEscapesRootError'
+  }
+}
+
 /** Folders that are never worth walking into, whatever the root is. */
 const SKIPPED_DIRS = new Set(['node_modules'])
 
@@ -59,7 +71,7 @@ export function resolveInsideRoot(root: string, relPath: string): string {
   const resolved = path.resolve(rootAbs, normalizeRelPath(relPath))
 
   if (!isInside(rootAbs, resolved)) {
-    throw new Error(`Path escapes the root folder: ${relPath}`)
+    throw new PathEscapesRootError(relPath)
   }
 
   // A symlink inside the root can still point outside it, so re-check the
@@ -67,7 +79,7 @@ export function resolveInsideRoot(root: string, relPath: string): string {
   // above is all they get (callers surface the ENOENT themselves).
   const real = realpath(resolved)
   if (!isInside(rootAbs, real)) {
-    throw new Error(`Path escapes the root folder: ${relPath}`)
+    throw new PathEscapesRootError(relPath)
   }
 
   return resolved
