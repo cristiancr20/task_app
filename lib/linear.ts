@@ -1,8 +1,10 @@
 /**
  * Talking to the Linear GraphQL API: the workspace lookup that backs the
- * «Probar» button and the teams/projects listing that fills the destination
- * picker. Issue creation joins them later.
+ * «Probar» button, the teams/projects listing that fills the destination
+ * picker, and the issue creation the push runs on.
  */
+
+import type { Priority } from './extractors/task'
 
 /**
  * Where Linear's GraphQL endpoint lives. `LINEAR_API_URL` overrides it, which
@@ -188,6 +190,152 @@ async function restOfProjects(
   }
 
   return projects
+}
+
+/** Where a task came from, appended to the issue body so it can be traced back. */
+export type IssueSource = {
+  /** Title of the meeting the task was extracted from. */
+  meetingTitle: string
+  /** `YYYY-MM-DD` when the transcript carried one. */
+  date?: string | null
+  /** Who the transcript put on the hook, verbatim; null when nobody was named. */
+  mentioned?: string | null
+  /** The line from the transcript that justifies the task, quoted verbatim. */
+  evidence?: string | null
+}
+
+/** Everything `createIssue` needs. `projectId`/`parentId`/`source` are optional. */
+export type CreateIssueInput = {
+  teamId: string
+  title: string
+  description?: string
+  priority?: Priority
+  /** The project the issue lands in; omitted, Linear files it in the team's backlog. */
+  projectId?: string | null
+  /** The issue this one becomes a sub-issue of — how a meeting groups its tasks. */
+  parentId?: string | null
+  /** Appended to `description` as a traceability block. Omitted for a parent issue. */
+  source?: IssueSource | null
+}
+
+/** A created issue, as the push panel shows it. */
+export type LinearIssue = {
+  id: string
+  /** The human key, e.g. `ENG-42`. */
+  identifier: string
+  url: string
+}
+
+/**
+ * Our priority names on Linear's integer scale. Linear numbers priorities by
+ * urgency with 0 meaning «no priority», so the order is not the obvious one and
+ * a wrong mapping would silently file every task as urgent.
+ */
+const LINEAR_PRIORITY: Record<Priority, number> = {
+  none: 0,
+  urgent: 1,
+  high: 2,
+  medium: 3,
+  low: 4,
+}
+
+const CREATE_ISSUE_MUTATION = `mutation CreateIssue($input: IssueCreateInput!) {
+  issueCreate(input: $input) {
+    success
+    issue { id identifier url }
+  }
+}`
+
+/**
+ * Create one issue and return it. Used for both the tasks and the parent they
+ * hang from — the parent is just an issue created without a `source` block,
+ * whose id then rides along as every task's `parentId`.
+ */
+export async function createIssue(
+  apiKey: string,
+  input: CreateIssueInput,
+): Promise<LinearIssue> {
+  const teamId = input.teamId.trim()
+  if (!teamId) throw new LinearApiError(400, 'Falta el equipo de Linear donde crear la tarea.')
+
+  const title = input.title.trim()
+  if (!title) throw new LinearApiError(400, 'La tarea no tiene título.')
+
+  const projectId = input.projectId?.trim()
+  const parentId = input.parentId?.trim()
+
+  const variables = {
+    input: {
+      teamId,
+      title,
+      description: buildIssueDescription(input.description ?? '', input.source),
+      priority: LINEAR_PRIORITY[input.priority ?? 'none'],
+      ...(projectId ? { projectId } : {}),
+      ...(parentId ? { parentId } : {}),
+    },
+  }
+
+  const body = await linearGraphQL(apiKey, CREATE_ISSUE_MUTATION, variables)
+
+  // `issueCreate` can answer 200 with `success: false` and no `errors`, which
+  // reads as a created issue to anyone who only checks the HTTP status.
+  const payload = isRecord(body) ? body.issueCreate : null
+  if (!isRecord(payload) || payload.success !== true) {
+    throw new LinearApiError(502, `Linear no creó la tarea «${title}».`)
+  }
+
+  const issue = readIssue(payload.issue)
+  if (!issue) {
+    throw new LinearApiError(502, `Linear creó «${title}» pero no devolvió sus datos.`)
+  }
+  return issue
+}
+
+/**
+ * The issue body: what the user wrote, then the traceability block. The block
+ * is what makes a pushed issue auditable — it names the meeting, when it
+ * happened, who was put on the hook and the sentence that proves the task —
+ * and it is separated by a rule so it never reads as part of the description.
+ *
+ * Every field is skipped when it is missing, and with nothing to say the block
+ * is left out entirely rather than appended empty.
+ */
+export function buildIssueDescription(description: string, source?: IssueSource | null): string {
+  const body = description.trim()
+  if (!source) return body
+
+  const meetingTitle = source.meetingTitle.trim()
+  const date = source.date?.trim()
+  const mentioned = source.mentioned?.trim()
+  const evidence = source.evidence?.trim()
+
+  const lines: string[] = []
+  if (meetingTitle) lines.push(`**Source:** ${meetingTitle}${date ? ` — ${date}` : ''}`)
+  else if (date) lines.push(`**Source:** ${date}`)
+  if (mentioned) lines.push(`**Mentioned:** ${mentioned}`)
+  if (evidence) {
+    // A verbatim quote can be several lines long, and a blockquote only covers
+    // the line it prefixes — an unprefixed second line would break out of it.
+    if (lines.length > 0) lines.push('')
+    lines.push(...evidence.split(/\r?\n/).map((line) => `> ${line.trim()}`))
+  }
+  if (lines.length === 0) return body
+  if (!body) return lines.join('\n')
+
+  return [body, '', '---', '', ...lines].join('\n')
+}
+
+function readIssue(node: unknown): LinearIssue | null {
+  if (!isRecord(node)) return null
+
+  const { id, identifier, url } = node
+  if (typeof id !== 'string' || !id) return null
+
+  return {
+    id,
+    identifier: typeof identifier === 'string' ? identifier : '',
+    url: typeof url === 'string' ? url : '',
+  }
 }
 
 /**

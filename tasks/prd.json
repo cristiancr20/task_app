@@ -343,11 +343,12 @@
         "pnpm typecheck passes"
       ],
       "priority": 16,
-      "passes": false,
+      "passes": true,
       "notes": "",
       "dependsOn": [
         "US-015"
-      ]
+      ],
+      "completionNotes": "Completed by agent"
     },
     {
       "id": "US-017",
@@ -416,6 +417,6 @@
     }
   ],
   "metadata": {
-    "updatedAt": "2026-08-10T04:02:53.463Z"
+    "updatedAt": "2026-08-10T04:05:45.150Z"
   }
 }

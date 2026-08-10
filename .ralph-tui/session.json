@@ -3,10 +3,10 @@
   "sessionId": "aa2f0814-5602-46fb-af15-58d2ca621517",
   "status": "running",
   "startedAt": "2026-08-10T02:40:32.134Z",
-  "updatedAt": "2026-08-10T04:02:53.463Z",
-  "currentIteration": 14,
+  "updatedAt": "2026-08-10T04:05:45.151Z",
+  "currentIteration": 15,
   "maxIterations": 0,
-  "tasksCompleted": 14,
+  "tasksCompleted": 15,
   "isPaused": false,
   "agentPlugin": "claude",
   "trackerState": {
@@ -102,8 +102,8 @@
       {
         "id": "US-015",
         "title": "Linear client: teams and projects",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-016",
@@ -271,6 +271,16 @@
       "durationMs": 443326,
       "startedAt": "2026-08-10T03:51:30.885Z",
       "endedAt": "2026-08-10T03:58:54.211Z"
+    },
+    {
+      "iteration": 15,
+      "status": "completed",
+      "taskId": "US-015",
+      "taskTitle": "Linear client: teams and projects",
+      "taskCompleted": true,
+      "durationMs": 238153,
+      "startedAt": "2026-08-10T03:58:55.309Z",
+      "endedAt": "2026-08-10T04:02:53.462Z"
     }
   ],
   "skippedTaskIds": [],

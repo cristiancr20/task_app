@@ -206,6 +206,25 @@ after each iteration and it's included in prompts for context.
   in-flight requests would let one clear the other's pagination. `readTeam` returns
   `{ team, projectsCursor }` and the caller threads it — the concurrency bug this rule
   exists to prevent never reproduces on a single manual request.
+- **A GraphQL mutation's own success flag is checked before its payload.** `issueCreate`
+  answers HTTP 200 with `{ success: false, issue: null }` and no `errors`, so
+  `createIssue` (`lib/linear.ts`) rejects on `success !== true` before reading the issue —
+  otherwise a failed push reports a created task with an empty identifier. The remote's
+  message, when there is one, still arrives through `linearGraphQL`'s `errors` check.
+- **`createIssue(apiKey, input)` is the single way an issue is written**, for the tasks
+  and for the parent they hang from: the parent is the same call without a `source`, and
+  its id becomes every task's `parentId`. Optional ids are spread in only when non-empty
+  (`...(projectId ? { projectId } : {})`) so «no project» is an absent key, not a null.
+  Priority goes through `LINEAR_PRIORITY: Record<Priority, number>` (none=0, urgent=1,
+  high=2, medium=3, low=4) — Linear orders by urgency, the inverse of what our
+  `PRIORITIES` order suggests, and the typed record turns the mismatch into a compile
+  error instead of a workspace full of urgent tasks.
+- **Traceability lives in the issue body, built by `buildIssueDescription`.** After a
+  `---` rule: the meeting title and date, the mentioned person when the transcript named
+  one, and the evidence as a blockquote with `>` on *every* line (a quote is verbatim and
+  can be multi-line; an unprefixed second line escapes the quote). Missing fields drop
+  out and an empty block is never appended. It is written in English, like the extracted
+  tasks — the Spanish copy rule covers *our* UI, not the content pushed to Linear.
 
 ---
 
@@ -1132,4 +1151,60 @@ count over.
 - The client-side helper (`lib/*-client.ts` pattern) is deliberately *not* added yet:
   nothing in the browser calls this route until US-017 builds the push panel, and the
   helper's error copy belongs with the component that renders it.
+---
+
+## 2026-08-09 - US-016 Linear client: create issue, with optional parent
+
+**What was implemented**
+- `lib/linear.ts`: `createIssue(apiKey, input)` on the `issueCreate` mutation, plus the
+  `CreateIssueInput` / `IssueSource` / `LinearIssue` types and the exported
+  `buildIssueDescription(description, source)`. Runs through the existing `linearGraphQL`
+  helper, so the key still travels in `Authorization` verbatim and a GraphQL error inside
+  an HTTP 200 body is still thrown as `LinearApiError` carrying Linear's own text.
+- Priority is mapped through the `LINEAR_PRIORITY` record (none=0, urgent=1, high=2,
+  medium=3, low=4), typed `Record<Priority, number>` so a new priority cannot be added to
+  `lib/extractors/task.ts` without the compiler demanding its integer here.
+- `projectId` / `parentId` are trimmed and only included in the mutation input when
+  non-empty — an explicit `null` in `IssueCreateInput` is not the same as an absent key.
+- The traceability block is appended after a `---` rule: `**Source:** <meeting> — <date>`,
+  `**Mentioned:** <name>` when the transcript named one, and the evidence as a blockquote.
+  Each field drops out when missing, and with nothing to say no block is appended at all
+  (which is how the US-018 parent issue is created: same function, no `source`).
+
+**Files changed**
+- `lib/linear.ts` (modified)
+
+**Verification**
+- `pnpm typecheck` and `pnpm build` pass; the route list and the fs-tracing traces are
+  unchanged (no client module reaches `lib/linear.ts`).
+- Driven against a stub Linear GraphQL server (`LINEAR_API_URL` pointed at it), compiling
+  `lib/linear.ts` with `tsc --outDir` first:
+  - Full input → mutation carries `teamId`, trimmed `title`, `priority: 2`, `projectId`,
+    `parentId` and the description with the block; returns `{ id, identifier, url }`.
+  - All five priorities map to 0/1/2/3/4.
+  - No project / parent / source → the input has neither `projectId` nor `parentId`.
+  - `{ errors: [{ message: 'Team not found' }] }` served with HTTP **200** → 502
+    «Linear: Team not found» (Linear's own words, not a generic failure).
+  - `{ success: false, issue: null }` with no `errors` → 502 naming the task.
+  - Blank `teamId` / blank `title` → 400 before anything leaves the machine.
+  - `authorization` recorded as the key verbatim, no `Bearer`.
+
+**Learnings**
+- `issueCreate` can answer HTTP 200 with `success: false` and an empty `errors` array —
+  Linear's payload flag is the real result, not the status. Checking `success !== true`
+  before reading `issue` is what stops a failed push from being reported as created with
+  an empty identifier.
+- Linear's priority scale is ordered by urgency with 0 meaning «sin prioridad», so it is
+  *not* the natural reading of our `PRIORITIES` order (which starts at `urgent`). Writing
+  it as `Record<Priority, number>` turns that mismatch into a compile error instead of
+  every task landing as `urgent`.
+- Evidence is a verbatim quote and can be several lines; a Markdown blockquote only covers
+  the line it prefixes, so every line gets its own `>`. Without it the second line breaks
+  out of the quote and reads as part of the issue description.
+- Spreading `...(projectId ? { projectId } : {})` rather than passing `projectId: null`
+  matters for `parentId` in particular: a null parent is accepted, but keeping the key out
+  makes «no parent» and «parent we failed to create» impossible to confuse at the call site.
+- `node --experimental-strip-types` cannot load `lib/linear.ts` (its error classes use
+  TypeScript parameter properties, `constructor(readonly cause?: unknown)`), so driving a
+  lib module against a stub needs a `tsc --outDir /tmp/... ` compile first.
 ---
