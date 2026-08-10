@@ -85,6 +85,21 @@ after each iteration and it's included in prompts for context.
   cross-origin dev resources by default, so `127.0.0.1` gets the JS chunks refused and
   the page never hydrates — every click silently does nothing and the failure looks like
   a bug in the component.
+- **The explorer browses from the client, through `lib/browse-client.ts`.**
+  `fetchFolder(relPath)` calls `GET /api/browse` and throws an `Error` carrying the
+  route's own Spanish message; `useFolderListings()` (`app/use-folder-listings.ts`) is
+  the cache on top of it — `states[relPath]` is `loading | ready | error`, `open()`
+  fetches a folder at most once, `reload()` forces a refetch behind «Reintentar». One
+  listing feeds both panels (the tree reads `folders`, the list reads `files`), so a
+  folder is never fetched twice.
+- **A client module may use the scanner's types, never its code.** `lib/transcripts.ts`
+  imports `node:fs`, so client components take `import type { … }` from it — erased at
+  compile time. `pnpm build` is the check: its fs-tracing warnings print import traces,
+  and a Client Component trace appearing there means node code leaked into the bundle.
+- **Full-height views need a definite height, not `flex-1`.** `body` is
+  `min-h-full flex flex-col`, so a `flex-1` child is sized by its content and
+  `overflow-y-auto` inside it never scrolls — the page grows instead. Views with
+  independently scrolling panels set `h-dvh` on their root (see `app/page.tsx`).
 
 ---
 
@@ -452,4 +467,84 @@ Settings UI: Linear API key.
 - A save invalidates the last «Probar» verdict, so the component clears it on a
   successful save and hides it as soon as the input is touched — a stale green line is
   worse than none.
+---
+
+## 2026-08-09 - US-008
+
+Explorer UI: folder tree and file list.
+
+**What was implemented**
+- `lib/browse-client.ts` — `fetchFolder(relPath)`, the browser side of
+  `GET /api/browse`. Borrows `FolderListing` from `lib/transcripts.ts` as a *type-only*
+  import, so the node-only scanner never reaches the client bundle. A failure becomes
+  an `Error` carrying the route's own Spanish message; an unparseable or unexpected
+  body gets a generic one.
+- `app/use-folder-listings.ts` — `useFolderListings()`, the explorer's cache of
+  listings keyed by root-relative path (`states`, `open`, `reload`). `open` skips
+  folders already asked for (so clicks and StrictMode double-effects cost one request),
+  `reload` forces a refetch, and a per-path attempt counter keeps a slow response from
+  overwriting a newer one.
+- `app/folder-tree.tsx` — the lazy tree. Each node has a chevron toggle
+  (`aria-expanded`) and a label button that selects the folder; the toggle disappears
+  once a listing proves the folder has no subfolders. Per-node loading and error states
+  with «Reintentar».
+- `app/file-list.tsx` — the centre panel: breadcrumb + file count, one row per `.md`
+  file with title, date (`<time dateTime>` + `9 ago 2026`), attendees (first 3, then
+  `+N`) and `~N palabras`. Two empty states, depending on whether the folder has
+  subfolders to offer.
+- `app/explorer.tsx` — composition and the shared state (expanded set, selected folder,
+  selected file). Selecting a folder also expands it; collapsing is the chevron's job.
+- `app/page.tsx` — server component, `force-dynamic`, reads `contextRoot` from the
+  config. Without one it renders the call to action linking to `/settings`; with one,
+  the header (active path + «Ajustes») and `<Explorer>`.
+- `app/layout.tsx` — real metadata (`Tasks App` + `%s · Tasks App` template) replacing
+  the create-next-app defaults.
+
+**Files changed**
+- `lib/browse-client.ts`, `app/use-folder-listings.ts`, `app/folder-tree.tsx`,
+  `app/file-list.tsx`, `app/explorer.tsx` (new)
+- `app/page.tsx`, `app/layout.tsx` (modified)
+
+**Verification**
+- `pnpm typecheck` passes. `pnpm build` passes; its only warnings are the pre-existing
+  `lib/transcripts.ts` fs-tracing ones, and their import traces list App Route and
+  Server Component only — no client trace, confirming the scanner stays server-side.
+- Drove a real Chrome against `pnpm dev` with Playwright — 44 assertions, all passing,
+  over a fixture tree (`notas/` with `proyectos/{alfa,beta}`, `archivo/`, files with
+  frontmatter, with a filename-only date, with a malformed frontmatter, with nothing,
+  plus a dotfile, a `.txt` and a `node_modules/`): the CTA and its `/settings` link with
+  no root configured; setting the folder from Ajustes and coming back; the tree rooted
+  at `notas` with children sorted alphabetically and `node_modules` absent; the root
+  listing sorted date-desc-then-title (`Revisión de producto`, `Weekly sync`,
+  `Planificación de mayo`, `roto`, `sin fecha`); dates from frontmatter, from an ISO
+  timestamp and from a filename; no date shown when unknown; attendees capped at
+  `Ana Ruiz, Luis Pérez, Marta Gil +1`; the word count matching the file on disk;
+  breadcrumb and file count following the selection; both empty states; leaves without
+  a chevron; collapse hiding the subtree while the file list keeps its selection;
+  re-expand restoring it without a refetch; and — after renaming a folder away
+  mid-session — «No existe: archivo» inline with «Reintentar» recovering it.
+- Dev server stopped and `.data/` plus the fixtures removed afterwards.
+
+**Learnings**
+- Decision: the explorer fetches from the browser (`/api/browse`) instead of listing on
+  the server. Expanding a node costs one request rather than a re-render of the route,
+  the listing is shared by both panels, and a folder that vanishes from disk fails in
+  place with a «Reintentar» instead of breaking the page. This is why US-004 exists.
+- Gotcha: `body` is `min-h-full flex flex-col`, so a `flex-1` child is sized by its
+  content — `overflow-y-auto` inside it never scrolls, the whole page grows instead.
+  The explorer page therefore uses a definite `h-dvh` on its root; panels then scroll
+  independently. Same trap for any future full-height view.
+- A lazily-loaded tree does not know whether a folder has children until it has been
+  listed, so the chevron is rendered until a listing proves the node is a leaf, and
+  then removed. The alternative — always showing it — produces chevrons that expand
+  into nothing, which reads as a bug.
+- Sorting is not repeated in the UI: `listFolder` already returns files date-desc then
+  title, and the file list renders them in arrival order (noted in a comment so nobody
+  "fixes" it by re-sorting).
+- `new Date('2026-08-09')` parses as UTC midnight and renders as the previous day west
+  of Greenwich, so dates are split and passed to `new Date(y, m - 1, d)` before
+  `Intl.DateTimeFormat('es-ES')`. The raw ISO string stays in `<time dateTime>`.
+- Testing gotcha: `page.waitForFunction` on `document.body.innerText` is ambiguous once
+  the same folder name appears in both the tree and the breadcrumb — the collapse
+  assertion has to scope to `nav[aria-label="Carpetas"]`.
 ---

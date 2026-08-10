@@ -3,10 +3,10 @@
   "sessionId": "aa2f0814-5602-46fb-af15-58d2ca621517",
   "status": "running",
   "startedAt": "2026-08-10T02:40:32.134Z",
-  "updatedAt": "2026-08-10T03:10:23.186Z",
-  "currentIteration": 6,
+  "updatedAt": "2026-08-10T03:21:10.393Z",
+  "currentIteration": 7,
   "maxIterations": 0,
-  "tasksCompleted": 6,
+  "tasksCompleted": 7,
   "isPaused": false,
   "agentPlugin": "claude",
   "trackerState": {
@@ -54,8 +54,8 @@
       {
         "id": "US-007",
         "title": "Settings UI: Linear API key",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-008",
@@ -191,6 +191,16 @@
       "durationMs": 368340,
       "startedAt": "2026-08-10T02:56:56.726Z",
       "endedAt": "2026-08-10T03:03:05.066Z"
+    },
+    {
+      "iteration": 7,
+      "status": "completed",
+      "taskId": "US-007",
+      "taskTitle": "Settings UI: Linear API key",
+      "taskCompleted": true,
+      "durationMs": 437032,
+      "startedAt": "2026-08-10T03:03:06.153Z",
+      "endedAt": "2026-08-10T03:10:23.185Z"
     }
   ],
   "skippedTaskIds": [],
