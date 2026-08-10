@@ -42,6 +42,21 @@ after each iteration and it's included in prompts for context.
   building a `Response` inline.
 - **API error messages are user-facing Spanish** — the UI shows them inline
   (PRD: "UI copy in Spanish"). Data returned by the routes is not translated.
+- **`describeError(err, relPath)` is the error mapping; `errorResponse` only wraps it.**
+  Route handlers keep using `errorResponse`; anything that is not a route (Server
+  Actions, which answer with state) calls `describeError(...).message` so both paths
+  produce the same Spanish text.
+- **Settings mutations are Server Actions, not `/api` routes.** `app/settings/actions.ts`
+  is `'use server'`; the page is a server component reading `getConfig()` with
+  `export const dynamic = 'force-dynamic'`, and the form is a client component using
+  `useActionState`. After a successful mutation the action calls `refresh()` from
+  `next/cache` so the page re-renders with the new config. Note a `'use server'` file may
+  only export **async functions** — put initial state and constants elsewhere.
+- **Changing `contextRoot` goes through `openContextRoot(input)` in `lib/context-root.ts`.**
+  It normalizes (trim, `~` expansion, `path.resolve`), verifies the folder with
+  `fs.opendirSync` (ENOENT / ENOTDIR / EACCES in one call) and only then persists both
+  `contextRoot` and the `recentFolders` list (most recent first, deduped,
+  `MAX_RECENT_FOLDERS = 8`). Never set `contextRoot` with `updateConfig` directly.
 
 ---
 
@@ -217,4 +232,64 @@ API routes for browsing folders and reading a transcript.
 - The `.md` check in the transcript route runs before the traversal guard, so
   `?path=../../etc/hosts` is refused as "not a .md" rather than as an escape. Both are
   400 with a clear message, so the acceptance criterion holds either way.
+---
+
+## 2026-08-09 - US-005
+
+Settings UI: context folder path with recents.
+
+**What was implemented**
+- `app/settings/page.tsx` — server component, reads `getConfig()` and passes
+  `contextRoot` + `recentFolders` down. `export const dynamic = 'force-dynamic'` so the
+  page is never prerendered with a stale config (it reads the filesystem, not a
+  request-time API, so `auto` would let Next prerender it at build time).
+- `app/settings/actions.ts` — `openFolderAction(previous, formData)`, the single
+  Server Action behind both the «Abrir» button and every recents entry. Returns
+  `OpenFolderState` (`folder`, `error`, `attempt`); on success calls `refresh()` from
+  `next/cache` so the server component re-renders with the new active folder and list.
+- `app/settings/context-folder-form.tsx` — client component, `useActionState`. One
+  `<form>` holds the text input *and* the recents buttons; each recent is a
+  `<button type="submit" name="recent" value={path}>`, so clicking it submits the same
+  action with its own path. The action prefers `recent` over `folder`.
+- `lib/context-root.ts` — `openContextRoot(input)`: normalize → validate → persist,
+  and `MAX_RECENT_FOLDERS = 8`. Recents are `[folder, ...others].slice(0, 8)`, so
+  reopening a folder promotes it instead of duplicating it.
+- `lib/api.ts` — split `errorResponse` into `describeError(err, relPath)` returning
+  `{ status, message }` plus a thin `errorResponse` that wraps it in a `Response`.
+  Same mapping, now reachable from a Server Action, which answers with state.
+
+**Files changed**
+- `app/settings/page.tsx`, `app/settings/actions.ts`,
+  `app/settings/context-folder-form.tsx`, `lib/context-root.ts` (all new)
+- `lib/api.ts` (modified)
+
+**Verification**
+- `pnpm typecheck` passes.
+- Drove a real Chrome against `pnpm dev` with Playwright — 19 assertions, all passing:
+  empty-state copy; `/tmp/no-existe` → "No existe" inline and `config.json` never
+  written; a file path → "No es una carpeta"; a relative path → "debe ser absoluta";
+  a valid folder → saved as `contextRoot`, appears in recents, marked "Activa";
+  a second folder goes to the top and takes the mark; clicking the first recent switches
+  back with no duplicate; opening 8 more caps the list at 8 and drops the oldest;
+  the choice survives a reload; `GET /api/browse` then lists the chosen folder.
+- Scratch folders and `.data/config.json` removed afterwards.
+
+**Learnings**
+- Gotcha: a `'use server'` file may only export async functions. The initial
+  `useActionState` value cannot live there — only the `export type` does (types are
+  erased); the client component builds the initial state from its props.
+- `refresh()` from `next/cache` is this version's way to re-render the current route
+  after a Server Action, and it *only* works inside one (`revalidatePath` is for cache
+  tags/paths; the settings page has no cache entry to invalidate, it re-reads a file).
+- `fs.opendirSync(folder)` is the single check that covers all three failure modes:
+  ENOENT (missing), ENOTDIR (a file) and EACCES (not listable). `statSync` answers the
+  first two but says nothing about readability, which the story explicitly asks for.
+- Gotcha: `page.locator('[role="alert"]')` matches Next's `__next-route-announcer__`
+  too — target the error node by id when testing an inline error with Playwright.
+- Pattern for keeping a controlled input in sync with an action that can be triggered
+  from elsewhere: the action returns an incrementing `attempt`, and the component
+  copies `state.folder` into its input state during render when `attempt` changes.
+  Comparing the path alone cannot distinguish two consecutive failures on the same one.
+- `path.resolve` on the trimmed input is what makes "no duplicates" hold in practice:
+  `/tmp/notas/` and `/tmp/notas` would otherwise be two different recents.
 ---

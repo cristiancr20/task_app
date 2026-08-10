@@ -3,10 +3,10 @@
   "sessionId": "aa2f0814-5602-46fb-af15-58d2ca621517",
   "status": "running",
   "startedAt": "2026-08-10T02:40:32.134Z",
-  "updatedAt": "2026-08-10T02:50:57.261Z",
-  "currentIteration": 3,
+  "updatedAt": "2026-08-10T02:56:55.645Z",
+  "currentIteration": 4,
   "maxIterations": 0,
-  "tasksCompleted": 3,
+  "tasksCompleted": 4,
   "isPaused": false,
   "agentPlugin": "claude",
   "trackerState": {
@@ -36,8 +36,8 @@
       {
         "id": "US-004",
         "title": "API routes for browsing folders and reading a transcript",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-005",
@@ -161,6 +161,16 @@
       "durationMs": 171910,
       "startedAt": "2026-08-10T02:44:38.292Z",
       "endedAt": "2026-08-10T02:47:30.202Z"
+    },
+    {
+      "iteration": 4,
+      "status": "completed",
+      "taskId": "US-004",
+      "taskTitle": "API routes for browsing folders and reading a transcript",
+      "taskCompleted": true,
+      "durationMs": 205966,
+      "startedAt": "2026-08-10T02:47:31.294Z",
+      "endedAt": "2026-08-10T02:50:57.260Z"
     }
   ],
   "skippedTaskIds": [],
