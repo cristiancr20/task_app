@@ -53,8 +53,8 @@ export function ProviderForm({ provider, ollamaModel, hasClaudeApiKey, defaultMo
         <label
           className={`flex cursor-pointer gap-3 rounded-md border p-3 transition-colors ${
             selected === 'ollama'
-              ? 'border-zinc-900 bg-zinc-100 dark:border-zinc-300 dark:bg-zinc-900'
-              : 'border-zinc-300 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900'
+              ? 'border-accent bg-accent-wash'
+              : 'border-line-strong hover:bg-surface-2'
           }`}
         >
           <input
@@ -63,11 +63,11 @@ export function ProviderForm({ provider, ollamaModel, hasClaudeApiKey, defaultMo
             value="ollama"
             checked={selected === 'ollama'}
             onChange={() => setSelected('ollama')}
-            className="mt-1 accent-zinc-900 dark:accent-zinc-100"
+            className="mt-1 accent-accent"
           />
           <span className="flex flex-col gap-1">
             <span className="text-sm font-medium">Ollama (local, gratis)</span>
-            <span className="text-sm text-zinc-600 dark:text-zinc-400">
+            <span className="text-sm text-muted">
               Usa un modelo instalado en tu máquina. Nada sale de tu ordenador.
             </span>
           </span>
@@ -80,14 +80,14 @@ export function ProviderForm({ provider, ollamaModel, hasClaudeApiKey, defaultMo
             </label>
 
             {loading && !models ? (
-              <p className="text-sm text-zinc-500 dark:text-zinc-400">Buscando modelos…</p>
+              <p className="text-sm text-muted">Buscando modelos…</p>
             ) : models && models.length > 0 ? (
               <select
                 id="ollamaModel"
                 name="ollamaModel"
                 value={model}
                 onChange={(event) => setModel(event.target.value)}
-                className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 font-mono text-sm text-zinc-900 outline-none focus:border-zinc-500 sm:max-w-sm dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100 dark:focus:border-zinc-500"
+                className="w-full rounded-md border border-line-strong bg-surface px-3 py-2 font-mono text-sm text-content outline-none focus:border-accent sm:max-w-sm"
               >
                 {models.map((name) => (
                   <option key={name} value={name}>
@@ -98,10 +98,10 @@ export function ProviderForm({ provider, ollamaModel, hasClaudeApiKey, defaultMo
             ) : (
               // Unreachable and «nothing pulled yet» lead to the same fix.
               <div id="ollama-models-empty" className="flex flex-col gap-2">
-                <p className="text-sm text-amber-700 dark:text-amber-500">
+                <p className="text-sm text-warn">
                   {modelsError ? `${modelsError} ` : 'Ollama no tiene ningún modelo instalado. '}
                   Instala uno con{' '}
-                  <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
+                  <code className="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-[0.9em]">
                     ollama pull {defaultModel}
                   </code>
                   .
@@ -110,7 +110,7 @@ export function ProviderForm({ provider, ollamaModel, hasClaudeApiKey, defaultMo
                   type="button"
                   onClick={reload}
                   disabled={loading}
-                  className="self-start rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium transition-colors hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-900"
+                  className="self-start rounded-md border border-line-strong px-3 py-1.5 text-sm font-medium transition-colors hover:bg-surface-2 disabled:opacity-50"
                 >
                   {loading ? 'Buscando…' : 'Reintentar'}
                 </button>
@@ -122,8 +122,8 @@ export function ProviderForm({ provider, ollamaModel, hasClaudeApiKey, defaultMo
         <label
           className={`flex cursor-pointer gap-3 rounded-md border p-3 transition-colors ${
             selected === 'claude'
-              ? 'border-zinc-900 bg-zinc-100 dark:border-zinc-300 dark:bg-zinc-900'
-              : 'border-zinc-300 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900'
+              ? 'border-accent bg-accent-wash'
+              : 'border-line-strong hover:bg-surface-2'
           }`}
         >
           <input
@@ -132,14 +132,14 @@ export function ProviderForm({ provider, ollamaModel, hasClaudeApiKey, defaultMo
             value="claude"
             checked={selected === 'claude'}
             onChange={() => setSelected('claude')}
-            className="mt-1 accent-zinc-900 dark:accent-zinc-100"
+            className="mt-1 accent-accent"
           />
           <span className="flex flex-col gap-1">
             <span className="text-sm font-medium">Claude API (de pago)</span>
-            <span className="text-sm text-zinc-600 dark:text-zinc-400">
+            <span className="text-sm text-muted">
               Mejor calidad de extracción, con coste por uso.
             </span>
-            <strong className="text-sm font-medium text-amber-700 dark:text-amber-500">
+            <strong className="text-sm font-medium text-warn">
               Aviso: el uso se factura por tokens contra tu cuenta de la API de Anthropic. NO está
               incluido en una suscripción de Claude Pro o Max.
             </strong>
@@ -160,23 +160,23 @@ export function ProviderForm({ provider, ollamaModel, hasClaudeApiKey, defaultMo
               placeholder={hasClaudeApiKey ? '•••••••••• (guardada)' : 'sk-ant-…'}
               spellCheck={false}
               autoComplete="off"
-              className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 font-mono text-sm text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-zinc-500 sm:max-w-sm dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100 dark:placeholder:text-zinc-600 dark:focus:border-zinc-500"
+              className="w-full rounded-md border border-line-strong bg-surface px-3 py-2 font-mono text-sm text-content outline-none placeholder:text-muted focus:border-accent sm:max-w-sm"
             />
             {hasClaudeApiKey ? (
-              <p className="flex flex-wrap items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400">
+              <p className="flex flex-wrap items-center gap-2 text-sm text-muted">
                 Hay una clave guardada. Escribe otra para reemplazarla.
                 <button
                   type="submit"
                   name="intent"
                   value="clear-claude-key"
                   disabled={pending}
-                  className="rounded-md border border-zinc-300 px-2 py-0.5 text-sm font-medium transition-colors hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-900"
+                  className="rounded-md border border-line-strong px-2 py-0.5 text-sm font-medium transition-colors hover:bg-surface-2 disabled:opacity-50"
                 >
                   Borrar
                 </button>
               </p>
             ) : (
-              <p className="text-sm text-zinc-600 dark:text-zinc-400">
+              <p className="text-sm text-muted">
                 Necesitas una clave para extraer con Claude. Se guarda sin cifrar en la carpeta
                 local <code className="font-mono">.data</code>.
               </p>
@@ -189,17 +189,17 @@ export function ProviderForm({ provider, ollamaModel, hasClaudeApiKey, defaultMo
         <button
           type="submit"
           disabled={pending}
-          className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+          className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-on-accent transition-colors hover:bg-accent-soft disabled:opacity-50"
         >
           {pending ? 'Guardando…' : 'Guardar'}
         </button>
 
         {state.error ? (
-          <p id="provider-error" role="alert" className="text-sm text-red-600 dark:text-red-400">
+          <p id="provider-error" role="alert" className="text-sm text-danger">
             {state.error}
           </p>
         ) : state.saved && !pending ? (
-          <p id="provider-saved" className="text-sm text-zinc-600 dark:text-zinc-400">
+          <p id="provider-saved" className="text-sm text-muted">
             Guardado.
           </p>
         ) : null}

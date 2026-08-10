@@ -460,14 +460,15 @@
         "Verify in the browser at http://localhost:3300 that both themes render correctly and that text keeps sufficient contrast against surfaces in each"
       ],
       "priority": 21,
-      "passes": false,
+      "passes": true,
       "notes": "Roughly 712 colour utility occurrences across 20 files. Mechanical but wide: work file by file and re-check the browser as you go. Reference the token list in ~/dev/gym/app/globals.css and ~/orca/docmentor/frontend/tailwind.config.js.",
       "dependsOn": [
         "US-020"
-      ]
+      ],
+      "completionNotes": "Completed by agent"
     }
   ],
   "metadata": {
-    "updatedAt": "2026-08-10T04:53:20.223Z"
+    "updatedAt": "2026-08-10T05:02:33.535Z"
   }
 }

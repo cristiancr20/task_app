@@ -45,8 +45,8 @@ type Props = {
 }
 
 const FIELD =
-  'rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm text-zinc-900 outline-none focus:border-zinc-900 disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100 dark:focus:border-zinc-300'
-const LABEL = 'text-xs font-medium text-zinc-500 dark:text-zinc-400'
+  'rounded-md border border-line-strong bg-surface px-2 py-1.5 text-sm text-content outline-none placeholder:text-muted focus:border-accent disabled:opacity-50'
+const LABEL = 'text-xs font-medium text-muted'
 
 /**
  * Where the tasks are going: the Linear team and project, whether they hang
@@ -127,9 +127,9 @@ export function PushPanel({ target, parent, push }: Props) {
               checked={parent.create}
               onChange={(event) => parent.onToggle(event.target.checked)}
               disabled={running}
-              className="h-4 w-4 accent-zinc-900 dark:accent-zinc-100"
+              className="h-4 w-4 accent-accent"
             />
-            <label htmlFor="push-parent" className="text-sm text-zinc-700 dark:text-zinc-300">
+            <label htmlFor="push-parent" className="text-sm text-content">
               Crear tarea padre
             </label>
           </div>
@@ -156,12 +156,12 @@ export function PushPanel({ target, parent, push }: Props) {
 
         <div className="ml-auto flex items-center gap-3">
           {reason ? (
-            <p className="max-w-xs text-xs text-zinc-500 dark:text-zinc-400">
+            <p className="max-w-xs text-xs text-muted">
               {reason}{' '}
               {target.status === 'no-key' ? (
                 <Link
                   href="/settings"
-                  className="underline hover:text-zinc-900 dark:hover:text-zinc-100"
+                  className="underline hover:text-content"
                 >
                   Ir a ajustes
                 </Link>
@@ -170,14 +170,14 @@ export function PushPanel({ target, parent, push }: Props) {
                 <button
                   type="button"
                   onClick={target.reload}
-                  className="underline hover:text-zinc-900 dark:hover:text-zinc-100"
+                  className="underline hover:text-content"
                 >
                   Reintentar
                 </button>
               ) : null}
             </p>
           ) : (
-            <p className="text-xs text-zinc-500 dark:text-zinc-400">
+            <p className="text-xs text-muted">
               {summary(willCreateParent, push.pending)}
             </p>
           )}
@@ -187,7 +187,7 @@ export function PushPanel({ target, parent, push }: Props) {
             onClick={push.onPush}
             disabled={reason !== null}
             title={reason ?? undefined}
-            className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+            className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent transition-colors hover:bg-accent-soft disabled:opacity-50"
           >
             {buttonLabel(push)}
           </button>
@@ -215,15 +215,15 @@ function RunStatus({ push }: { push: PushApi }) {
   const finished = push.status === 'finished'
 
   return (
-    <div className="flex flex-col gap-2 border-t border-zinc-200 px-5 py-2 dark:border-zinc-800">
+    <div className="flex flex-col gap-2 border-t border-line px-5 py-2">
       {push.progress && push.status === 'running' ? (
-        <p aria-live="polite" className="text-xs text-zinc-600 dark:text-zinc-300">
+        <p aria-live="polite" className="text-xs text-content">
           {`Creando ${Math.max(push.progress.index, 1)} de ${push.progress.total}…`}
         </p>
       ) : null}
 
       {finished ? (
-        <p aria-live="polite" className="text-xs text-zinc-600 dark:text-zinc-300">
+        <p aria-live="polite" className="text-xs text-content">
           {outcome(push)}
         </p>
       ) : null}
@@ -244,7 +244,7 @@ function RunStatus({ push }: { push: PushApi }) {
       {push.error ? (
         <p
           role="alert"
-          className="rounded-md bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-950/40 dark:text-red-300"
+          className="rounded-md bg-danger-wash px-3 py-2 text-xs text-danger"
         >
           {push.error}
         </p>
@@ -261,11 +261,11 @@ function IssueLink({ issue, label }: { issue: PushedIssue; label?: string }) {
         href={issue.url}
         target="_blank"
         rel="noreferrer noopener"
-        className="text-zinc-700 underline underline-offset-2 hover:text-zinc-900 dark:text-zinc-300 dark:hover:text-zinc-100"
+        className="text-content underline underline-offset-2 hover:text-accent"
       >
         <span className="font-mono">{issue.identifier}</span> <span>{issue.title}</span>
       </a>
-      {label ? <span className="ml-1 text-zinc-500 dark:text-zinc-400">({label})</span> : null}
+      {label ? <span className="ml-1 text-muted">({label})</span> : null}
     </li>
   )
 }

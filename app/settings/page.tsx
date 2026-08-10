@@ -24,17 +24,17 @@ export default async function SettingsPage() {
   const theme = await getTheme()
 
   return (
-    <div className="flex flex-1 justify-center bg-zinc-50 font-sans dark:bg-black">
+    <div className="flex flex-1 justify-center bg-bg font-sans">
       <main className="w-full max-w-2xl px-6 py-12 sm:px-10">
         <header className="mb-10 flex flex-col gap-2">
           <Link
             href="/"
-            className="text-sm text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+            className="text-sm text-muted hover:text-content"
           >
             ← Volver al explorador
           </Link>
           <div className="flex items-center justify-between gap-4">
-            <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+            <h1 className="text-2xl font-semibold tracking-tight text-content">
               Ajustes
             </h1>
             <ThemeToggle current={theme} />

@@ -5,6 +5,24 @@ after each iteration and it's included in prompts for context.
 
 ## Codebase Patterns (Study These First)
 
+- **Colour never appears literally in the markup.** `app/globals.css` declares
+  the house tokens once with `light-dark(light, dark)` — bg, surface, surface-2,
+  line, line-strong, content, muted, accent, accent-soft, accent-wash,
+  on-accent, ok/warn/danger/info + `-wash`, scrim — and `@theme inline` turns
+  them into `bg-surface`, `text-muted`, `border-line`… Because `color-scheme`
+  picks the side, **a new component needs no `dark:` variant at all**; there are
+  zero left in `app/`. The canvas is `bg-bg`, panels `bg-surface`, chrome and
+  inline code `bg-surface-2`; containers `border-line`, controls
+  `border-line-strong`; anything selected is `border-accent bg-accent-wash`;
+  primary actions `bg-accent text-on-accent hover:bg-accent-soft`. Errors are
+  `danger`, success `ok`, warnings `warn`.
+- **Two traps when adding a token.** (1) `--on-accent` is not white: white on
+  the dark-side accent fails AA, so it is near-black there — recompute both
+  sides if a tone changes. (2) A `dark:` pair only collapses into one token when
+  both sides *mean* the same; a modal veil is dark in both themes, which is why
+  it is `--scrim` and not `--content`. Opacity modifiers on a token are fine
+  (`border-warn/30`): Tailwind wraps it in `color-mix()`, which accepts
+  `light-dark()`.
 - **A preference the server must know before the first paint lives in a cookie,
   split across three modules.** `lib/theme.ts` holds constants, the type and a
   guard and imports *nothing* (so a client component can use it);
@@ -242,4 +260,70 @@ cookie value falls back to «system».
 
 **Reusable patterns added to the top section:** the cookie/three-module shape for
 a server-known preference, and `import 'server-only'` without the package.
+---
+
+## 2026-08-10 - US-021 Adopt the shared design tokens and accent colour
+
+`globals.css` now carries the house token vocabulary — the same neutral ramp,
+state scale and `light-dark()` mechanism as ~/dev/gym — with teal as this app's
+brand colour, and every component reads it through `@theme inline` utilities.
+All 460 raw palette utilities across the 14 `app/**/*.tsx` files are gone, and
+with them every `dark:` variant: there is not one left in the markup.
+
+**Files changed:**
+- `app/globals.css` — bg, surface, surface-2, line, line-strong, content, muted,
+  accent, accent-soft, accent-wash, on-accent, ok/warn/danger/info and their
+  -wash variants, plus `--scrim`; each declared once with `light-dark()`. The
+  `@theme inline` block exposes them as `bg-surface`, `text-muted`,
+  `border-line`… Base styles moved onto the tokens (`body`, `::selection`, a
+  single `:focus-visible` ring).
+- `app/page.tsx`, `explorer.tsx`, `file-list.tsx`, `folder-tree.tsx`,
+  `markdown.tsx`, `task-table.tsx`, `push-panel.tsx`, `transcript-preview.tsx`,
+  `theme-toggle.tsx`, `settings/page.tsx`, `settings/context-folder-form.tsx`,
+  `settings/linear-form.tsx`, `settings/provider-form.tsx` — utilities swapped
+  for the semantic equivalents.
+
+**Learnings:**
+- The mapping that made the sweep mechanical: page canvas `bg-bg`, panels
+  `bg-surface`, the two chrome strips (folder sidebar, push panel) and every
+  inline `<code>`/hover `bg-surface-2`; body copy `text-content`, secondary
+  `text-muted`; container borders `border-line`, form/button borders
+  `border-line-strong`; every selection (tree row, file row, provider card,
+  recents row, active theme segment) `border-accent bg-accent-wash`.
+- **A `dark:` pair collapses into one token only when both sides mean the same
+  thing.** They all did here except the modal veil: `bg-zinc-900/40
+  dark:bg-black/60` is dark in *both* themes, and `--content` inverts, so
+  reusing it would have painted a white veil in dark. That one needed its own
+  `--scrim` token.
+- **`--on-accent` cannot be `#ffffff`.** White on the dark-side teal `#2dd4bf`
+  is 1.86:1. The dark side is near-black `#04231f` (8.91:1); light stays white
+  (5.43:1 on `#0f766e`). The same token also works on `--danger` — white on
+  `#b91c1c` is 6.47:1 and `#04231f` on `#f87171` is 6.00:1 — so the destructive
+  button reuses it instead of needing an `--on-danger`.
+- Opacity modifiers **do** work on a `light-dark()` token (`border-warn/30`,
+  `border-danger/40`, `hover:border-danger/40`): Tailwind wraps it in
+  `color-mix()`, which takes `light-dark()` as a colour. gym already relies on
+  this; verified in the browser here.
+- The `@custom-variant dark` block stays even with zero `dark:` utilities left:
+  it costs nothing when unused and is the escape hatch for anything a colour
+  token cannot express.
+- `text-zinc-400 dark:text-zinc-600` (a *fourth* neutral, below muted — the «—»
+  and «Pendiente» placeholders) has no token. `text-muted opacity-70` says the
+  same thing without adding one.
+
+**Verified in the browser** (http://localhost:3300, both themes, nothing pushed
+to Linear): explorer and settings render correctly light and dark; the accent is
+teal on the primary buttons with legible on-accent text on both sides; the
+selected tree/file/provider rows show the accent wash; the folder error renders
+`rgb(185, 28, 28)` (danger), the manual-changes counter and the Claude billing
+warning render in warn; the regenerate dialog shows the scrim dark in both
+themes with a readable destructive button. Computed styles confirmed the dark
+side of every token resolves (`--surface-2` → `rgb(30, 33, 39)`, `--accent-wash`
+→ `rgba(45, 212, 191, 0.1)`, `--content` → `rgb(230, 231, 233)`).
+
+`pnpm typecheck` passes (no lint script in this project).
+
+Note: `lib/linear.ts` carries an uncommitted change from an earlier iteration
+(`statusFor` no longer folding 400 into 401); it was already in the tree and is
+untouched by this story.
 ---

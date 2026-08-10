@@ -391,12 +391,16 @@ export async function linearGraphQL(
 }
 
 /**
- * What our own route answers for a rejection by Linear. Linear replies 400 to
- * an invalid or missing key just as often as 401, so the whole auth range
- * collapses into 401; anything else is an upstream failure, not the user's.
+ * What our own route answers for a rejection by Linear.
+ *
+ * 401 and 403 are genuinely about the key, so they surface as 401 and the UI
+ * can tell the user to check it. A 400 is not: Linear returns it for a query we
+ * built wrong — "Query too complex" is the one that bit us — and reporting that
+ * as an auth failure sends the user off checking a key that was never the
+ * problem. Our own bug reads as 502, with Linear's message carried through.
  */
 function statusFor(upstream: number): number {
-  return upstream === 400 || upstream === 401 || upstream === 403 ? 401 : 502
+  return upstream === 401 || upstream === 403 ? 401 : 502
 }
 
 /** The first message out of `{ errors: [{ message }] }`, or null. */

@@ -130,8 +130,8 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex min-h-0 flex-1">
-        <aside className="flex w-72 shrink-0 flex-col border-r border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950">
-          <h2 className="border-b border-zinc-200 px-4 py-3 text-sm font-medium text-zinc-900 dark:border-zinc-800 dark:text-zinc-100">
+        <aside className="flex w-72 shrink-0 flex-col border-r border-line bg-surface-2">
+          <h2 className="border-b border-line px-4 py-3 text-sm font-medium text-content">
             Carpetas
           </h2>
           <nav aria-label="Carpetas" className="min-h-0 flex-1 overflow-y-auto p-2">
@@ -149,7 +149,7 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
           </nav>
         </aside>
 
-        <section className="flex w-96 shrink-0 min-h-0 flex-col border-r border-zinc-200 bg-white dark:border-zinc-800 dark:bg-black">
+        <section className="flex w-96 shrink-0 min-h-0 flex-col border-r border-line bg-surface">
           <FileList
             state={states[selected]}
             breadcrumb={breadcrumb(rootLabel, selected)}
@@ -161,7 +161,7 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
 
         <section
           aria-label="Transcripción"
-          className="flex min-h-0 min-w-0 flex-1 flex-col bg-white dark:bg-black"
+          className="flex min-h-0 min-w-0 flex-1 flex-col bg-surface"
         >
           <TranscriptPreview state={transcript} onRetry={reloadTranscript} />
         </section>
@@ -175,7 +175,7 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
         <>
           <section
             aria-label="Tareas"
-            className="flex h-[38dvh] shrink-0 border-t border-zinc-200 bg-white dark:border-zinc-800 dark:bg-black"
+            className="flex h-[38dvh] shrink-0 border-t border-line bg-surface"
           >
             <TaskTable
               state={drafts.state}
@@ -194,7 +194,7 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
               checked above is what the button below creates. */}
           <section
             aria-label="Envío a Linear"
-            className="shrink-0 border-t border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950"
+            className="shrink-0 border-t border-line bg-surface-2"
           >
             <PushPanel
               target={target}

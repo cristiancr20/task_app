@@ -29,7 +29,7 @@ export function ThemeToggle({ current }: Props) {
     <div
       role="radiogroup"
       aria-label="Tema"
-      className="flex shrink-0 items-center gap-0.5 rounded-md border border-zinc-300 p-0.5 dark:border-zinc-700"
+      className="flex shrink-0 items-center gap-0.5 rounded-md border border-line-strong p-0.5"
     >
       {THEMES.map((theme) => {
         const active = shown === theme
@@ -52,8 +52,8 @@ export function ThemeToggle({ current }: Props) {
             }
             className={`flex size-7 items-center justify-center rounded transition-colors ${
               active
-                ? 'bg-zinc-200 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-50'
-                : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-zinc-100'
+                ? 'bg-accent-wash text-accent'
+                : 'text-muted hover:bg-surface-2 hover:text-content'
             }`}
           >
             <Icon />

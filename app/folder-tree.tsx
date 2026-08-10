@@ -48,8 +48,8 @@ function TreeNode({ entry, depth, api }: { entry: FolderEntry; depth: number; ap
         style={indent}
         className={`flex items-center gap-0.5 rounded-md pr-1 text-sm transition-colors ${
           selected
-            ? 'bg-zinc-200 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100'
-            : 'text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-900'
+            ? 'bg-accent-wash text-content'
+            : 'text-content hover:bg-surface-2'
         }`}
       >
         {toggleable ? (
@@ -58,7 +58,7 @@ function TreeNode({ entry, depth, api }: { entry: FolderEntry; depth: number; ap
             onClick={() => api.onToggle(entry.relPath)}
             aria-expanded={expanded}
             aria-label={`${expanded ? 'Contraer' : 'Expandir'} ${entry.name}`}
-            className="flex size-5 shrink-0 items-center justify-center rounded text-zinc-500 hover:text-zinc-900 dark:text-zinc-500 dark:hover:text-zinc-100"
+            className="flex size-5 shrink-0 items-center justify-center rounded text-muted hover:text-content"
           >
             <Chevron open={expanded} />
           </button>
@@ -80,13 +80,13 @@ function TreeNode({ entry, depth, api }: { entry: FolderEntry; depth: number; ap
       {expanded ? (
         state?.status === 'error' ? (
           <div style={{ paddingLeft: `${(depth + 1) * 0.875 + 0.25}rem` }} className="py-1 pr-1">
-            <p role="alert" className="text-xs text-red-600 dark:text-red-400">
+            <p role="alert" className="text-xs text-danger">
               {state.message}
             </p>
             <button
               type="button"
               onClick={() => api.onRetry(entry.relPath)}
-              className="mt-1 rounded border border-zinc-300 px-2 py-0.5 text-xs font-medium hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+              className="mt-1 rounded border border-line-strong px-2 py-0.5 text-xs font-medium hover:bg-surface-2"
             >
               Reintentar
             </button>
@@ -94,7 +94,7 @@ function TreeNode({ entry, depth, api }: { entry: FolderEntry; depth: number; ap
         ) : state?.status === 'loading' ? (
           <p
             style={{ paddingLeft: `${(depth + 1) * 0.875 + 1.5}rem` }}
-            className="py-1 text-xs text-zinc-500 dark:text-zinc-400"
+            className="py-1 text-xs text-muted"
           >
             Cargando…
           </p>

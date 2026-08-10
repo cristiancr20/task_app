@@ -43,36 +43,36 @@ export function ContextFolderForm({ contextRoot, recentFolders }: Props) {
             autoComplete="off"
             aria-invalid={state.error !== null}
             aria-describedby={state.error ? 'folder-error' : undefined}
-            className="flex-1 rounded-md border border-zinc-300 bg-white px-3 py-2 font-mono text-sm text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-zinc-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100 dark:placeholder:text-zinc-600 dark:focus:border-zinc-500"
+            className="flex-1 rounded-md border border-line-strong bg-surface px-3 py-2 font-mono text-sm text-content outline-none placeholder:text-muted focus:border-accent"
           />
           <button
             type="submit"
             disabled={pending}
-            className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+            className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-on-accent transition-colors hover:bg-accent-soft disabled:opacity-50"
           >
             {pending ? 'Abriendo…' : 'Abrir'}
           </button>
         </div>
 
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">
+        <p className="text-sm text-muted">
           Ruta absoluta de la carpeta con tus transcripciones en Markdown.
         </p>
 
         {state.error ? (
-          <p id="folder-error" role="alert" className="text-sm text-red-600 dark:text-red-400">
+          <p id="folder-error" role="alert" className="text-sm text-danger">
             {state.error}
           </p>
         ) : null}
 
         {contextRoot ? (
-          <p className="text-sm text-zinc-600 dark:text-zinc-400">
+          <p className="text-sm text-muted">
             Carpeta activa:{' '}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
+            <code className="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-[0.9em]">
               {contextRoot}
             </code>
           </p>
         ) : (
-          <p className="text-sm text-zinc-600 dark:text-zinc-400">
+          <p className="text-sm text-muted">
             Todavía no hay ninguna carpeta configurada.
           </p>
         )}
@@ -95,13 +95,13 @@ export function ContextFolderForm({ contextRoot, recentFolders }: Props) {
                     aria-current={active ? 'true' : undefined}
                     className={`flex w-full items-center justify-between gap-3 rounded-md border px-3 py-2 text-left font-mono text-sm transition-colors disabled:opacity-50 ${
                       active
-                        ? 'border-zinc-900 bg-zinc-100 text-zinc-900 dark:border-zinc-300 dark:bg-zinc-800 dark:text-zinc-100'
-                        : 'border-transparent text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-900'
+                        ? 'border-accent bg-accent-wash text-content'
+                        : 'border-transparent text-muted hover:bg-surface-2'
                     }`}
                   >
                     <span className="truncate">{recent}</span>
                     {active ? (
-                      <span className="shrink-0 rounded-full bg-zinc-900 px-2 py-0.5 font-sans text-xs font-medium text-white dark:bg-zinc-100 dark:text-zinc-900">
+                      <span className="shrink-0 rounded-full bg-accent px-2 py-0.5 font-sans text-xs font-medium text-on-accent">
                         Activa
                       </span>
                     ) : null}

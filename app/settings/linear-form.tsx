@@ -61,7 +61,7 @@ export function LinearForm({ hasLinearApiKey }: Props) {
     <form action={formAction} className="flex flex-col gap-4">
       <div className="flex flex-col gap-1">
         <h2 className="text-sm font-medium">Linear</h2>
-        <p className="text-sm text-zinc-600 dark:text-zinc-400">
+        <p className="text-sm text-muted">
           La API key con la que la app creará las incidencias. Créala en Linear, en{' '}
           <span className="whitespace-nowrap">Settings → Security &amp; access → API keys</span>.
         </p>
@@ -80,15 +80,15 @@ export function LinearForm({ hasLinearApiKey }: Props) {
           placeholder={hasLinearApiKey ? '•••••••••• (guardada)' : 'lin_api_…'}
           spellCheck={false}
           autoComplete="off"
-          className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 font-mono text-sm text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-zinc-500 sm:max-w-sm dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100 dark:placeholder:text-zinc-600 dark:focus:border-zinc-500"
+          className="w-full rounded-md border border-line-strong bg-surface px-3 py-2 font-mono text-sm text-content outline-none placeholder:text-muted focus:border-accent sm:max-w-sm"
         />
 
-        <p className="text-sm text-zinc-600 dark:text-zinc-400">
+        <p className="text-sm text-muted">
           {hasLinearApiKey
             ? 'Hay una clave guardada. Escribe otra para reemplazarla. '
             : 'Necesitas una clave para crear incidencias en Linear. '}
           Se guarda <strong className="font-medium">sin cifrar</strong> en la carpeta local{' '}
-          <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
+          <code className="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-[0.9em]">
             .data
           </code>{' '}
           de este proyecto.
@@ -99,7 +99,7 @@ export function LinearForm({ hasLinearApiKey }: Props) {
         <button
           type="submit"
           disabled={pending}
-          className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+          className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-on-accent transition-colors hover:bg-accent-soft disabled:opacity-50"
         >
           {pending ? 'Guardando…' : 'Guardar'}
         </button>
@@ -109,7 +109,7 @@ export function LinearForm({ hasLinearApiKey }: Props) {
           onClick={runVerify}
           disabled={!canVerify || verifying}
           title={unsaved ? 'Guarda la clave antes de probarla.' : undefined}
-          className="rounded-md border border-zinc-300 px-3 py-2 text-sm font-medium transition-colors hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-900"
+          className="rounded-md border border-line-strong px-3 py-2 text-sm font-medium transition-colors hover:bg-surface-2 disabled:opacity-50"
         >
           {verifying ? 'Probando…' : 'Probar'}
         </button>
@@ -120,7 +120,7 @@ export function LinearForm({ hasLinearApiKey }: Props) {
             name="intent"
             value="clear-linear-key"
             disabled={pending}
-            className="rounded-md border border-zinc-300 px-3 py-2 text-sm font-medium transition-colors hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-900"
+            className="rounded-md border border-line-strong px-3 py-2 text-sm font-medium transition-colors hover:bg-surface-2 disabled:opacity-50"
           >
             Borrar
           </button>
@@ -128,25 +128,25 @@ export function LinearForm({ hasLinearApiKey }: Props) {
       </div>
 
       {state.error ? (
-        <p id="linear-error" role="alert" className="text-sm text-red-600 dark:text-red-400">
+        <p id="linear-error" role="alert" className="text-sm text-danger">
           {state.error}
         </p>
       ) : state.saved && !pending ? (
-        <p id="linear-saved" className="text-sm text-zinc-600 dark:text-zinc-400">
+        <p id="linear-saved" className="text-sm text-muted">
           Guardado.
         </p>
       ) : null}
 
       {unsaved ? (
-        <p id="linear-verify-hint" className="text-sm text-zinc-600 dark:text-zinc-400">
+        <p id="linear-verify-hint" className="text-sm text-muted">
           Guarda la clave para poder probarla.
         </p>
       ) : verify && 'workspace' in verify ? (
-        <p id="linear-verify-ok" className="text-sm text-green-700 dark:text-green-500">
+        <p id="linear-verify-ok" className="text-sm text-ok">
           Conectado al espacio de trabajo «{verify.workspace}».
         </p>
       ) : verify ? (
-        <p id="linear-verify-error" role="alert" className="text-sm text-red-600 dark:text-red-400">
+        <p id="linear-verify-error" role="alert" className="text-sm text-danger">
           {verify.error}
         </p>
       ) : null}

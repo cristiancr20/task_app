@@ -42,7 +42,7 @@ const PRIORITY_LABELS: Record<Priority, string> = {
 
 const CELL = 'align-top px-3 py-2'
 const FIELD =
-  'w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm text-zinc-900 outline-none focus:border-zinc-900 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100 dark:focus:border-zinc-300'
+  'w-full rounded-md border border-line-strong bg-surface px-2 py-1.5 text-sm text-content outline-none placeholder:text-muted focus:border-accent'
 
 /**
  * The bottom panel: what will be created in Linear, before it is created.
@@ -73,17 +73,17 @@ export function TaskTable({
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 px-5 py-3 dark:border-zinc-800">
+      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-3">
         <div className="flex items-baseline gap-3">
-          <h2 className="text-sm font-medium text-zinc-900 dark:text-zinc-100">Tareas</h2>
+          <h2 className="text-sm font-medium text-content">Tareas</h2>
           {rows.length > 0 ? (
-            <span className="text-xs text-zinc-500 dark:text-zinc-400">
+            <span className="text-xs text-muted">
               {selected} de {rows.length} seleccionada{rows.length === 1 ? '' : 's'}
             </span>
           ) : null}
           {/* Says out loud what «Generar tareas» is about to ask about. */}
           {changes.total > 0 ? (
-            <span className="text-xs text-amber-700 dark:text-amber-500">
+            <span className="text-xs text-warn">
               {describeChanges(changes)}
             </span>
           ) : null}
@@ -94,7 +94,7 @@ export function TaskTable({
             type="button"
             onClick={onAddRow}
             disabled={!state || busy}
-            className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium transition-colors hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-900"
+            className="rounded-md border border-line-strong px-3 py-1.5 text-sm font-medium transition-colors hover:bg-surface-2 disabled:opacity-50"
           >
             Añadir tarea
           </button>
@@ -102,7 +102,7 @@ export function TaskTable({
             type="button"
             onClick={onGenerate}
             disabled={!state || generating || busy}
-            className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+            className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent transition-colors hover:bg-accent-soft disabled:opacity-60"
           >
             {generating ? 'Generando…' : 'Generar tareas'}
           </button>
@@ -115,22 +115,22 @@ export function TaskTable({
         {state?.error ? (
           <p
             role="alert"
-            className="border-b border-red-200 bg-red-50 px-5 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300"
+            className="border-b border-danger/30 bg-danger-wash px-5 py-3 text-sm text-danger"
           >
             {state.error}
           </p>
         ) : null}
 
         {generating && rows.length === 0 ? (
-          <p className="px-5 py-6 text-sm text-zinc-500 dark:text-zinc-400">
+          <p className="px-5 py-6 text-sm text-muted">
             Extrayendo tareas de la transcripción…
           </p>
         ) : rows.length === 0 ? (
           <Empty extracted={state?.extracted ?? false} />
         ) : (
           <table className="w-full border-collapse text-left">
-            <thead className="sticky top-0 bg-zinc-50 text-xs text-zinc-500 dark:bg-zinc-950 dark:text-zinc-400">
-              <tr className="border-b border-zinc-200 dark:border-zinc-800">
+            <thead className="sticky top-0 bg-surface-2 text-xs text-muted">
+              <tr className="border-b border-line">
                 <th scope="col" className="w-10 px-3 py-2 font-medium">
                   <span className="sr-only">Incluir</span>
                 </th>
@@ -220,21 +220,21 @@ function ConfirmRegenerate({
       : `Se perderán ${changes.total} cambios manuales`
 
   return (
-    <div className="absolute inset-0 z-10 flex items-center justify-center bg-zinc-900/40 p-6 dark:bg-black/60">
+    <div className="absolute inset-0 z-10 flex items-center justify-center bg-scrim p-6">
       <div
         role="alertdialog"
         aria-modal="true"
         aria-labelledby="regenerate-title"
         aria-describedby="regenerate-body"
-        className="w-full max-w-md rounded-lg border border-zinc-200 bg-white p-5 shadow-lg dark:border-zinc-700 dark:bg-zinc-900"
+        className="w-full max-w-md rounded-lg border border-line bg-surface p-5 shadow-lg"
       >
         <h3
           id="regenerate-title"
-          className="text-sm font-medium text-zinc-900 dark:text-zinc-100"
+          className="text-sm font-medium text-content"
         >
           ¿Regenerar y descartar los cambios manuales?
         </h3>
-        <p id="regenerate-body" className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
+        <p id="regenerate-body" className="mt-2 text-sm text-muted">
           {`La nueva extracción reemplaza la tabla completa. ${lost} (${breakdown(changes)}).`}
         </p>
 
@@ -243,14 +243,14 @@ function ConfirmRegenerate({
             type="button"
             autoFocus
             onClick={onCancel}
-            className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
+            className="rounded-md border border-line-strong px-3 py-1.5 text-sm font-medium transition-colors hover:bg-surface-2"
           >
             Cancelar
           </button>
           <button
             type="button"
             onClick={onConfirm}
-            className="rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-red-700"
+            className="rounded-md bg-danger px-3 py-1.5 text-sm font-medium text-on-accent transition-colors hover:opacity-90"
           >
             Descartar y regenerar
           </button>
@@ -296,7 +296,7 @@ function Row({
   const label = row.title.trim() || 'tarea sin título'
 
   return (
-    <tr className={`border-b border-zinc-100 dark:border-zinc-900 ${dimmed}`}>
+    <tr className={`border-b border-line ${dimmed}`}>
       <td className={CELL}>
         <input
           type="checkbox"
@@ -304,7 +304,7 @@ function Row({
           onChange={(event) => onUpdate({ include: event.target.checked })}
           disabled={busy}
           aria-label={`Incluir ${label}`}
-          className="mt-2 h-4 w-4 accent-zinc-900 dark:accent-zinc-100"
+          className="mt-2 h-4 w-4 accent-accent"
         />
       </td>
 
@@ -348,11 +348,11 @@ function Row({
         </select>
       </td>
 
-      <td className={`${CELL} text-sm text-zinc-600 dark:text-zinc-400`}>
-        {row.mentioned ?? <span className="text-zinc-400 dark:text-zinc-600">—</span>}
+      <td className={`${CELL} text-sm text-muted`}>
+        {row.mentioned ?? <span className="text-muted opacity-70">—</span>}
       </td>
 
-      <td className={`${CELL} text-sm text-zinc-500 dark:text-zinc-400`}>
+      <td className={`${CELL} text-sm text-muted`}>
         {row.evidence ? (
           <q
             title={row.evidence}
@@ -361,7 +361,7 @@ function Row({
             {row.evidence}
           </q>
         ) : (
-          <span className="text-zinc-400 dark:text-zinc-600">Añadida manualmente</span>
+          <span className="text-muted opacity-70">Añadida manualmente</span>
         )}
       </td>
 
@@ -378,7 +378,7 @@ function Row({
           disabled={busy}
           aria-label={`Eliminar ${label}`}
           title="Eliminar"
-          className="mt-1 rounded-md border border-transparent px-2 py-1 text-sm text-zinc-500 transition-colors hover:border-red-300 hover:text-red-600 dark:text-zinc-400 dark:hover:border-red-900 dark:hover:text-red-400"
+          className="mt-1 rounded-md border border-transparent px-2 py-1 text-sm text-muted transition-colors hover:border-danger/40 hover:text-danger"
         >
           ✕
         </button>
@@ -397,11 +397,11 @@ function Row({
  */
 function RowStatus({ result }: { result: PushRowResult | undefined }) {
   if (!result) {
-    return <span className="text-zinc-400 dark:text-zinc-600">Pendiente</span>
+    return <span className="text-muted opacity-70">Pendiente</span>
   }
 
   if (result.state === 'creating') {
-    return <span className="text-zinc-500 dark:text-zinc-400">Creando…</span>
+    return <span className="text-muted">Creando…</span>
   }
 
   if (result.state === 'created') {
@@ -411,17 +411,17 @@ function RowStatus({ result }: { result: PushRowResult | undefined }) {
         href={result.issue.url}
         target="_blank"
         rel="noreferrer"
-        className="font-medium text-emerald-700 underline dark:text-emerald-400"
+        className="font-medium text-ok underline"
       >
         {label}
       </a>
     ) : (
-      <span className="font-medium text-emerald-700 dark:text-emerald-400">{label}</span>
+      <span className="font-medium text-ok">{label}</span>
     )
   }
 
   return (
-    <span title={result.error} className="block text-red-700 dark:text-red-400">
+    <span title={result.error} className="block text-danger">
       {result.error}
     </span>
   )
@@ -434,10 +434,10 @@ function RowStatus({ result }: { result: PushRowResult | undefined }) {
 function Empty({ extracted }: { extracted: boolean }) {
   return (
     <div className="px-5 py-6">
-      <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+      <p className="text-sm font-medium text-content">
         {extracted ? 'No se encontraron tareas en esta transcripción' : 'Aún no hay tareas'}
       </p>
-      <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+      <p className="mt-1 text-sm text-muted">
         {extracted
           ? 'La transcripción no contiene compromisos claros. Puedes añadir una tarea manualmente.'
           : 'Pulsa «Generar tareas» para extraerlas de la transcripción, o añade una manualmente.'}

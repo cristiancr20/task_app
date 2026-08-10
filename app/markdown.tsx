@@ -24,7 +24,7 @@ const HEADING_CLASS: Record<number, string> = {
   3: 'text-base font-semibold',
   4: 'text-sm font-semibold',
   5: 'text-sm font-medium',
-  6: 'text-sm font-medium text-zinc-600 dark:text-zinc-400',
+  6: 'text-sm font-medium text-muted',
 }
 
 function renderBlock(block: Block, key: number) {
@@ -34,7 +34,7 @@ function renderBlock(block: Block, key: number) {
       return (
         <Tag
           key={key}
-          className={`${HEADING_CLASS[block.level]} text-zinc-900 dark:text-zinc-100`}
+          className={`${HEADING_CLASS[block.level]} text-content`}
         >
           {renderInline(block.children)}
         </Tag>
@@ -54,7 +54,7 @@ function renderBlock(block: Block, key: number) {
       return (
         <pre
           key={key}
-          className="overflow-x-auto rounded-md bg-zinc-100 p-3 text-xs leading-relaxed dark:bg-zinc-900"
+          className="overflow-x-auto rounded-md bg-surface-2 p-3 text-xs leading-relaxed"
         >
           <code>{block.value}</code>
         </pre>
@@ -64,7 +64,7 @@ function renderBlock(block: Block, key: number) {
       return (
         <blockquote
           key={key}
-          className="flex flex-col gap-2 border-l-2 border-zinc-300 pl-4 text-zinc-600 dark:border-zinc-700 dark:text-zinc-400"
+          className="flex flex-col gap-2 border-l-2 border-line-strong pl-4 text-muted"
         >
           {block.children.map(renderBlock)}
         </blockquote>
@@ -90,7 +90,7 @@ function renderBlock(block: Block, key: number) {
     }
 
     case 'rule':
-      return <hr key={key} className="border-zinc-200 dark:border-zinc-800" />
+      return <hr key={key} className="border-line" />
   }
 }
 
@@ -115,7 +115,7 @@ function renderInline(nodes: InlineNode[]) {
         return (
           <code
             key={key}
-            className="rounded bg-black/[.06] px-1 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]"
+            className="rounded bg-surface-2 px-1 py-0.5 font-mono text-[0.9em]"
           >
             {node.value}
           </code>
@@ -123,7 +123,7 @@ function renderInline(nodes: InlineNode[]) {
 
       case 'strong':
         return (
-          <strong key={key} className="font-semibold text-zinc-900 dark:text-zinc-100">
+          <strong key={key} className="font-semibold text-content">
             {renderInline(node.children)}
           </strong>
         )
@@ -137,7 +137,7 @@ function renderInline(nodes: InlineNode[]) {
 
       case 'del':
         return (
-          <del key={key} className="text-zinc-500 line-through dark:text-zinc-500">
+          <del key={key} className="text-muted line-through">
             {renderInline(node.children)}
           </del>
         )
@@ -149,7 +149,7 @@ function renderInline(nodes: InlineNode[]) {
             href={node.href}
             target="_blank"
             rel="noreferrer noopener"
-            className="text-blue-600 underline underline-offset-2 hover:text-blue-500 dark:text-blue-400"
+            className="text-accent underline underline-offset-2 hover:text-accent-soft"
           >
             {renderInline(node.children)}
           </a>

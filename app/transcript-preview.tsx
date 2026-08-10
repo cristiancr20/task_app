@@ -22,20 +22,20 @@ export function TranscriptPreview({ state, onRetry }: Props) {
 
   if (state.status === 'loading') {
     return (
-      <p className="px-6 py-6 text-sm text-zinc-500 dark:text-zinc-400">Cargando transcripción…</p>
+      <p className="px-6 py-6 text-sm text-muted">Cargando transcripción…</p>
     )
   }
 
   if (state.status === 'error') {
     return (
       <div className="px-6 py-6">
-        <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+        <p role="alert" className="text-sm text-danger">
           {state.message}
         </p>
         <button
           type="button"
           onClick={onRetry}
-          className="mt-3 rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+          className="mt-3 rounded-md border border-line-strong px-3 py-1.5 text-sm font-medium transition-colors hover:bg-surface-2"
         >
           Reintentar
         </button>
@@ -53,9 +53,9 @@ function Loaded({ transcript }: { transcript: TranscriptView }) {
     // The header stays put and only the text scrolls, so a long transcript
     // never pushes the layout out of the viewport.
     <div className="flex min-h-0 flex-1 flex-col">
-      <header className="border-b border-zinc-200 px-6 py-4 dark:border-zinc-800">
-        <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">{meta.title}</h2>
-        <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-500 dark:text-zinc-400">
+      <header className="border-b border-line px-6 py-4">
+        <h2 className="text-base font-semibold text-content">{meta.title}</h2>
+        <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
           {meta.date ? <time dateTime={meta.date}>{formatDate(meta.date)}</time> : null}
           {meta.attendees.length > 0 ? <span>{meta.attendees.join(', ')}</span> : null}
           <span>~{NUMBER.format(meta.words)} palabras</span>
@@ -69,11 +69,11 @@ function Loaded({ transcript }: { transcript: TranscriptView }) {
         {history.length > 0 ? <ProcessedNotice history={history} /> : null}
 
         {body.trim() ? (
-          <article className="max-w-3xl text-zinc-700 dark:text-zinc-300">
+          <article className="max-w-3xl text-content">
             <Markdown source={body} />
           </article>
         ) : (
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+          <p className="text-sm text-muted">
             Este archivo no tiene contenido más allá de su frontmatter.
           </p>
         )}
@@ -97,9 +97,9 @@ function ProcessedNotice({ history }: { history: HistoryEntry[] }) {
     // landmark (the folder panel) and a second unlabelled one only adds noise.
     <div
       role="note"
-      className="mb-6 max-w-3xl rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 dark:border-amber-900 dark:bg-amber-950/40"
+      className="mb-6 max-w-3xl rounded-lg border border-warn/30 bg-warn-wash px-4 py-3"
     >
-      <p className="text-sm font-medium text-amber-900 dark:text-amber-200">
+      <p className="text-sm font-medium text-warn">
         {total === 1 ? '1 tarea creada' : `${NUMBER.format(total)} tareas creadas`}{' '}
         {history.length > 1
           ? `en ${history.length} envíos, el último el ${formatPushedAt(latest.pushedAt)}`
@@ -110,7 +110,7 @@ function ProcessedNotice({ history }: { history: HistoryEntry[] }) {
         <div key={key} className="mt-2">
           {/* With a single push the date is already in the line above. */}
           {history.length > 1 ? (
-            <p className="text-xs text-amber-800 dark:text-amber-300/80">
+            <p className="text-xs text-muted">
               {formatPushedAt(entry.pushedAt)}
             </p>
           ) : null}
@@ -121,7 +121,7 @@ function ProcessedNotice({ history }: { history: HistoryEntry[] }) {
                   href={issue.url}
                   target="_blank"
                   rel="noreferrer noopener"
-                  className="text-amber-900 underline underline-offset-2 hover:text-amber-700 dark:text-amber-200 dark:hover:text-amber-100"
+                  className="text-warn underline underline-offset-2 hover:text-content"
                 >
                   <span className="font-mono text-xs">{issue.identifier}</span>{' '}
                   <span>{issue.title}</span>
@@ -139,10 +139,10 @@ function NoSelection() {
   return (
     <div className="flex flex-1 items-center justify-center px-6 py-10 text-center">
       <div>
-        <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+        <p className="text-sm font-medium text-content">
           Elige un archivo para leerlo
         </p>
-        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+        <p className="mt-1 text-sm text-muted">
           Su contenido aparecerá aquí, junto con las tareas que ya hayas creado desde él.
         </p>
       </div>

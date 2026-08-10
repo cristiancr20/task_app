@@ -2,9 +2,12 @@
 
 /* The theme is a class on <html>, put there by the root layout from the
    TASKS_APP_THEME cookie (see lib/theme.ts). Redefining the `dark` variant is
-   what makes the `dark:` utilities already spread across the components answer
-   to that class: Tailwind's stock variant is `prefers-color-scheme` alone,
-   which no button can override.
+   what makes a `dark:` utility answer to that class: Tailwind's stock variant is
+   `prefers-color-scheme` alone, which no button can override.
+
+   Almost nothing in the markup needs it — the tokens below already carry both
+   themes through `light-dark()`. It stays defined for the rare case that has to
+   change more than a colour.
 
    Two branches, because «system» is a choice and not merely the absence of one:
    with no class on <html> the operating system still has to govern, exactly as
@@ -23,14 +26,58 @@
   }
 }
 
+/* ─── Colour system ─────────────────────────────────────────────────────────
+   The house vocabulary shared with the team's other apps (~/dev/gym,
+   portafolio-web, password_save): the same neutral ramp and the same state
+   scale, with one brand colour per app to tell them apart. Here it is teal —
+   gym is crimson, portafolio-web gold, password_save indigo.
+
+   Every token is declared ONCE with `light-dark(light, dark)`, and the side is
+   picked by `color-scheme`. That gives the three states without duplicating the
+   palette or a single `dark:` variant in the markup:
+
+     :root          color-scheme: light dark  → follows the operating system
+     :root.light    color-scheme: light       → light forced by the user
+     :root.dark     color-scheme: dark        → dark forced by the user
+
+   The accent carries one tone per theme because the same hex does not clear
+   contrast on both backgrounds: #0f766e on #ffffff gives 5.43:1 and #2dd4bf on
+   #0b0c0e gives 10.51:1 (AA asks for 4.5:1). Swapped, neither passes.
+
+   Mind --on-accent: in light it is white (5.43:1 over the teal), but in dark
+   white over #2dd4bf falls to 1.86:1, so the button's own text goes near-black
+   (#04231f, 8.91:1). Touch a tone and both have to be recomputed.
+   ─────────────────────────────────────────────────────────────────────────── */
 :root {
   /* Native widgets — scrollbars, form controls, the canvas behind the page —
      have no `dark:` class to follow; `color-scheme` is the only thing that
      steers them. It also picks the side of every `light-dark()` below. */
   color-scheme: light dark;
 
-  --background: light-dark(#ffffff, #0a0a0a);
-  --foreground: light-dark(#171717, #ededed);
+  --bg:          light-dark(#f7f8fa, #0b0c0e);
+  --surface:     light-dark(#ffffff, #16181d);
+  --surface-2:   light-dark(#f1f2f4, #1e2127);
+  --line:        light-dark(rgba(22, 24, 29, 0.10), rgba(255, 255, 255, 0.08));
+  --line-strong: light-dark(rgba(22, 24, 29, 0.18), rgba(255, 255, 255, 0.16));
+  --content:     light-dark(#16181d, #e6e7e9);
+  --muted:       light-dark(#5c6470, #9aa0a6);
+  --accent:      light-dark(#0f766e, #2dd4bf);
+  --accent-soft: light-dark(#0b5f59, #5eead4);
+  --accent-wash: light-dark(rgba(15, 118, 110, 0.08), rgba(45, 212, 191, 0.10));
+  --on-accent:   light-dark(#ffffff, #04231f);
+  --ok:          light-dark(#047857, #34d399);
+  --ok-wash:     light-dark(rgba(4, 120, 87, 0.10), rgba(52, 211, 153, 0.10));
+  --warn:        light-dark(#b45309, #fbbf24);
+  --warn-wash:   light-dark(rgba(180, 83, 9, 0.10), rgba(251, 191, 36, 0.10));
+  --danger:      light-dark(#b91c1c, #f87171);
+  --danger-wash: light-dark(rgba(185, 28, 28, 0.10), rgba(248, 113, 113, 0.10));
+  --info:        light-dark(#1d4ed8, #60a5fa);
+  --info-wash:   light-dark(rgba(29, 78, 216, 0.10), rgba(96, 165, 250, 0.10));
+
+  /* The veil behind a modal. It is the one surface that goes dark in BOTH
+     themes — `--content` inverts with the theme and would turn the light veil
+     white, which stops reading as «the page behind is out of reach». */
+  --scrim:       light-dark(rgba(22, 24, 29, 0.40), rgba(0, 0, 0, 0.60));
 }
 
 /* The user's choice, overriding the OS for both the native widgets and
@@ -43,15 +90,50 @@
   color-scheme: dark;
 }
 
+/* `inline` on purpose: the utilities (`bg-surface`, `text-muted`,
+   `border-line`, …) point at the variable instead of copying its value, so the
+   whole theme flips without a single `dark:` variant in the markup. */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-bg:          var(--bg);
+  --color-surface:     var(--surface);
+  --color-surface-2:   var(--surface-2);
+  --color-line:        var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-content:     var(--content);
+  --color-muted:       var(--muted);
+  --color-accent:      var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-wash: var(--accent-wash);
+  --color-on-accent:   var(--on-accent);
+  --color-ok:          var(--ok);
+  --color-ok-wash:     var(--ok-wash);
+  --color-warn:        var(--warn);
+  --color-warn-wash:   var(--warn-wash);
+  --color-danger:      var(--danger);
+  --color-danger-wash: var(--danger-wash);
+  --color-info:        var(--info);
+  --color-info-wash:   var(--info-wash);
+  --color-scrim:       var(--scrim);
+
+  --font-sans: var(--font-geist-sans), system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--bg);
+  color: var(--content);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background-color: var(--accent-wash);
+  color: var(--content);
+}
+
+/* One focus ring for the whole app. `:focus-visible` only, so it is not drawn
+   on a mouse click. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }

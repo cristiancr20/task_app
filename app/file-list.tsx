@@ -26,12 +26,12 @@ export function FileList({ state, breadcrumb, selectedFile, onSelectFile, onRetr
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <header className="flex items-baseline justify-between gap-4 border-b border-zinc-200 px-5 py-3 dark:border-zinc-800">
-        <h2 className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100" title={breadcrumb}>
+      <header className="flex items-baseline justify-between gap-4 border-b border-line px-5 py-3">
+        <h2 className="truncate text-sm font-medium text-content" title={breadcrumb}>
           {breadcrumb}
         </h2>
         {state?.status === 'ready' ? (
-          <span className="shrink-0 text-xs text-zinc-500 dark:text-zinc-400">
+          <span className="shrink-0 text-xs text-muted">
             {files.length === 1 ? '1 archivo' : `${NUMBER.format(files.length)} archivos`}
           </span>
         ) : null}
@@ -39,16 +39,16 @@ export function FileList({ state, breadcrumb, selectedFile, onSelectFile, onRetr
 
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
         {!state || state.status === 'loading' ? (
-          <p className="px-2 py-4 text-sm text-zinc-500 dark:text-zinc-400">Cargando archivos…</p>
+          <p className="px-2 py-4 text-sm text-muted">Cargando archivos…</p>
         ) : state.status === 'error' ? (
           <div className="px-2 py-4">
-            <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+            <p role="alert" className="text-sm text-danger">
               {state.message}
             </p>
             <button
               type="button"
               onClick={onRetry}
-              className="mt-3 rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+              className="mt-3 rounded-md border border-line-strong px-3 py-1.5 text-sm font-medium transition-colors hover:bg-surface-2"
             >
               Reintentar
             </button>
@@ -91,15 +91,15 @@ function FileRow({
       aria-current={selected ? 'true' : undefined}
       className={`w-full rounded-md border px-3 py-2.5 text-left transition-colors ${
         selected
-          ? 'border-zinc-900 bg-zinc-100 dark:border-zinc-300 dark:bg-zinc-800'
-          : 'border-transparent hover:bg-zinc-100 dark:hover:bg-zinc-900'
+          ? 'border-accent bg-accent-wash'
+          : 'border-transparent hover:bg-surface-2'
       }`}
     >
-      <span className="block truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">
+      <span className="block truncate text-sm font-medium text-content">
         {file.title}
       </span>
 
-      <span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-500 dark:text-zinc-400">
+      <span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
         {/* Date and attendees only exist for files that declare them. */}
         {file.date ? <time dateTime={file.date}>{formatDate(file.date)}</time> : null}
         {file.attendees.length > 0 ? <span>{attendeesLabel(file.attendees)}</span> : null}
@@ -112,10 +112,10 @@ function FileRow({
 function EmptyFolder({ hasSubfolders }: { hasSubfolders: boolean }) {
   return (
     <div className="px-2 py-10 text-center">
-      <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+      <p className="text-sm font-medium text-content">
         Esta carpeta no tiene archivos .md
       </p>
-      <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+      <p className="mt-1 text-sm text-muted">
         {hasSubfolders
           ? 'Elige una subcarpeta en el árbol de la izquierda.'
           : 'Añade transcripciones en Markdown o elige otra carpeta.'}
