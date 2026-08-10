@@ -3,10 +3,10 @@
   "sessionId": "aa2f0814-5602-46fb-af15-58d2ca621517",
   "status": "running",
   "startedAt": "2026-08-10T02:40:32.134Z",
-  "updatedAt": "2026-08-10T04:05:45.151Z",
-  "currentIteration": 15,
+  "updatedAt": "2026-08-10T04:16:36.596Z",
+  "currentIteration": 16,
   "maxIterations": 0,
-  "tasksCompleted": 15,
+  "tasksCompleted": 16,
   "isPaused": false,
   "agentPlugin": "claude",
   "trackerState": {
@@ -108,8 +108,8 @@
       {
         "id": "US-016",
         "title": "Linear client: create issue, with optional parent",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-017",
@@ -281,6 +281,16 @@
       "durationMs": 238153,
       "startedAt": "2026-08-10T03:58:55.309Z",
       "endedAt": "2026-08-10T04:02:53.462Z"
+    },
+    {
+      "iteration": 16,
+      "status": "completed",
+      "taskId": "US-016",
+      "taskTitle": "Linear client: create issue, with optional parent",
+      "taskCompleted": true,
+      "durationMs": 170603,
+      "startedAt": "2026-08-10T04:02:54.546Z",
+      "endedAt": "2026-08-10T04:05:45.149Z"
     }
   ],
   "skippedTaskIds": [],

@@ -14,7 +14,8 @@ export const metadata: Metadata = {
 }
 
 export default function Home() {
-  const contextRoot = getConfig().contextRoot?.trim()
+  const { contextRoot: root, linearApiKey, lastProjectId } = getConfig()
+  const contextRoot = root?.trim()
 
   if (!contextRoot) return <NoContextRoot />
 
@@ -41,7 +42,13 @@ export default function Home() {
         </Link>
       </header>
 
-      <Explorer contextRoot={contextRoot} />
+      {/* The stored Linear key stays on the server: the push panel only learns
+          whether there is one, so it can say why it cannot create anything. */}
+      <Explorer
+        contextRoot={contextRoot}
+        hasLinearApiKey={linearApiKey.trim() !== ''}
+        lastProjectId={lastProjectId}
+      />
     </div>
   )
 }

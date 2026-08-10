@@ -365,12 +365,13 @@
         "Verify in the browser at http://localhost:3300 that the project dropdown loads and the parent title prefills from the transcript"
       ],
       "priority": 17,
-      "passes": false,
+      "passes": true,
       "notes": "",
       "dependsOn": [
         "US-016",
         "US-013"
-      ]
+      ],
+      "completionNotes": "Completed by agent"
     },
     {
       "id": "US-018",
@@ -417,6 +418,6 @@
     }
   ],
   "metadata": {
-    "updatedAt": "2026-08-10T04:05:45.150Z"
+    "updatedAt": "2026-08-10T04:16:36.595Z"
   }
 }

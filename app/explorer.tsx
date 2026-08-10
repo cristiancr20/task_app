@@ -4,15 +4,22 @@ import { useEffect, useState } from 'react'
 
 import { FileList } from './file-list'
 import { FolderTree } from './folder-tree'
+import { PushPanel } from './push-panel'
 import { TaskTable } from './task-table'
 import { TranscriptPreview } from './transcript-preview'
 import { useFolderListings } from './use-folder-listings'
+import { usePushOptions } from './use-push-options'
+import { usePushTarget } from './use-push-target'
 import { useTaskDrafts } from './use-task-drafts'
 import { useTranscript } from './use-transcript'
 
 type Props = {
   /** Absolute path of the configured context folder, for the tree's root row. */
   contextRoot: string
+  /** Whether a Linear key is stored. The key itself never reaches the browser. */
+  hasLinearApiKey: boolean
+  /** The project pushed to last, so the panel starts on it. */
+  lastProjectId: string | null
 }
 
 /**
@@ -30,13 +37,22 @@ type Props = {
  * selection: `useTaskDrafts` keys them by path, so browsing to another note and
  * back shows the edits again.
  */
-export function Explorer({ contextRoot }: Props) {
+export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props) {
   const { states, open, reload } = useFolderListings()
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set(['']))
   const [selected, setSelected] = useState('')
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
   const { state: transcript, reload: reloadTranscript } = useTranscript(selectedFile)
   const drafts = useTaskDrafts(selectedFile)
+  // The destination is workspace-wide, so it is loaded once and outlives every
+  // selection; the parent options belong to one note and are keyed by path.
+  const target = usePushTarget({ hasLinearApiKey, lastProjectId })
+  const pushOptions = usePushOptions(selectedFile)
+
+  // The parent issue stands for the meeting, so its title starts as the note's
+  // own — and only until the user types, which is what the null means.
+  const meetingTitle = transcript?.status === 'ready' ? transcript.transcript.meta.title : ''
+  const parentTitle = pushOptions.options.parentTitle ?? meetingTitle
 
   // The root starts selected and expanded, so the first paint already shows its
   // files. `open` skips folders that have been asked for, so this runs once.
@@ -105,23 +121,43 @@ export function Explorer({ contextRoot }: Props) {
 
       {/* The table is the widest thing on the page, so it gets the full width
           under the three panels — and only exists once there is a file to
-          extract from. `h-[42dvh]` keeps the height definite, which is what
+          extract from. `h-[38dvh]` keeps the height definite, which is what
           lets both halves scroll on their own. */}
       {selectedFile ? (
-        <section
-          aria-label="Tareas"
-          className="flex h-[42dvh] shrink-0 border-t border-zinc-200 bg-white dark:border-zinc-800 dark:bg-black"
-        >
-          <TaskTable
-            state={drafts.state}
-            onGenerate={drafts.generate}
-            onConfirmGenerate={drafts.confirmGenerate}
-            onCancelGenerate={drafts.cancelGenerate}
-            onUpdateRow={drafts.updateRow}
-            onRemoveRow={drafts.removeRow}
-            onAddRow={drafts.addRow}
-          />
-        </section>
+        <>
+          <section
+            aria-label="Tareas"
+            className="flex h-[38dvh] shrink-0 border-t border-zinc-200 bg-white dark:border-zinc-800 dark:bg-black"
+          >
+            <TaskTable
+              state={drafts.state}
+              onGenerate={drafts.generate}
+              onConfirmGenerate={drafts.confirmGenerate}
+              onCancelGenerate={drafts.cancelGenerate}
+              onUpdateRow={drafts.updateRow}
+              onRemoveRow={drafts.removeRow}
+              onAddRow={drafts.addRow}
+            />
+          </section>
+
+          {/* The destination sits under the table it applies to: what is
+              checked above is what the button below creates. */}
+          <section
+            aria-label="Envío a Linear"
+            className="shrink-0 border-t border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950"
+          >
+            <PushPanel
+              target={target}
+              parent={{
+                create: pushOptions.options.createParent,
+                title: parentTitle,
+                onToggle: pushOptions.setCreateParent,
+                onTitleChange: pushOptions.setParentTitle,
+              }}
+              selectedTasks={(drafts.state?.rows ?? []).filter((row) => row.include).length}
+            />
+          </section>
+        </>
       ) : null}
     </div>
   )

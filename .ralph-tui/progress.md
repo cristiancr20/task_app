@@ -225,6 +225,38 @@ after each iteration and it's included in prompts for context.
   can be multi-line; an unprefixed second line escapes the quote). Missing fields drop
   out and an empty block is never appended. It is written in English, like the extracted
   tasks — the Spanish copy rule covers *our* UI, not the content pushed to Linear.
+- **Mutations are Server Actions; only the settings page calls `refresh()` after one.**
+  `saveLastProject` (`app/actions.ts`) persists the push panel's project without
+  refreshing: the explorer holds the selection in client state, so re-rendering the page
+  would cost a round trip to redraw what is already on screen. `refresh()` belongs to a
+  page that *reads* the mutated config on the server. A preference write also swallows its
+  error — a rejected promise in an `onChange` is an unhandled rejection over something
+  nobody asked to save.
+- **An input prefilled from async data stores `null` while untouched, never `''`.**
+  `PushOptions.parentTitle` is `string | null` and the panel renders
+  `parentTitle ?? meetingTitle`. The transcript is fetched after the first paint, so a
+  `useState(meta.title)` initialiser would capture an empty title forever; `null` tracks
+  the note as it loads and stops the instant the user types — including typing nothing,
+  which an `||` fallback would silently overwrite.
+- **The reason a button is disabled is one function returning one string.**
+  `pushBlockedBy(target, parent, selectedTasks)` in `app/push-panel.tsx` returns the first
+  blocker in the order the user has to fix them (no key → still loading → listing failed →
+  no project → no tasks checked → empty parent title), and that string is both the
+  button's `title` and the copy beside it. Asking for a project while the key is missing
+  is noise, and two independent conditions rendering two messages is how a form starts
+  contradicting itself.
+- **Client state that is workspace-wide is not keyed by path; state that describes one
+  note is.** `usePushTarget` holds the team/project for the whole page (loaded once —
+  a workspace does not change while a note is curated) and remembers it in the config,
+  while `usePushOptions` keys «Crear tarea padre» and its title by path like the drafts,
+  because the panel is not unmounted when the selection changes and one meeting's parent
+  title must never be offered for the next one.
+- **Verifying a client-rendered panel needs no Playwright install.** Node's global
+  `WebSocket` drives Chrome over CDP: launch
+  `--headless=new --remote-debugging-port=<p>`, read `/json/list`, then `Runtime.evaluate`.
+  Setting a React-controlled input from there requires the native value setter
+  (`Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, v)`)
+  before dispatching `input`/`change`, or React never sees the change.
 
 ---
 
@@ -1208,3 +1240,86 @@ count over.
   TypeScript parameter properties, `constructor(readonly cause?: unknown)`), so driving a
   lib module against a stub needs a `tsc --outDir /tmp/... ` compile first.
 ---
+
+## 2026-08-09 - US-017 Push panel: project selector and parent task option
+
+**What was implemented**
+- `lib/linear-client.ts`: `fetchLinearTeams()`, the browser's side of
+  `GET /api/linear/projects`, following the `*-client.ts` contract — the route's own
+  Spanish message travels as the `Error`'s message, a well-formed body of the wrong shape
+  answers «El servidor devolvió una respuesta inesperada», and `LinearTeam` arrives as a
+  *type-only* import so `lib/linear.ts` never reaches the client bundle.
+- `app/actions.ts`: `saveLastProject(projectId)`, a Server Action persisting
+  `lastProjectId`. No `refresh()` (see learnings) and a swallowed write error, because a
+  remembered preference must not become an unhandled rejection in an `onChange`.
+- `app/use-push-target.ts`: `usePushTarget({ hasLinearApiKey, lastProjectId })` — loads the
+  workspace once per page load, derives the initial selection (stored project if the key
+  can still see it; otherwise the single team when there is only one), filters the project
+  list by team, and persists every explicit project pick. `status` is
+  `no-key | loading | ready | error`, so «there is no key» is not rendered as a failure.
+- `app/use-push-options.ts`: `usePushOptions(relPath)` — `createParent` (default `true`)
+  and `parentTitle`, keyed by path like the drafts.
+- `app/push-panel.tsx`: the panel under the table. Team dropdown only when the workspace
+  has more than one team, project dropdown, «Crear tarea padre» + its title input, and the
+  button with `pushBlockedBy` deciding the single reason it is disabled — shown next to it
+  (plus «Ir a ajustes» with no key, «Reintentar» on a failed listing).
+- `app/explorer.tsx` / `app/page.tsx`: the panel wired under the table, with the page
+  passing `hasLinearApiKey` (never the key) and `lastProjectId` from `getConfig()`. The
+  table drops to `h-[38dvh]` to make room.
+
+**Files changed**
+- New: `lib/linear-client.ts`, `app/actions.ts`, `app/use-push-target.ts`,
+  `app/use-push-options.ts`, `app/push-panel.tsx`
+- Modified: `app/explorer.tsx`, `app/page.tsx`
+
+**Verification**
+- `pnpm typecheck` passes. `pnpm build` passes and its fs-tracing warnings still show only
+  App Route + Server Component traces — no Client Component trace, so neither the store nor
+  `lib/linear.ts` leaked into the bundle through the new Server Action import.
+- Driven in real Chrome over CDP at `http://localhost:3300` against a stub Linear GraphQL
+  server (`LINEAR_API_URL`) and a scratch `.data/config.json`:
+  - Two teams, `lastProjectId: proj-b2` → team dropdown present, team **and** project
+    preselected, «Crear tarea padre» checked, parent title = «Sync semanal de producto»
+    (the transcript's title), button disabled: «Marca al menos una tarea para crearla.»
+  - «Añadir tarea» → button enabled, note reads «1 tarea bajo una tarea padre».
+  - Changing team → project cleared, options are the new team's, reason becomes
+    «Selecciona el proyecto de destino.»; picking a project wrote
+    `"lastProjectId": "proj-a1"` to the config, and a reload came back on it.
+  - One-team workspace → no team dropdown, its projects listed straight away.
+  - No key → «No hay ninguna API key de Linear guardada.» + «Ir a ajustes» link.
+  - Stub killed → «No se pudo conectar con Linear…» + «Reintentar».
+  - Emptying the parent title blocks the push; unchecking «Crear tarea padre» hides the
+    input and unblocks it.
+  - Parent title is per transcript: edited on note A, note B still prefills with its own
+    title, returning to A shows the edit.
+  - Panel fully visible with no page scroll at 1440×900, 1280×700 and 1024×640.
+- The scratch `.data/`, the fixtures and the stub were removed afterwards; `.data/` did not
+  exist before this run and does not exist after it.
+
+**Learnings**
+- A Server Action is the right shape for a *preference* mutation, but the settings-page rule
+  «call `refresh()` after a successful mutation» does not carry over: the explorer holds the
+  selection in client state, so refreshing would cost a round trip to re-render something
+  already on screen. `refresh()` is for a page that *reads* the mutated config on the server.
+- Prefilling an input from data that arrives asynchronously needs `null` (untouched) as a
+  third state, not `''`. The transcript is fetched after the first paint, so a
+  `useState(meta.title)` initialiser captures an empty title forever; `parentTitle ?? title`
+  tracks the note as it loads and stops tracking the moment the user types — including when
+  they type nothing, which an `||` fallback would silently overwrite.
+- «The last project is saved whenever it changes» is not the same as «`projectId` changed».
+  Changing team also clears the project, and persisting that would erase the memory of a
+  perfectly good choice — only an explicit `selectProject` writes to the config.
+- Disabling a button with three possible causes wants one function returning *the* reason,
+  ordered by what has to be fixed first. Asking for a project while the key is missing, or
+  while the listing is still in flight, is noise; `pushBlockedBy` returns a single string
+  that is both the button's `title` and the text next to it, so there is one source for
+  «why can't I press this».
+- Chrome is drivable over CDP from plain `node` (Node 26 has a global `WebSocket`), so a
+  browser check of a client-rendered panel needs no Playwright install: launch
+  `--headless=new --remote-debugging-port`, read `/json/list`, then `Runtime.evaluate`.
+  Setting a React-controlled input from the console needs the native value setter
+  (`Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(...)`)
+  before dispatching the event, or React sees no change.
+- The Next dev-tools indicator sits in the bottom-left corner and overlaps the first control
+  of a full-width bottom panel. It is dev-only, but it is worth knowing before reading it as
+  a layout bug.
