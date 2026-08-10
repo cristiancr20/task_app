@@ -164,13 +164,30 @@ after each iteration and it's included in prompts for context.
   the only place a request becomes a path.
 - **The task table's drafts are keyed by path and live in `Explorer`, not in the table.**
   `useTaskDrafts(relPath)` (`app/use-task-drafts.ts`) holds a
-  `Record<path, { rows, generating, error, extracted }>` for every transcript visited
+  `Record<path, { rows, baseline, generating, error, extracted, confirming }>` for every transcript visited
   since the page loaded, so browsing to another note and back shows the edits again. A
   row is `ExtractedTask & { id, include }` — `id` is a page-lifetime counter, `include`
   starts `true`. Unlike `useTranscript`, an extraction is **never** re-run on selection:
   it costs minutes and money, so it only happens on «Generar tareas». A failure patches
   `{ generating, error }` and leaves `rows` alone — the table is what the user has been
   curating and clearing it on error is the bug this rule exists to prevent.
+- **«Dirty» is a diff against a baseline, never a boolean flipped by an onChange.**
+  `TaskDraftState.baseline` is the rows exactly as the last extraction returned them, and
+  `countManualChanges(state)` (`app/use-task-drafts.ts`) diffs `rows` against it by `id`:
+  rows only in `rows` are added, rows only in `baseline` are removed, rows in both that
+  differ in any user-visible field (title, description, priority, mentioned, evidence,
+  `include`) are edited. This is what lets the confirmation *name a number* — and the
+  number counts rows, not keystrokes, so it is one the user can check against the table.
+  It also self-heals: typing a character and deleting it again leaves the count at zero,
+  which a flag never does. The baseline is replaced only by an extraction that returned
+  something, so a failed regeneration neither clears the rows nor inflates the count.
+- **A destructive action confirms with per-path state, not a component-local one.**
+  `confirming` lives in the drafts map next to `rows`, because `TaskTable` is *not*
+  unmounted when the selection changes — a `useState` inside it would carry a pending
+  confirmation over to the next file and offer to discard the wrong table. Keyed by path,
+  switching files hides the dialog and coming back restores it, matching the drafts.
+  «Cancelar» only clears that flag: nothing else in the state is touched, which is the
+  literal reading of «leaves the current table untouched».
 - **Client → route helpers all read the same.** `lib/browse-client.ts`,
   `lib/transcript-client.ts` and `lib/extract-client.ts` each wrap one route, throw an
   `Error` carrying the route's own Spanish message, and answer «El servidor devolvió una
@@ -977,4 +994,74 @@ Ollama extractor.
   (there is no local `playwright` dependency).
 - Also: the inline error clears the instant a retry starts, so waiting for the alert to
   disappear proves nothing about the retry. Wait for the *rows* to change instead.
+---
+
+## 2026-08-09 - US-014
+
+**What was implemented** — the regenerate guard. «Generar tareas» on a table that has
+been edited by hand now opens a confirmation naming how many manual changes it would
+discard; cancelling does nothing at all, confirming runs the extraction and starts the
+count over.
+
+- `app/use-task-drafts.ts`: `TaskDraftState` gains `baseline` (the rows as the last
+  extraction returned them) and `confirming`. `countManualChanges(state)` diffs `rows`
+  against `baseline` by row id into `{ edited, added, removed, total }`. `generate()` is
+  now the guard — zero changes extracts straight away, anything else just sets
+  `confirming` — and the extraction itself moved into a private `run(path)` shared by
+  `generate()` and the new `confirmGenerate()`; `cancelGenerate()` clears the flag and
+  nothing else. A successful extraction writes `rows` *and* `baseline` from the same
+  array, so the count resets to 0; a failed one still patches only `{ generating, error }`.
+- `app/task-table.tsx`: an amber «N cambios manuales» badge in the header next to the
+  selection counter, and `<ConfirmRegenerate>` — a `role="alertdialog"` overlay inside the
+  panel (the container is now `relative`) with «Cancelar» (autofocused, also bound to
+  Escape) and a red «Descartar y regenerar». Copy: «La nueva extracción reemplaza la tabla
+  completa. Se perderán 3 cambios manuales (1 editada, 1 añadida, 1 eliminada).»
+- `app/explorer.tsx`: passes `onConfirmGenerate` / `onCancelGenerate` through.
+
+**Files changed**
+- `app/use-task-drafts.ts`, `app/task-table.tsx`, `app/explorer.tsx` (all modified)
+
+**Verification**
+- `pnpm typecheck` passes. `pnpm build` passes; its fs-tracing warnings still list only
+  App Route + Server Component traces, so nothing node-only leaked into the client bundle.
+  (There is no `lint` script in `package.json` — `pnpm lint` falls through to an unrelated
+  global binary, so `typecheck` + `build` are the gates.)
+- Driven in a real browser at `http://localhost:3300` (Playwright + Chromium) against the
+  dev server with `OLLAMA_URL` pointed at a stub that can switch between two different
+  task sets and counts how many extraction calls it received — 30 assertions, all passing:
+  first extraction on a clean table shows no dialog and fires exactly one call; editing a
+  title raises the «1 cambio manual» badge; pressing the button then opens the dialog with
+  «Se perderá 1 cambio manual (1 editada)» *without* calling the provider; «Cancelar»
+  closes it leaving the edited title, both rows, the badge and the call count untouched;
+  deleting a row + adding one + unchecking a checkbox reads «3 cambios manuales» and
+  «(1 editada, 1 añadida, 1 eliminada)»; Escape cancels like the button; confirming fires
+  one call, replaces the two rows with the stub's three new ones, clears the badge and
+  shows «3 de 3 seleccionadas»; regenerating again with nothing edited runs with no
+  dialog; and with a dialog open, switching to the other transcript hides it (that file
+  shows «Aún no hay tareas») while coming back restores both the dialog and the edit.
+- The scratch `.data/config.json` and the `/tmp` fixtures were removed afterwards; `.data/`
+  did not exist before this run and does not exist after it.
+
+**Learnings**
+- Counting changes by diffing against a baseline beats a `dirty` boolean for the reason
+  the AC exists: the confirmation has to *name a number*, and a flag can only say «some».
+  The diff is also self-correcting — typing a character and undoing it goes back to zero.
+- Count rows, not edits. `onChange` fires per keystroke, so an incrementing counter would
+  offer to discard «47 cambios» for one retyped title and the user would have no way to
+  check the number against what is on screen.
+- `include` has to count as an edit even though it is not one of the model's fields.
+  Unchecking rows is the curation the panel exists for, and a regenerate wipes it exactly
+  like a retyped title does.
+- The `confirming` flag belongs in the per-path state, not in `TaskTable`: the table stays
+  mounted across a selection change (only `selectedFile` changes), so component-local
+  state would show a confirmation for file A while file B's rows are on screen.
+- `run(path)` takes the path as an argument instead of closing over `relPath`. Both entry
+  points into it already know the path, and it keeps the «the answer is written under the
+  path it was asked for» rule from US-013 intact for the confirmed regeneration too.
+- JSX gotcha met while writing the plural: text and an expression separated by a newline
+  have the whitespace stripped, so `manual{n === 1 ? '' : 'es'}` across two lines happens
+  to work but reads as a bug. Building the sentence in a helper and interpolating one
+  string is the version that survives a formatter.
+- Playwright: `getByText('1 cambio manual')` also matches the dialog's «Se perderá 1
+  cambio manual», so badge assertions are only trustworthy while the dialog is closed.
 ---

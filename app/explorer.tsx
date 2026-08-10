@@ -115,6 +115,8 @@ export function Explorer({ contextRoot }: Props) {
           <TaskTable
             state={drafts.state}
             onGenerate={drafts.generate}
+            onConfirmGenerate={drafts.confirmGenerate}
+            onCancelGenerate={drafts.cancelGenerate}
             onUpdateRow={drafts.updateRow}
             onRemoveRow={drafts.removeRow}
             onAddRow={drafts.addRow}

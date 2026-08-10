@@ -1,13 +1,22 @@
 'use client'
 
+import { useEffect } from 'react'
+
 import { PRIORITIES, type Priority } from '@/lib/extractors/task'
 
-import type { TaskDraft, TaskDraftState } from './use-task-drafts'
+import {
+  countManualChanges,
+  type ManualChanges,
+  type TaskDraft,
+  type TaskDraftState,
+} from './use-task-drafts'
 
 type Props = {
   /** The selected file's drafts, or undefined when no file is selected. */
   state: TaskDraftState | undefined
   onGenerate: () => void
+  onConfirmGenerate: () => void
+  onCancelGenerate: () => void
   onUpdateRow: (id: string, changes: Partial<TaskDraft>) => void
   onRemoveRow: (id: string) => void
   onAddRow: () => void
@@ -34,19 +43,34 @@ const FIELD =
  * those would defeat the point: they are the proof the task is real, and they
  * travel to Linear as the traceability block.
  */
-export function TaskTable({ state, onGenerate, onUpdateRow, onRemoveRow, onAddRow }: Props) {
+export function TaskTable({
+  state,
+  onGenerate,
+  onConfirmGenerate,
+  onCancelGenerate,
+  onUpdateRow,
+  onRemoveRow,
+  onAddRow,
+}: Props) {
   const rows = state?.rows ?? []
   const selected = rows.filter((row) => row.include).length
   const generating = state?.generating ?? false
+  const changes = countManualChanges(state)
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="relative flex min-h-0 flex-1 flex-col">
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 px-5 py-3 dark:border-zinc-800">
         <div className="flex items-baseline gap-3">
           <h2 className="text-sm font-medium text-zinc-900 dark:text-zinc-100">Tareas</h2>
           {rows.length > 0 ? (
             <span className="text-xs text-zinc-500 dark:text-zinc-400">
               {selected} de {rows.length} seleccionada{rows.length === 1 ? '' : 's'}
+            </span>
+          ) : null}
+          {/* Says out loud what «Generar tareas» is about to ask about. */}
+          {changes.total > 0 ? (
+            <span className="text-xs text-amber-700 dark:text-amber-500">
+              {describeChanges(changes)}
             </span>
           ) : null}
         </div>
@@ -131,8 +155,102 @@ export function TaskTable({ state, onGenerate, onUpdateRow, onRemoveRow, onAddRo
           </table>
         )}
       </div>
+
+      {state?.confirming ? (
+        <ConfirmRegenerate
+          changes={changes}
+          onConfirm={onConfirmGenerate}
+          onCancel={onCancelGenerate}
+        />
+      ) : null}
     </div>
   )
+}
+
+/**
+ * The guard in front of a second extraction: it names what is about to be lost,
+ * because the model's answer replaces the whole table and the edits are the
+ * only thing on the page that cannot be recovered by pressing the button again.
+ *
+ * Cancelling does nothing at all — no state beyond the flag that opened this is
+ * touched, which is what «leaves the current table untouched» means.
+ */
+function ConfirmRegenerate({
+  changes,
+  onConfirm,
+  onCancel,
+}: {
+  changes: ManualChanges
+  onConfirm: () => void
+  onCancel: () => void
+}) {
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') onCancel()
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [onCancel])
+
+  const lost =
+    changes.total === 1
+      ? 'Se perderá 1 cambio manual'
+      : `Se perderán ${changes.total} cambios manuales`
+
+  return (
+    <div className="absolute inset-0 z-10 flex items-center justify-center bg-zinc-900/40 p-6 dark:bg-black/60">
+      <div
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="regenerate-title"
+        aria-describedby="regenerate-body"
+        className="w-full max-w-md rounded-lg border border-zinc-200 bg-white p-5 shadow-lg dark:border-zinc-700 dark:bg-zinc-900"
+      >
+        <h3
+          id="regenerate-title"
+          className="text-sm font-medium text-zinc-900 dark:text-zinc-100"
+        >
+          ¿Regenerar y descartar los cambios manuales?
+        </h3>
+        <p id="regenerate-body" className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
+          {`La nueva extracción reemplaza la tabla completa. ${lost} (${breakdown(changes)}).`}
+        </p>
+
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            type="button"
+            autoFocus
+            onClick={onCancel}
+            className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-red-700"
+          >
+            Descartar y regenerar
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/** «3 cambios manuales», for the header. */
+function describeChanges(changes: ManualChanges): string {
+  return changes.total === 1 ? '1 cambio manual' : `${changes.total} cambios manuales`
+}
+
+/** «2 editadas, 1 añadida», so the number is checkable against the table. */
+function breakdown(changes: ManualChanges): string {
+  const parts: string[] = []
+  if (changes.edited) parts.push(`${changes.edited} editada${changes.edited === 1 ? '' : 's'}`)
+  if (changes.added) parts.push(`${changes.added} añadida${changes.added === 1 ? '' : 's'}`)
+  if (changes.removed)
+    parts.push(`${changes.removed} eliminada${changes.removed === 1 ? '' : 's'}`)
+  return parts.join(', ')
 }
 
 function Row({

@@ -302,11 +302,12 @@
         "Verify in the browser at http://localhost:3300 that editing a row then regenerating prompts for confirmation"
       ],
       "priority": 14,
-      "passes": false,
+      "passes": true,
       "notes": "",
       "dependsOn": [
         "US-013"
-      ]
+      ],
+      "completionNotes": "Completed by agent"
     },
     {
       "id": "US-015",
@@ -414,6 +415,6 @@
     }
   ],
   "metadata": {
-    "updatedAt": "2026-08-10T03:51:29.807Z"
+    "updatedAt": "2026-08-10T03:58:54.212Z"
   }
 }

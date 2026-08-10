@@ -18,15 +18,83 @@ export type TaskDraft = ExtractedTask & {
 /** What is known about one transcript's tasks. */
 export type TaskDraftState = {
   rows: TaskDraft[]
+  /**
+   * The rows exactly as the last extraction returned them. Never edited, so the
+   * distance between it and `rows` *is* the list of manual changes a regenerate
+   * would throw away. Empty before the first extraction, which makes rows added
+   * by hand beforehand count as changes too — regenerating discards those all
+   * the same.
+   */
+  baseline: TaskDraft[]
   /** An extraction is in flight for this file. */
   generating: boolean
   /** Message of the last failed extraction. The rows are left untouched. */
   error: string | null
   /** An extraction finished, so «ninguna tarea» means the model found none. */
   extracted: boolean
+  /** «Generar tareas» is waiting for the user to accept losing their edits. */
+  confirming: boolean
 }
 
-const EMPTY: TaskDraftState = { rows: [], generating: false, error: null, extracted: false }
+const EMPTY: TaskDraftState = {
+  rows: [],
+  baseline: [],
+  generating: false,
+  error: null,
+  extracted: false,
+  confirming: false,
+}
+
+/** How far the table has drifted from the last extraction, in rows. */
+export type ManualChanges = {
+  edited: number
+  added: number
+  removed: number
+  /** Rows the user touched in any way — what a regenerate would discard. */
+  total: number
+}
+
+const NO_CHANGES: ManualChanges = { edited: 0, added: 0, removed: 0, total: 0 }
+
+/**
+ * The manual changes since the last extraction, counted in rows rather than in
+ * keystrokes: a title typed one character at a time is one edited row, and the
+ * number has to be one the user recognises before agreeing to lose it.
+ *
+ * Unchecking «incluir» counts as an edit. It is curation work like any other,
+ * and a regenerate wipes it just the same.
+ */
+export function countManualChanges(state: TaskDraftState | undefined): ManualChanges {
+  if (!state) return NO_CHANGES
+
+  const original = new Map(state.baseline.map((row) => [row.id, row]))
+  let edited = 0
+  let added = 0
+  let kept = 0
+
+  for (const row of state.rows) {
+    const before = original.get(row.id)
+    if (!before) added += 1
+    else {
+      kept += 1
+      if (!sameDraft(before, row)) edited += 1
+    }
+  }
+
+  const removed = state.baseline.length - kept
+  return { edited, added, removed, total: edited + added + removed }
+}
+
+function sameDraft(a: TaskDraft, b: TaskDraft): boolean {
+  return (
+    a.title === b.title &&
+    a.description === b.description &&
+    a.priority === b.priority &&
+    a.mentioned === b.mentioned &&
+    a.evidence === b.evidence &&
+    a.include === b.include
+  )
+}
 
 /** Row keys only have to be unique within the page's lifetime. */
 let sequence = 0
@@ -44,7 +112,12 @@ const nextId = () => `row-${++sequence}`
 export function useTaskDrafts(relPath: string | null): {
   /** The selected file's drafts, or undefined when no file is selected. */
   state: TaskDraftState | undefined
+  /** «Generar tareas»: extracts, or asks first when there are manual changes. */
   generate: () => void
+  /** «Descartar y regenerar» in the confirmation. */
+  confirmGenerate: () => void
+  /** «Cancelar» in the confirmation — the table is left exactly as it was. */
+  cancelGenerate: () => void
   updateRow: (id: string, changes: Partial<TaskDraft>) => void
   removeRow: (id: string) => void
   addRow: () => void
@@ -65,26 +138,54 @@ export function useTaskDrafts(relPath: string | null): {
     [patch, relPath],
   )
 
+  const run = useCallback(
+    (path: string) => {
+      patch(path, (prev) => ({ ...prev, generating: true, error: null, confirming: false }))
+
+      // The answer is written under the path it was asked for, so a slow
+      // extraction never lands on the file the user has moved on to.
+      extractTasks(path).then(
+        (tasks) => {
+          // The new rows *are* the new baseline, so an accepted regeneration
+          // starts the count over at zero.
+          const rows = tasks.map(toDraft)
+          patch(path, () => ({
+            rows,
+            baseline: rows,
+            generating: false,
+            error: null,
+            extracted: true,
+            confirming: false,
+          }))
+        },
+        // The previous table survives a failure: the message says what went
+        // wrong, and rows the user already edited are not collateral damage —
+        // neither are the changes counted against them, since `baseline` is
+        // only replaced by an extraction that actually returned something.
+        (err: unknown) =>
+          patch(path, (prev) => ({ ...prev, generating: false, error: errorMessage(err) })),
+      )
+    },
+    [patch],
+  )
+
   const generate = useCallback(() => {
     if (!relPath) return
-    patch(relPath, (prev) => ({ ...prev, generating: true, error: null }))
+    // Nothing curated yet — asking would be noise, so the extraction just runs.
+    if (countManualChanges(byPath[relPath]).total === 0) {
+      run(relPath)
+      return
+    }
+    patch(relPath, (prev) => ({ ...prev, confirming: true }))
+  }, [byPath, patch, relPath, run])
 
-    // The answer is written under the path it was asked for, so a slow
-    // extraction never lands on the file the user has moved on to.
-    extractTasks(relPath).then(
-      (tasks) =>
-        patch(relPath, () => ({
-          rows: tasks.map(toDraft),
-          generating: false,
-          error: null,
-          extracted: true,
-        })),
-      // The previous table survives a failure: the message says what went
-      // wrong, and rows the user already edited are not collateral damage.
-      (err: unknown) =>
-        patch(relPath, (prev) => ({ ...prev, generating: false, error: errorMessage(err) })),
-    )
-  }, [patch, relPath])
+  const confirmGenerate = useCallback(() => {
+    if (relPath) run(relPath)
+  }, [relPath, run])
+
+  const cancelGenerate = useCallback(() => {
+    patchSelected((prev) => ({ ...prev, confirming: false }))
+  }, [patchSelected])
 
   const updateRow = useCallback(
     (id: string, changes: Partial<TaskDraft>) => {
@@ -110,6 +211,8 @@ export function useTaskDrafts(relPath: string | null): {
   return {
     state: relPath ? (byPath[relPath] ?? EMPTY) : undefined,
     generate,
+    confirmGenerate,
+    cancelGenerate,
     updateRow,
     removeRow,
     addRow,
