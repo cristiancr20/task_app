@@ -35,6 +35,30 @@ export function pathParam(request: Request): string {
   return new URL(request.url).searchParams.get('path')?.trim() ?? ''
 }
 
+/**
+ * The `path` field of a JSON request body, for the routes that take one by
+ * `POST`. Unlike `pathParam` there is no meaningful default: a body without a
+ * usable `path` is a bad request, not a request for the root.
+ */
+export async function pathFromBody(request: Request): Promise<string> {
+  let payload: unknown
+  try {
+    payload = await request.json()
+  } catch {
+    throw new HttpError(400, 'El cuerpo de la petición no es JSON válido.')
+  }
+
+  const relPath =
+    typeof payload === 'object' && payload !== null
+      ? (payload as { path?: unknown }).path
+      : undefined
+
+  if (typeof relPath !== 'string' || !relPath.trim()) {
+    throw new HttpError(400, 'Falta el campo «path» con la ruta del archivo.')
+  }
+  return relPath.trim()
+}
+
 export function jsonError(status: number, message: string): Response {
   return Response.json({ error: message }, { status })
 }

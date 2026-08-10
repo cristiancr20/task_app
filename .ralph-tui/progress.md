@@ -149,6 +149,19 @@ after each iteration and it's included in prompts for context.
   transcript nobody read) and `max_tokens` (thinking and the JSON share one budget, so
   a long transcript can truncate the answer mid-object). The Messages request also
   carries no `temperature`/`top_p`/`top_k` — current models reject all three with 400.
+- **The provider is chosen server-side, in `app/api/extract/route.ts`, never sent by the
+  browser.** `POST /api/extract` takes only `{ path }`; which extractor runs, with which
+  model and which key, comes from `getConfig()`. The split of statuses is the rule to
+  keep: *missing configuration* is a 400 raised by the route before any call leaves the
+  machine (no Claude key, no Ollama model), while anything the provider itself refuses
+  arrives as `ExtractionError` and `describeError` turns it into a 502 carrying the
+  provider's own wording. The extractors keep their own guards for these cases so they
+  are safe to call directly, but the route answers first and answers 400.
+- **Request input keeps arriving through `lib/api.ts`.** `pathFromBody(request)` is the
+  `POST` counterpart of `pathParam(request)`: it rejects a non-JSON body and a missing or
+  blank `path` with a 400 instead of defaulting to the root, which a `POST` never means.
+  The route still hands the raw string to `readTranscript`, so `resolveInsideRoot` stays
+  the only place a request becomes a path.
 
 ---
 
@@ -810,4 +823,68 @@ Ollama extractor.
   an absolute path to the test file rather than `cd`-ing to it. `ANTHROPIC_API_URL` is
   read at module load like `OLLAMA_URL`, so switching endpoints mid-test means busting
   `require.cache`.
+---
+
+## 2026-08-09 - US-012
+
+**Implemented**
+- `app/api/extract/route.ts`: `POST /api/extract` taking `{ path }` and answering
+  `{ tasks: ExtractedTask[] }`. It validates the path (`.md` only, same guard as
+  `/api/transcript`), reads the note with `readTranscript(requireContextRoot(), relPath)`
+  — so the body handed to the model has the frontmatter stripped and the title, date and
+  attendees travel through `meta` instead — and dispatches on `getConfig().provider`:
+  `claude` → `extractWithClaude(body, meta, claudeApiKey)`, otherwise
+  `extractWithOllama(body, meta, ollamaModel)`. A missing Claude key throws
+  `HttpError(400, 'No hay ninguna API key de Anthropic guardada…')` before any request is
+  made, and a blank `ollamaModel` gets the same treatment for symmetry. Provider failures
+  reach the client as 502 with the provider's own message, via the existing
+  `ExtractionError` mapping in `describeError`.
+- `lib/api.ts`: new `pathFromBody(request)` — the `POST` counterpart of `pathParam`,
+  400 on a non-JSON body and 400 on a missing/blank `path`.
+
+**Files changed**
+- `app/api/extract/route.ts` (new)
+- `lib/api.ts` (modified)
+
+**Verification**
+- `pnpm typecheck` passes. `pnpm build` passes with only the pre-existing
+  `lib/transcripts.ts` fs-tracing warnings (App Route + Server Component traces only —
+  no client component pulled node code in), and `/api/extract` shows up as a dynamic
+  route.
+- Exercised end to end against the running dev server (`localhost:3300`) with
+  `OLLAMA_URL`/`ANTHROPIC_API_URL` pointed at one stub server, a scratch `.data/config.json`
+  and a fixture transcript whose frontmatter carried a marker key:
+  - success on both providers → 200 with the normalised task; the Ollama call went to
+    `/api/chat` with `num_ctx: 32768` and `think: false`, the Claude call to
+    `/v1/messages` with `x-api-key`, `anthropic-version: 2023-06-01`, `claude-sonnet-5`
+    and `output_config.format`;
+  - the user prompt contained `Title:`/`Date:`/`Attendees:` from `meta` and the body
+    **without** the frontmatter block or its marker key;
+  - stub returning 500 → 502 with «Ollama respondió 500 … («stub exploded»)» and
+    «Anthropic respondió 500 …»;
+  - `provider: 'claude'` with no key → 400 «No hay ninguna API key de Anthropic
+    guardada…», blank `ollamaModel` → 400 «No hay ningún modelo de Ollama
+    seleccionado…», both without touching the stub;
+  - `{}` → 400, non-JSON body → 400, `.txt` path → 400, unknown file → 404,
+    `../../etc/hosts.md` → 400 «La ruta sale de la carpeta de contexto», no context root
+    → 400, `GET` → 405.
+  - `.data/` did not exist before this run and was removed afterwards, so no local state
+    was left behind.
+
+**Learnings**
+- Deciding the status for "nothing is configured" is the whole design of this route. Both
+  extractors already throw `ExtractionError` for a missing key/model, which maps to 502 —
+  correct for a provider that refused, wrong for a request that never left the machine and
+  is fixed in /settings. The route therefore guards first and the extractors keep their
+  guards as a safety net for direct callers; only one of the two answers is ever seen.
+- The «excludes YAML frontmatter» AC needed no code: `readTranscript` already returns the
+  split body. The thing worth testing was that nothing else re-introduced it, which a
+  marker key in the fixture's frontmatter plus an echo stub proves in one request.
+- A stub that records every request it receives (`/__seen`) and can be switched to failing
+  (`/__mode`) covers both providers on one port, since they use different paths
+  (`/api/chat` vs `/v1/messages`). Pointing `OLLAMA_URL` and `ANTHROPIC_API_URL` at it when
+  starting `pnpm dev` is enough — both are read at module load, which works fine when the
+  env var is set before the server starts.
+- `next dev` answers 405 for an unimplemented method on an existing route handler, so
+  there is nothing to write for "GET is not allowed here".
 ---
