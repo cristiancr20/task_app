@@ -77,16 +77,20 @@ export type LinearTeam = {
 }
 
 /**
- * How many nodes one page asks for. Linear caps `first` at 250; staying well
- * under it keeps a workspace with hundreds of projects from timing out on the
- * single request that fills a dropdown.
+ * How many nodes one page asks for.
+ *
+ * Linear scores query complexity multiplicatively across nested connections and
+ * rejects anything over its budget with "Query too complex" — and TEAMS_QUERY
+ * asks for `pageInfo` inside the nested `projects` connection, which is what
+ * tips it over. Measured against the real API: 50x100 is rejected, 25x50 passes.
+ * Do not raise these without re-testing the actual query, not a simplified one.
  */
-const TEAM_PAGE_SIZE = 50
-const PROJECT_PAGE_SIZE = 100
+const TEAM_PAGE_SIZE = 25
+const PROJECT_PAGE_SIZE = 50
 
 /**
  * A broken or looping cursor must not spin forever: at these page sizes the cap
- * still covers 1000 teams and 2000 projects per team, far past any real workspace.
+ * still covers 500 teams and 1000 projects per team, far past any real workspace.
  */
 const MAX_PAGES = 20
 

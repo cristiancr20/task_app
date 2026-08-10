@@ -3,7 +3,9 @@ import Link from 'next/link'
 
 import { DEFAULT_OLLAMA_MODEL } from '@/lib/ollama'
 import { getConfig } from '@/lib/store'
+import { getTheme } from '@/lib/theme-server'
 
+import { ThemeToggle } from '../theme-toggle'
 import { ContextFolderForm } from './context-folder-form'
 import { LinearForm } from './linear-form'
 import { ProviderForm } from './provider-form'
@@ -16,9 +18,10 @@ export const metadata: Metadata = {
   title: 'Ajustes',
 }
 
-export default function SettingsPage() {
+export default async function SettingsPage() {
   const { contextRoot, recentFolders, provider, ollamaModel, claudeApiKey, linearApiKey } =
     getConfig()
+  const theme = await getTheme()
 
   return (
     <div className="flex flex-1 justify-center bg-zinc-50 font-sans dark:bg-black">
@@ -30,9 +33,12 @@ export default function SettingsPage() {
           >
             ← Volver al explorador
           </Link>
-          <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
-            Ajustes
-          </h1>
+          <div className="flex items-center justify-between gap-4">
+            <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+              Ajustes
+            </h1>
+            <ThemeToggle current={theme} />
+          </div>
         </header>
 
         <div className="flex flex-col gap-12">

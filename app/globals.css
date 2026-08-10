@@ -1,8 +1,46 @@
 @import "tailwindcss";
 
+/* The theme is a class on <html>, put there by the root layout from the
+   TASKS_APP_THEME cookie (see lib/theme.ts). Redefining the `dark` variant is
+   what makes the `dark:` utilities already spread across the components answer
+   to that class: Tailwind's stock variant is `prefers-color-scheme` alone,
+   which no button can override.
+
+   Two branches, because «system» is a choice and not merely the absence of one:
+   with no class on <html> the operating system still has to govern, exactly as
+   it did before this file changed. */
+@custom-variant dark {
+  /* Light or dark forced by the user. */
+  &:where(.dark, .dark *) {
+    @slot;
+  }
+  /* «system»: no class on <html>, so the OS decides. The `:not(.light)` is what
+     keeps a forced light theme light on a dark machine. */
+  @media (prefers-color-scheme: dark) {
+    &:where(:root:not(.light), :root:not(.light) *) {
+      @slot;
+    }
+  }
+}
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Native widgets — scrollbars, form controls, the canvas behind the page —
+     have no `dark:` class to follow; `color-scheme` is the only thing that
+     steers them. It also picks the side of every `light-dark()` below. */
+  color-scheme: light dark;
+
+  --background: light-dark(#ffffff, #0a0a0a);
+  --foreground: light-dark(#171717, #ededed);
+}
+
+/* The user's choice, overriding the OS for both the native widgets and
+   `light-dark()`. «system» sets no class and so keeps `light dark` above. */
+:root.light {
+  color-scheme: light;
+}
+
+:root.dark {
+  color-scheme: dark;
 }
 
 @theme inline {
@@ -10,13 +48,6 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {

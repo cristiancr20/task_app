@@ -436,11 +436,12 @@
         "Verify in the browser at http://localhost:3300 that switching to light repaints the whole UI, that the choice survives a reload, and that 'system' follows the OS setting"
       ],
       "priority": 20,
-      "passes": false,
+      "passes": true,
       "notes": "Mirror the implementation in ~/dev/gym (lib/theme.ts, lib/theme-server.ts, lib/theme-action.ts). Light mode is already written across the components; only the switching mechanism is missing.",
       "dependsOn": [
         "US-001"
-      ]
+      ],
+      "completionNotes": "Completed by agent"
     },
     {
       "id": "US-021",
@@ -467,6 +468,6 @@
     }
   ],
   "metadata": {
-    "updatedAt": "2026-08-10T04:45:59.565Z"
+    "updatedAt": "2026-08-10T04:53:20.223Z"
   }
 }

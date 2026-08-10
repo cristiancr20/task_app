@@ -5,6 +5,16 @@ after each iteration and it's included in prompts for context.
 
 ## Codebase Patterns (Study These First)
 
+- **A preference the server must know before the first paint lives in a cookie,
+  split across three modules.** `lib/theme.ts` holds constants, the type and a
+  guard and imports *nothing* (so a client component can use it);
+  `lib/theme-server.ts` is `import 'server-only'` + `cookies()`;
+  `lib/theme-action.ts` is `'use server'` and re-validates the value with the
+  shared guard before writing. The root layout reads it and interpolates it into
+  `<html>`, which is what removes the flash — no blocking script.
+- **`import 'server-only'` works without installing the package**: Next aliases
+  it to `next/dist/compiled/server-only`, and `tsc --noEmit` is happy. Use it on
+  any `lib/` module a client component might import by accident.
 - **Client fetch wrappers live in `lib/*-client.ts`.** One per route
   (`browse-client`, `transcript-client`, `extract-client`, `linear-client`,
   `push-client`). The route answers user-facing Spanish, so the wrapper throws
@@ -162,4 +172,74 @@ creadas en 2 envíos».
 
 **Reusable pattern added to the top section:** run the app against a stub Linear
 via `LINEAR_API_URL`.
+---
+
+
+## 2026-08-09 - US-020 Theme toggle: light, dark and system
+
+The app is no longer locked to the OS theme. A three-state segmented control
+(claro / oscuro / sistema, sun / moon / monitor glyphs) sits in the explorer
+header, in the settings header and in the «elige una carpeta» card, writes the
+choice to the `TASKS_APP_THEME` cookie through a server action, and the root
+layout paints the resulting class on `<html>` — so the first byte the browser
+gets already carries the right theme and nothing flashes. None of the 296
+existing `dark:` utilities were touched.
+
+**Files changed:**
+- `lib/theme.ts` (new) — `THEME_COOKIE`, `THEMES`, `Theme`, `THEME_LABELS`,
+  `isTheme()`, `themeClass()`. Imports nothing, so the client can use it.
+- `lib/theme-server.ts` (new) — `server-only`; `getTheme()` reads the cookie and
+  falls back to `'system'`.
+- `lib/theme-action.ts` (new) — `'use server'`; `setTheme()` validates, writes
+  the cookie (path `/`, one year, `sameSite: lax`) and
+  `revalidatePath('/', 'layout')`.
+- `app/globals.css` — `@custom-variant dark` (two branches), `color-scheme` on
+  `:root` / `:root.light` / `:root.dark`, `--background`/`--foreground` moved to
+  `light-dark()`.
+- `app/layout.tsx` — now `async`; puts `themeClass(theme)` on `<html>`.
+- `app/theme-toggle.tsx` (new) — the control, with `useOptimistic`.
+- `app/page.tsx`, `app/settings/page.tsx` — `async`, read the theme, render it.
+
+**Learnings:**
+- **`@custom-variant dark (&:where(.dark, .dark *))` alone breaks «system».**
+  With that one-liner, a user on «system» with a dark OS gets a *light* UI: no
+  class means no `dark:` utility matches. The variant needs a second branch —
+  `@media (prefers-color-scheme: dark) { &:where(:root:not(.light), :root:not(.light) *) }`
+  — so the absence of a class hands the decision back to the OS. The
+  `:not(.light)` is the part that keeps a forced light theme light on a dark
+  machine. Tailwind 4 supports the block form of `@custom-variant` with `@slot`.
+- **`color-scheme` and the `dark:` variant have to be driven by the same class,
+  or they disagree.** Scrollbars and form widgets have no class to read; they
+  follow `color-scheme`. Setting it three ways (`light dark` on `:root`, then
+  `light` / `dark` on the two class selectors) also picks the side of every
+  `light-dark()`, which is why `--background`/`--foreground` no longer need a
+  `@media` block of their own.
+- **`import 'server-only'` needs no dependency.** The package is not in
+  `node_modules`, but Next ships `next/dist/compiled/server-only` and aliases
+  the specifier; typecheck and dev both pass.
+- Lightningcss polyfills `light-dark()` into `--lightningcss-light/dark` toggles
+  and emits its own `@media (prefers-color-scheme: dark) { :root { … } }`
+  *before* `:root.light`, so specificity (0,2,0 vs 0,1,0) is what makes the
+  forced theme win. Worth knowing before adding a `:root` rule near those.
+- The toggle shows the *preference*, not the resolved theme: on «system» the
+  server cannot know what the visitor's OS is set to, and guessing would need a
+  client round trip to say something the CSS already handles.
+- `revalidatePath('/', 'layout')` re-renders the whole tree without disturbing
+  client state — the explorer's selection and expanded folders survive a theme
+  switch, so the control can live in the header of a page holding a push run.
+
+**Verified in the browser** (http://localhost:3300, Playwright, both
+`colorScheme: dark` and `colorScheme: light` contexts): with no cookie the
+`<html>` class is empty, `color-scheme` reads `light dark` and the shell paints
+black on a dark OS / white on a light one; «Claro» forces white on a dark OS and
+«Oscuro» forces black on a light one, both repainting the whole UI including the
+`dark:`-only header border; «Sistema» removes the class and the OS takes over
+again. After a reload the class is already correct *at first commit* (no flash),
+the cookie survives, the settings page shows the same active option, and a bogus
+cookie value falls back to «system».
+
+`pnpm typecheck` passes (no lint script in this project).
+
+**Reusable patterns added to the top section:** the cookie/three-module shape for
+a server-known preference, and `import 'server-only'` without the package.
 ---
