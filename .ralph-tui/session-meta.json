@@ -2,14 +2,14 @@
   "id": "cead5646-3586-4d77-be44-5415f738bb43",
   "status": "running",
   "startedAt": "2026-08-19T21:44:55.757Z",
-  "updatedAt": "2026-08-19T21:53:49.916Z",
+  "updatedAt": "2026-08-19T21:57:43.475Z",
   "agentPlugin": "claude",
   "trackerPlugin": "json",
   "executionScopes": [],
   "prdPath": "./tasks/prd-linear-dedupe-duedate.json",
-  "currentIteration": 3,
+  "currentIteration": 4,
   "maxIterations": 0,
   "totalTasks": 0,
-  "tasksCompleted": 3,
+  "tasksCompleted": 4,
   "cwd": "/Users/cristian/dev/tasks-app"
 }

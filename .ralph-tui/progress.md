@@ -5,6 +5,18 @@ after each iteration and it's included in prompts for context.
 
 ## Codebase Patterns (Study These First)
 
+### Calibrating a number against real examples: `npx tsx` from the repo root
+
+A threshold, a weight or a cutoff should be measured before it is written down,
+and vitest is the wrong tool for it — the numbers are wanted on screen, not
+asserted. `npx tsx probe.mts` runs a throwaway script against the modules
+directly, but it must sit at the **repo root**: from `/tmp` the relative import
+resolves against `/tmp/lib`, and the `@/` alias is a vitest/tsconfig mapping
+that tsx does not read either, so the probe imports `./lib/<module>`. Delete it
+before finishing — an uncommitted `probe.mts` at the root is not a test file
+and nothing collects it. Whatever the probe printed belongs in the comment next
+to the constant; that is the only record of why the number is what it is.
+
 ### Adding a field to `ExtractedTask` touches five literals
 
 `ExtractedTask` (lib/extractors/task.ts) is spread into `DraftRow`
@@ -246,5 +258,56 @@ compare it against the tasks about to be created.
   `{"error":"Falta el parámetro «teamId» con el equipo de Linear."}` with a 400,
   and switched to `query TeamIssues(` with `{ teamId: 't1' }` when `projectId`
   arrived blank.
+
+---
+
+## 2026-08-19 - US-005
+
+The duplicate check's arithmetic: a pure module that scores how alike two task
+titles are, with no model call and nothing imported at all.
+
+- `lib/similarity.ts` (new, zero imports): `normalizeForMatch` (NFD +
+  `\u0300-\u036f` stripping, lowercase, non-alphanumerics to spaces, then stop
+  words in Spanish *and* English plus the filler verbs `hacer`/`revisar`/`do`/
+  `check` — undone whenever the filtering would empty the title);
+  `similarity(a, b)` as 0.6 x token Dice + 0.4 x character-bigram Dice over
+  multisets; `bestMatch(candidate, existing, text?)` returning `{item, score}`
+  or null; `DUPLICATE_THRESHOLD = 0.55` with the measurements it was picked
+  from in its comment.
+- `lib/similarity.test.ts` (new): normalisation (accents, ñ, digits, both stop
+  word lists, the all-filler fallback), 1 for identical and for case/accent/
+  punctuation-only differences, five reformulations above the threshold, four
+  clearly-different pairs below it, 0 for the empty string on either side, two
+  long unrelated Spanish texts under 0.3, a short title against the paragraph
+  containing it, symmetry and the 0..1 range, and `bestMatch`'s null, accessor,
+  tie and empty-candidate cases.
+
+**Learnings:**
+
+- The measured gap is much narrower than «duplicate vs not» suggests, and only
+  one case sets its width: two *different* tasks about the *same* subject.
+  «Migrar endpoint de pagos a la nueva API» vs «Documentar el endpoint de pagos
+  en la wiki» scores 0.497 — while unrelated tasks sit under 0.30 and real
+  reformulations start at 0.58. So the threshold is bounded below by 0.50, not
+  by the unrelated pairs, and anything at or under 0.5 would flag half a
+  project's backlog against itself.
+- Either measure alone is wrong in a way the other is not, which is why the
+  criteria ask for both: exact token overlap scores «migrar»/«migración» as a
+  miss (0.667 on that pair, from the two words they do share), and character
+  bigrams alone give two long unrelated Spanish sentences ~0.4 for free, from
+  `de`, `os`, `ci` and the rest. Weighted 0.6/0.4 the reformulation holds at
+  0.735 and the long pair drops to 0.118.
+- Dice is taken over *multisets*, not sets: a repeated bigram (`en` in
+  «endpoint») counted once would make a long text look more like everything.
+  And the length penalty in Dice's denominator is what keeps «Enviar
+  presupuesto» at 0.473 against the paragraph that literally contains it.
+- One-word titles are the weak spot and the module cannot fix it: «Pagos» vs
+  «Pago» scores 0.343, since the token half is a flat 0 and only the bigrams
+  speak. Nothing in the acceptance criteria depends on it, but a caller should
+  not expect single words to be caught.
+- The stop word filtering has to be undoable per title, not conditional per
+  word: «Revisar» is a whole title in a note, and a normaliser that returned
+  `''` for it would score it 0 against every issue — silently, since 0 is also
+  what a genuinely empty string gets.
 
 ---
