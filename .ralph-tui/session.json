@@ -3,10 +3,10 @@
   "sessionId": "ef655f0f-1b97-413f-847d-7c6b69e1f31b",
   "status": "running",
   "startedAt": "2026-08-19T20:44:14.216Z",
-  "updatedAt": "2026-08-19T21:01:46.373Z",
-  "currentIteration": 5,
+  "updatedAt": "2026-08-19T21:04:46.136Z",
+  "currentIteration": 6,
   "maxIterations": 0,
-  "tasksCompleted": 5,
+  "tasksCompleted": 6,
   "isPaused": false,
   "agentPlugin": "claude",
   "trackerState": {
@@ -48,8 +48,8 @@
       {
         "id": "US-006",
         "title": "Tests del store de configuración",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-007",
@@ -133,6 +133,16 @@
       "durationMs": 189923,
       "startedAt": "2026-08-19T20:55:19.302Z",
       "endedAt": "2026-08-19T20:58:29.225Z"
+    },
+    {
+      "iteration": 6,
+      "status": "completed",
+      "taskId": "US-006",
+      "taskTitle": "Tests del store de configuración",
+      "taskCompleted": true,
+      "durationMs": 196036,
+      "startedAt": "2026-08-19T20:58:30.336Z",
+      "endedAt": "2026-08-19T21:01:46.372Z"
     }
   ],
   "skippedTaskIds": [],

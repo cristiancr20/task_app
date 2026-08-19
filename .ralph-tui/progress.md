@@ -5,6 +5,16 @@ after each iteration and it's included in prompts for context.
 
 ## Codebase Patterns (Study These First)
 
+### Verifying what a server binds to (US-007)
+`lsof -nP -iTCP:<port> -sTCP:LISTEN` is the ground truth: `*:3300` means every
+interface, `127.0.0.1:3300` means loopback only. Next's startup banner prints a
+`Network:` line either way — bound to loopback it just repeats `127.0.0.1`, so
+"the Network line is gone" is the wrong assertion; "the LAN IP is absent" is
+the right one.
+Prove the refusal against a real interface: take the address from `ipconfig
+getifaddr en0` and curl it (connection refused is curl exit 7). A hardcoded or
+fictional IP yields the same exit code while proving nothing.
+
 ### Testing (US-001)
 - Runner: **Vitest 4**, config in `vitest.config.mts` (`.mts`, not `.ts` — a `.ts`
   config is loaded as CJS and Vite warns about the ESM syntax in it).
@@ -455,5 +465,51 @@ read nor written.
   the source says `const next = normalize(`, so nothing was patched. A green
   mutation run means "the test is weak" *or* "the edit missed"; print
   `git diff --stat` on the file next to the result to tell them apart.
+
+---
+## 2026-08-19 - US-007
+
+Bound the dev and production servers to the loopback interface so the app is
+not reachable from the LAN.
+
+- `package.json`: `dev` is now `next dev -H 127.0.0.1 -p 3300` and `start` is
+  now `next start -H 127.0.0.1 -p 3300`. Next's default is `0.0.0.0`, confirmed
+  in `node_modules/next/dist/docs/01-app/03-api-reference/06-cli/next.md` for
+  both subcommands.
+
+**Verified**
+- Before the change the running server showed `TCP *:3300 (LISTEN)` in `lsof`
+  — every interface. After it, `TCP 127.0.0.1:3300 (LISTEN)`.
+- `pnpm dev` and `pnpm start` (against a real `pnpm build`) both: `curl
+  localhost:3300` -> 200, `curl 127.0.0.1:3300` -> 200, `curl
+  192.168.1.4:3300` (the machine's LAN IP) -> connection refused, curl exit 7.
+- Neither banner contains `192.168.` anywhere.
+- `pnpm typecheck` passes; `pnpm test` -> 4 files, 163 tests passed.
+
+**Files changed**
+- `package.json` (two script lines). No source or test changes.
+
+**Learnings:**
+- **Next still prints a `Network:` line when bound to loopback** — it just
+  reads `http://127.0.0.1:3300` instead of the LAN IP. Do not assert that the
+  word `Network` disappeared; the check that means something is that the LAN IP
+  is absent from the output (`grep 192.168.`), backed by the bind address in
+  `lsof`.
+- **Assert the bind address, not just the banner.** `lsof -nP -iTCP:3300
+  -sTCP:LISTEN` prints `*:3300` for a wide-open server and `127.0.0.1:3300` for
+  a loopback one — that is the ground truth the banner only summarises.
+- **A negative network test needs the interface to exist.** Curling the LAN IP
+  proves refusal only because `ipconfig getifaddr en0` returned a real address
+  the machine is actually up on; against a made-up IP the same exit 7 would
+  prove nothing. Resolve the IP at test time, do not hardcode it.
+- **Gotcha: `next dev` refuses to start if another dev server is already
+  running** for the same directory, printing `Another next dev server is
+  already running` with the PID *after* printing its own ready banner. The
+  first run of the new script looked like it worked and then exited 1 — the
+  pre-existing server (started with the old, `0.0.0.0` script) was still
+  holding the port. Kill the old PID before verifying, or the socket you
+  inspect is the old binding.
+- `next build` writes `.next` while `next dev` writes `.next/dev`, so a
+  production build can be run without disturbing a running dev server.
 
 ---
