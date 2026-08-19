@@ -13,8 +13,13 @@ export function dataFile(fileName: string): string {
   return path.join(DATA_DIR, fileName)
 }
 
-/** Create `.data/` if it does not exist yet. Safe to call repeatedly. */
+/**
+ * Create `.data/` if it does not exist yet. Safe to call repeatedly.
+ *
+ * `0o700` because the folder holds the user's API keys: on a shared machine no
+ * other account should be able to list it, let alone read what is inside.
+ */
 export function ensureDataDir(): string {
-  fs.mkdirSync(DATA_DIR, { recursive: true })
+  fs.mkdirSync(DATA_DIR, { recursive: true, mode: 0o700 })
   return DATA_DIR
 }

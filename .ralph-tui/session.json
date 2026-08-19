@@ -3,10 +3,10 @@
   "sessionId": "ef655f0f-1b97-413f-847d-7c6b69e1f31b",
   "status": "running",
   "startedAt": "2026-08-19T20:44:14.216Z",
-  "updatedAt": "2026-08-19T21:04:46.136Z",
-  "currentIteration": 6,
+  "updatedAt": "2026-08-19T21:07:03.183Z",
+  "currentIteration": 7,
   "maxIterations": 0,
-  "tasksCompleted": 6,
+  "tasksCompleted": 7,
   "isPaused": false,
   "agentPlugin": "claude",
   "trackerState": {
@@ -54,8 +54,8 @@
       {
         "id": "US-007",
         "title": "El servidor solo escucha en localhost",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-008",
@@ -143,6 +143,16 @@
       "durationMs": 196036,
       "startedAt": "2026-08-19T20:58:30.336Z",
       "endedAt": "2026-08-19T21:01:46.372Z"
+    },
+    {
+      "iteration": 7,
+      "status": "completed",
+      "taskId": "US-007",
+      "taskTitle": "El servidor solo escucha en localhost",
+      "taskCompleted": true,
+      "durationMs": 178678,
+      "startedAt": "2026-08-19T21:01:47.457Z",
+      "endedAt": "2026-08-19T21:04:46.135Z"
     }
   ],
   "skippedTaskIds": [],

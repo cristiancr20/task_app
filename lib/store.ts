@@ -135,10 +135,21 @@ function summarize(entries: HistoryEntry[]): PushSummary | null {
   }
 }
 
+/** Owner-only, because the config holds the Claude and Linear API keys. */
+const CONFIG_MODE = 0o600
+
 /**
  * Write the config atomically: a temp file in the same folder followed by a
  * rename, which is atomic on the same filesystem. A crash mid-write leaves the
  * previous config intact instead of a truncated JSON file.
+ *
+ * The temp file is created — and then explicitly chmod'ed — as `0600`, so the
+ * keys are never world-readable, not even for the instant between write and
+ * rename. `rename` keeps the mode of the temp file, so this is also what fixes
+ * a `config.json` that an older version left with laxer permissions; chmod'ing
+ * the target afterwards instead would reopen exactly the window this avoids.
+ * The explicit chmod matters because `writeFileSync`'s `mode` only applies when
+ * it creates the file, and is masked by the process umask when it does.
  */
 function writeConfig(config: Config): void {
   const target = dataFile(CONFIG_FILE)
@@ -148,7 +159,11 @@ function writeConfig(config: Config): void {
   )
 
   try {
-    fs.writeFileSync(tmp, `${JSON.stringify(config, null, 2)}\n`, 'utf8')
+    fs.writeFileSync(tmp, `${JSON.stringify(config, null, 2)}\n`, {
+      encoding: 'utf8',
+      mode: CONFIG_MODE,
+    })
+    fs.chmodSync(tmp, CONFIG_MODE)
     fs.renameSync(tmp, target)
   } catch (err) {
     try {

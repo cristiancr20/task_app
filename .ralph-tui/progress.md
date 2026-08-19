@@ -57,6 +57,19 @@ fictional IP yields the same exit code while proving nothing.
   `if (false && ...)`, re-run, confirm the test goes red, restore. A green suite
   against a disabled guard means the test proves nothing.
 
+### Asserting file modes in a test (US-008)
+- Compare in octal — `expect((mode & 0o777).toString(8)).toBe('600')`. A failure
+  then reads `expected '644' to be '600'` instead of `420 to be 384`.
+- Gate on `process.platform !== 'win32'` with `it.skipIf(!onPosix)`: on Windows
+  the group/other bits are meaningless (`chmod` only moves the read-only flag),
+  so the assertion would fail for a reason that is not a bug.
+- To redirect a module-load-time constant derived from `process.cwd()` without
+  `vi.mock`, stub and reload: `vi.resetModules()`, `vi.spyOn(process, 'cwd')
+  .mockReturnValue(tempDir)`, then `await import('@/lib/data-dir')`. Pair it
+  with `vi.restoreAllMocks()` in `afterEach`. Use this when the test needs the
+  *real* module (here: to observe the mode `mkdirSync` actually applied), where
+  the `vi.mock` of US-006 would replace the very code under test.
+
 ### Redirecting `.data/` in a test (US-006)
 - `DATA_DIR` is `process.cwd() + '/.data'`, frozen at module load, so an env var
   set inside the test is too late — replace the module:
@@ -511,5 +524,41 @@ not reachable from the LAN.
   inspect is the old binding.
 - `next build` writes `.next` while `next dev` writes `.next/dev`, so a
   production build can be run without disturbing a running dev server.
+
+---
+
+## 2026-08-19 - US-008
+
+Restricted the on-disk permissions of the credentials the app stores.
+
+- `lib/store.ts` — `writeConfig` creates the temp file with `mode: 0o600` and
+  then `chmodSync`es it to `0600` before the rename, so `config.json` (which
+  holds `claudeApiKey` / `linearApiKey`) ends up owner-only.
+- `lib/data-dir.ts` — `ensureDataDir` creates `.data/` with `mode: 0o700`.
+- `lib/store.test.ts` — new `describe('file permissions')`: the mode after a
+  write, the narrowing of a file planted at `0644`, and the mode after
+  `addHistoryEntry`. All three `skipIf(process.platform === 'win32')`.
+- `lib/data-dir.test.ts` — new file; covers `ensureDataDir` (path, `0700`,
+  idempotence) and `dataFile`, with `process.cwd` stubbed at a temp folder.
+
+`pnpm typecheck` and `pnpm test` pass (170 tests, 5 files). There is no `lint`
+script in `package.json` — `pnpm lint` resolves to the Android SDK's `lint`
+binary on PATH, not a project check.
+
+**Learnings:**
+- `chmod` the *temp* file, never the target after the rename. Chmod'ing the
+  target leaves a window where the keys are world-readable, and `rename` carries
+  the temp file's mode over anyway — which is also what silently narrows a
+  `config.json` an older version left at `0644`. The "pre-existing laxer file"
+  criterion needs no extra code, but it does need its own test.
+- `writeFileSync`'s `mode` only applies when the call *creates* the file, and is
+  masked by the umask when it does; the explicit `chmodSync` is what makes the
+  result deterministic.
+- The existing `.data/` on a machine that predates this change keeps its old
+  `0755` — `mkdirSync`'s `mode` only applies at creation. The config file inside
+  it is narrowed on the next write, so the credentials are covered, but the
+  folder itself is not retroactively fixed.
+- Mutation check passed: dropping both `mode` options and the `chmodSync` turns
+  exactly the 4 new tests red and leaves the other 166 green.
 
 ---

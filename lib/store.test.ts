@@ -363,6 +363,40 @@ describe('getPushSummaries', () => {
   })
 })
 
+// `chmod` is a no-op for the group/other bits on Windows, so the mode of a file
+// there says nothing about who can read it — access is an ACL question instead.
+const onPosix = process.platform !== 'win32'
+
+/** The permission bits of `file`, e.g. `0o600`, with the file type stripped off. */
+function permissions(file: string): number {
+  return fs.statSync(file).mode & 0o777
+}
+
+describe('file permissions', () => {
+  it.skipIf(!onPosix)('writes the config owner-only — it holds the API keys', () => {
+    updateConfig({ linearApiKey: 'lin_api_key' })
+
+    expect(permissions(CONFIG_PATH).toString(8)).toBe('600')
+  })
+
+  it.skipIf(!onPosix)('narrows a file an older version left world-readable', () => {
+    writeConfig({ ...defaultConfig(), linearApiKey: 'lin_api_key' })
+    fs.chmodSync(CONFIG_PATH, 0o644)
+
+    updateConfig({ provider: 'claude' })
+
+    expect(permissions(CONFIG_PATH).toString(8)).toBe('600')
+  })
+
+  it.skipIf(!onPosix)('never exposes the temp file, not even mid-write', () => {
+    // The rename carries the temp file's mode over, so the only way the target
+    // can end up at 0600 is if the temp file was already there.
+    addHistoryEntry('notes/a.md', entry())
+
+    expect(permissions(CONFIG_PATH).toString(8)).toBe('600')
+  })
+})
+
 describe('the atomic write', () => {
   it('leaves no temp file behind in the data folder', () => {
     updateConfig({ contextRoot: '/tmp/notes' })
