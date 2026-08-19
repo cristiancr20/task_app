@@ -1,4 +1,10 @@
-import { errorResponse, HttpError, pathFromBody, requireContextRoot } from '@/lib/api'
+import {
+  errorResponse,
+  HttpError,
+  pathFromBody,
+  requireContextRoot,
+  requireMarkdownPath,
+} from '@/lib/api'
 import { extractWithClaude } from '@/lib/extractors/claude'
 import { extractWithOllama } from '@/lib/extractors/ollama'
 import type { ExtractedTask } from '@/lib/extractors/task'
@@ -21,12 +27,7 @@ export async function POST(request: Request): Promise<Response> {
   let relPath = ''
 
   try {
-    relPath = await pathFromBody(request)
-    // Same guard as `/api/transcript`: the explorer only ever lists `.md`, so
-    // anything else is a path the user never saw.
-    if (!relPath.toLowerCase().endsWith('.md')) {
-      throw new HttpError(400, `Solo se pueden leer archivos .md: ${relPath}`)
-    }
+    relPath = requireMarkdownPath(await pathFromBody(request))
 
     // `readTranscript` hands back the body with the frontmatter already
     // stripped — the attendee list and the date reach the model through `meta`,

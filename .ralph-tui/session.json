@@ -3,10 +3,10 @@
   "sessionId": "ef655f0f-1b97-413f-847d-7c6b69e1f31b",
   "status": "running",
   "startedAt": "2026-08-19T20:44:14.216Z",
-  "updatedAt": "2026-08-19T21:07:03.183Z",
-  "currentIteration": 7,
+  "updatedAt": "2026-08-19T21:13:37.483Z",
+  "currentIteration": 8,
   "maxIterations": 0,
-  "tasksCompleted": 7,
+  "tasksCompleted": 8,
   "isPaused": false,
   "agentPlugin": "claude",
   "trackerState": {
@@ -60,8 +60,8 @@
       {
         "id": "US-008",
         "title": "Las credenciales en disco no son legibles por otros usuarios",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-009",
@@ -153,6 +153,16 @@
       "durationMs": 178678,
       "startedAt": "2026-08-19T21:01:47.457Z",
       "endedAt": "2026-08-19T21:04:46.135Z"
+    },
+    {
+      "iteration": 8,
+      "status": "completed",
+      "taskId": "US-008",
+      "taskTitle": "Las credenciales en disco no son legibles por otros usuarios",
+      "taskCompleted": true,
+      "durationMs": 135955,
+      "startedAt": "2026-08-19T21:04:47.226Z",
+      "endedAt": "2026-08-19T21:07:03.181Z"
     }
   ],
   "skippedTaskIds": [],

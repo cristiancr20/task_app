@@ -36,6 +36,17 @@ export function pathParam(request: Request): string {
 }
 
 /**
+ * The path of a note, or a 400. The explorer only ever lists `.md`, so a route
+ * that accepted anything else would reach files the user never saw.
+ */
+export function requireMarkdownPath(relPath: string): string {
+  if (!relPath.toLowerCase().endsWith('.md')) {
+    throw new HttpError(400, `Solo se pueden leer archivos .md: ${relPath}`)
+  }
+  return relPath
+}
+
+/**
  * The parsed JSON body of a `POST`, or a 400. A request body can only be read
  * once, so a route that needs more than the path parses it here and reads the
  * fields off the payload.

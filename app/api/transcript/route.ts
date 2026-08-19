@@ -1,4 +1,10 @@
-import { errorResponse, HttpError, pathParam, requireContextRoot } from '@/lib/api'
+import {
+  errorResponse,
+  HttpError,
+  pathParam,
+  requireContextRoot,
+  requireMarkdownPath,
+} from '@/lib/api'
 import { getHistory } from '@/lib/store'
 import { readTranscript } from '@/lib/transcripts'
 
@@ -17,13 +23,7 @@ export async function GET(request: Request): Promise<Response> {
     if (!relPath) {
       throw new HttpError(400, 'Falta el parámetro ?path= con la ruta del archivo.')
     }
-    // The explorer only ever lists `.md`, so reading anything else through this
-    // route would expose files the user never saw.
-    if (!relPath.toLowerCase().endsWith('.md')) {
-      throw new HttpError(400, `Solo se pueden leer archivos .md: ${relPath}`)
-    }
-
-    const transcript = readTranscript(requireContextRoot(), relPath)
+    const transcript = readTranscript(requireContextRoot(), requireMarkdownPath(relPath))
     return Response.json({ ...transcript, history: getHistory(relPath) })
   } catch (err) {
     return errorResponse(err, relPath)

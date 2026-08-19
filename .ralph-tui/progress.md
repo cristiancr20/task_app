@@ -5,6 +5,31 @@ after each iteration and it's included in prompts for context.
 
 ## Codebase Patterns (Study These First)
 
+### Sharing the atomic write (US-009)
+The 0600 temp-file+rename write lives in `lib/atomic-write.ts` (`writeJsonFile`),
+not in `lib/store.ts` — a second store gets the same guarantees for free.
+Put it in its own module taking an **absolute path**, not in `lib/data-dir.ts`:
+`store.test.ts` and `drafts-store.test.ts` both `vi.mock('@/lib/data-dir')`, so
+a writer living there would be replaced by the mock and the mode assertions
+would be testing the fixture instead of the code.
+
+### Persisting per-note state (US-009)
+`.data/drafts.json` is separate from `config.json` on purpose: drafts churn on
+every edit, the config holds the API keys, and a corrupt draft file must never
+be able to cost the user their keys.
+Only persist what survives a reload. `generating` / `error` / `confirming`
+describe a request in flight or a dialog on screen; restoring them would put a
+spinner back for an extraction that ended hours ago. `normalizeState` picks the
+three durable fields by name, so a client that sends the whole state object
+cannot smuggle them in.
+Route into the store through `normalizeState(payload)`: the `PUT` body then goes
+through exactly the same sieve as a file already on disk, and `saveDrafts` keeps
+a typed signature for internal callers.
+Drop the key when a state has nothing to restore (no rows, no baseline, not
+extracted) — `normalizeHistory` in `lib/store.ts` does the same with notes whose
+entries were all discarded. `extracted: true` with zero rows is *not* empty: it
+is «the model found none», which the table renders differently.
+
 ### Verifying what a server binds to (US-007)
 `lsof -nP -iTCP:<port> -sTCP:LISTEN` is the ground truth: `*:3300` means every
 interface, `127.0.0.1:3300` means loopback only. Next's startup banner prints a
@@ -561,4 +586,42 @@ binary on PATH, not a project check.
 - Mutation check passed: dropping both `mode` options and the `chmodSync` turns
   exactly the 4 new tests red and leaves the other 166 green.
 
+---
+
+## 2026-08-19 - US-009
+- Added `lib/drafts-store.ts`, the on-disk home of the task table's drafts:
+  `.data/drafts.json`, keyed by the note's root-relative path exactly like
+  `history`, holding `{ rows, baseline, extracted }` per note and nothing else.
+  `getDrafts` / `saveDrafts` / `clearDrafts`; a missing, corrupt or partially
+  malformed file yields empty state instead of throwing.
+- Extracted the atomic owner-only write out of `lib/store.ts` into
+  `lib/atomic-write.ts` (`writeJsonFile`), so both stores share one
+  implementation of the temp-file + chmod 0600 + rename dance rather than a copy.
+- Added `GET /api/drafts?path=…` and `PUT /api/drafts` with
+  `{ path, rows, baseline, extracted }`, both guarded by `requireContextRoot()`,
+  a `.md` check and `errorResponse` like every other route.
+- Moved that `.md` check into `requireMarkdownPath()` in `lib/api.ts` and pointed
+  `/api/transcript` and `/api/extract` at it — it was already copy-pasted twice.
+- `lib/drafts-store.test.ts`: 52 tests over save/read round-trips, per-note keys,
+  corrupt files, malformed rows, the transient fields, the 0600 mode and the
+  atomic write. Suite is 222 tests; `pnpm typecheck` and `pnpm test` both green.
+- Files changed: `lib/atomic-write.ts` (new), `lib/drafts-store.ts` (new),
+  `lib/drafts-store.test.ts` (new), `app/api/drafts/route.ts` (new),
+  `lib/store.ts`, `lib/api.ts`, `app/api/transcript/route.ts`,
+  `app/api/extract/route.ts`.
+- **Learnings:**
+  - See the two new blocks in `## Codebase Patterns` — where the shared writer
+    has to live so the `vi.mock('@/lib/data-dir')` fixtures do not swallow it,
+    and which parts of `TaskDraftState` are worth persisting.
+  - A row with no `id` is dropped rather than repaired: the id is the key the
+    table edits and removes rows by, so a synthesised one would put something on
+    screen the user could not get rid of. Everything else is coerced — an empty
+    title is a row still being typed, not a broken one, and text is stored
+    verbatim because trimming would move the caret of a draft mid-edit.
+  - Mutation-checked three guards (id required, priority fallback, transient
+    fields excluded): 4, 2 and 1 tests went red respectively, then restored.
+  - Smoke-tested both routes against `pnpm dev`: a `PUT` carrying
+    `generating`/`error`/`confirming` plus a priority of `"blocker"`, a numeric
+    `mentioned` and an id-less row answered the sieved state, and
+    `.data/drafts.json` landed as `-rw-------`. Scratch file removed afterwards.
 ---
