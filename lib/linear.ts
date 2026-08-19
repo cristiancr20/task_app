@@ -311,6 +311,123 @@ export async function listIssuesForDuplicateCheck(
   return issues
 }
 
+/**
+ * A Linear workflow state's type, as our own union.
+ *
+ * Linear names these six and a workspace cannot invent a seventh, but it can
+ * add fields to the enum in a future API version — so an unknown value is read
+ * as `unstarted` (the neutral «it exists and nobody finished it») rather than
+ * breaking the parse of a response that is otherwise perfectly good.
+ */
+export type IssueStateType =
+  | 'triage'
+  | 'backlog'
+  | 'unstarted'
+  | 'started'
+  | 'completed'
+  | 'canceled'
+
+const ISSUE_STATE_TYPES: readonly IssueStateType[] = [
+  'triage',
+  'backlog',
+  'unstarted',
+  'started',
+  'completed',
+  'canceled',
+]
+
+/** What Linear currently says about an issue we created earlier. */
+export type IssueState = {
+  id: string
+  /** The human key, e.g. `ENG-42`. */
+  identifier: string
+  title: string
+  url: string
+  /** The state's own name, verbatim from Linear — «In Progress», «Done». */
+  stateName: string
+  /**
+   * The state's type. A workspace renames its states freely, so only the type
+   * can tell a finished issue from a live one across workspaces.
+   */
+  stateType: IssueStateType
+}
+
+/**
+ * How many ids one request filters by.
+ *
+ * The filtered query is as flat as PROJECT_ISSUES_QUERY — a single connection
+ * whose only nested field is `state`, no nested `pageInfo` — so it stays well
+ * inside the complexity budget documented on TEAM_PAGE_SIZE, and it runs at the
+ * same conservative page size the other issue queries do. Matching the batch to
+ * the page also means the common case, a note that produced a handful of
+ * issues, is one request that comes back in one page. As with the queries
+ * above, do not raise it without re-testing this exact query against the real
+ * API.
+ */
+const ISSUE_ID_BATCH_SIZE = ISSUE_PAGE_SIZE
+
+const ISSUE_STATES_QUERY = `query IssueStates($ids: [ID!], $after: String) {
+  issues(first: ${ISSUE_PAGE_SIZE}, after: $after, filter: { id: { in: $ids } }) {
+    nodes {
+      id
+      identifier
+      title
+      url
+      state { name type }
+    }
+    pageInfo { hasNextPage endCursor }
+  }
+}`
+
+/**
+ * The current state of the issues named by `ids` — what the history of a note
+ * turns into once Linear has had its say.
+ *
+ * The ids are filtered on server-side in batches, so a note with thirty issues
+ * costs one request and not thirty. An id Linear no longer knows (the issue was
+ * deleted, or it belongs to a workspace this key cannot see) simply does not
+ * come back: the caller pairs what it asked for against what it got, and the
+ * missing ones are reported as such rather than crashing the lookup of the rest.
+ */
+export async function fetchIssueStates(apiKey: string, ids: string[]): Promise<IssueState[]> {
+  // The same issue can sit in the history twice; asking for it once keeps it
+  // from coming back twice when its copies fall in different batches.
+  const wanted = [...new Set(ids.map((id) => id.trim()).filter(Boolean))]
+  // No ids means nothing to ask about — and a filter of `in: []` would still be
+  // a round trip, plus a needless key check on a note that never went to Linear.
+  if (wanted.length === 0) return []
+
+  const states: IssueState[] = []
+
+  for (let start = 0; start < wanted.length; start += ISSUE_ID_BATCH_SIZE) {
+    const batch = wanted.slice(start, start + ISSUE_ID_BATCH_SIZE)
+    let after: string | null = null
+
+    // Paginated like `listIssuesForDuplicateCheck`: MAX_PAGES as the backstop
+    // against a looping cursor, and the loop ends as soon as it stops advancing.
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const body: unknown = await linearGraphQL(apiKey, ISSUE_STATES_QUERY, {
+        ids: batch,
+        ...(after ? { after } : {}),
+      })
+      const connection = readConnection(body, 'issues')
+      if (!connection) {
+        throw new LinearApiError(502, 'Linear respondió sin el estado de los issues.')
+      }
+
+      for (const node of connection.nodes) {
+        const state = readIssueState(node)
+        if (state) states.push(state)
+      }
+
+      if (!connection.hasNextPage || !connection.endCursor) break
+      after = connection.endCursor
+    }
+  }
+
+  return states
+}
+
 /** Where a task came from, appended to the issue body so it can be traced back. */
 export type IssueSource = {
   /** Title of the meeting the task was extracted from. */
@@ -476,6 +593,35 @@ function readExistingIssue(node: unknown): ExistingIssue | null {
     stateName: typeof workflowState?.name === 'string' ? workflowState.name : '',
     closed: stateType === 'completed' || stateType === 'canceled',
   }
+}
+
+/**
+ * An issue node as the state lookup reads it, or null when it is missing what
+ * the report needs — dropped like a partial node in `readTeam` and
+ * `readProject` rather than left to break the whole batch.
+ */
+function readIssueState(node: unknown): IssueState | null {
+  if (!isRecord(node)) return null
+
+  const { id, identifier, title, url, state } = node
+  if (typeof id !== 'string' || !id) return null
+  if (typeof title !== 'string' || !title) return null
+
+  const workflowState = isRecord(state) ? state : null
+
+  return {
+    id,
+    identifier: typeof identifier === 'string' ? identifier : '',
+    title,
+    url: typeof url === 'string' ? url : '',
+    stateName: typeof workflowState?.name === 'string' ? workflowState.name : '',
+    stateType: readIssueStateType(workflowState?.type),
+  }
+}
+
+/** Linear's state type, or `unstarted` for anything this build does not know. */
+function readIssueStateType(input: unknown): IssueStateType {
+  return ISSUE_STATE_TYPES.find((type) => type === input) ?? 'unstarted'
 }
 
 function readIssue(node: unknown): LinearIssue | null {

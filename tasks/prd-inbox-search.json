@@ -1,0 +1,208 @@
+{
+  "name": "Bandeja de entrada, proceso por lotes y busqueda",
+  "branchName": "ralph/inbox-search",
+  "description": "Anade un recorrido recursivo e indexado de la carpeta de contexto y, sobre el, una bandeja de entrada con lo que falta por procesar, una cola de extraccion secuencial por lotes y busqueda de texto completo en todas las transcripciones.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Escaneo recursivo de la carpeta de contexto",
+      "description": "Como desarrollador, quiero recorrer todas las transcripciones bajo la raíz, para que la bandeja y la búsqueda tengan de dónde leer.",
+      "acceptanceCriteria": [
+        "Nueva función `walkTranscripts(root)` en `lib/transcripts.ts` que recorre la raíz en profundidad y devuelve la metadata de cada `.md`",
+        "Respeta las mismas exclusiones que `listFolder`: dotfiles y `node_modules`",
+        "Aplica la misma guarda de salida de la raíz que el resto del scanner; un symlink que apunta fuera no se sigue",
+        "Un symlink que crea un ciclo dentro de la raíz no cuelga el recorrido",
+        "Hay un límite de profundidad y un límite de número de archivos, ambos como constantes con nombre y comentadas; al alcanzarlos el recorrido para y lo indica en el resultado en vez de truncar en silencio",
+        "Un archivo o carpeta ilegible se omite sin romper el recorrido entero",
+        "La metadata de cada archivo es la misma que ya produce `listFolder`, sin duplicar la lógica de parseo",
+        "Tests en `lib/transcripts.test.ts` sobre un árbol temporal: anidamiento de varios niveles, exclusiones, ciclo por symlink, límite de profundidad alcanzado y archivo ilegible",
+        "pnpm typecheck passes",
+        "pnpm test passes"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": "",
+      "dependsOn": []
+    },
+    {
+      "id": "US-002",
+      "title": "Índice en memoria con invalidación",
+      "description": "Como desarrollador, quiero que el recorrido no se repita en cada petición, para que la bandeja y la búsqueda respondan rápido sin releer el disco continuamente.",
+      "acceptanceCriteria": [
+        "Nuevo módulo `lib/transcript-index.ts` que guarda en memoria del servidor el resultado de `walkTranscripts`",
+        "El índice se invalida cuando cambia la carpeta de contexto configurada",
+        "El índice caduca por tiempo, con una constante con nombre y comentada, para que una nota nueva en disco aparezca sin reiniciar el servidor",
+        "Existe una forma explícita de forzar la reconstrucción, que es lo que usa el botón de recargar de la interfaz",
+        "Dos peticiones simultáneas con el índice frío no disparan dos recorridos: la segunda espera al primero",
+        "El índice guarda metadata, nunca el cuerpo de las transcripciones, para no crecer sin control",
+        "Tests del ciclo de vida: construcción, reutilización dentro de la ventana, caducidad, invalidación por cambio de raíz y llamadas concurrentes",
+        "pnpm typecheck passes",
+        "pnpm test passes"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-001"
+      ]
+    },
+    {
+      "id": "US-003",
+      "title": "Búsqueda de texto completo",
+      "description": "Como usuario, quiero buscar una frase y ver en qué reuniones se dijo, para recuperar contexto sin acordarme del archivo.",
+      "acceptanceCriteria": [
+        "Nuevo módulo `lib/search.ts` con la lógica pura: normaliza la consulta y el texto (minúsculas, sin acentos), decide si un documento coincide y extrae el fragmento de contexto",
+        "El fragmento devuelto incluye texto antes y después de la coincidencia, con las posiciones exactas de lo que hay que resaltar, sin insertar HTML",
+        "Una nota puede devolver varias coincidencias, hasta un tope por archivo definido como constante",
+        "La búsqueda cubre el cuerpo de la nota y también su título",
+        "Una consulta de menos de dos caracteres no busca y lo indica",
+        "Los resultados se ordenan por número de coincidencias y, a igualdad, por fecha descendente",
+        "Nueva ruta `GET /api/search?q=` que recorre las notas del índice, lee cada cuerpo bajo demanda y responde `{ results, truncated }`",
+        "La ruta acota el trabajo: tope de archivos inspeccionados y de resultados devueltos, y `truncated` avisa cuando se quedó corta",
+        "Wrapper en `lib/search-client.ts` con su guarda de forma, como el resto de `lib/*-client.ts`",
+        "Tests de `lib/search.ts`: coincidencia exacta, sin acentos, sin distinguir mayúsculas, coincidencia en el título, varias coincidencias en un archivo, fragmento en el borde del texto y consulta demasiado corta",
+        "pnpm typecheck passes",
+        "pnpm test passes"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-002"
+      ]
+    },
+    {
+      "id": "US-004",
+      "title": "Interfaz de búsqueda",
+      "description": "Como usuario, quiero un campo de búsqueda siempre a mano y resultados con el fragmento donde aparece lo que busco.",
+      "acceptanceCriteria": [
+        "Campo de búsqueda en la cabecera de la aplicación, accesible desde cualquier punto del explorador",
+        "La consulta se lanza con debounce, no en cada pulsación",
+        "Cada resultado muestra el título de la nota, su fecha, su carpeta y el fragmento con la coincidencia resaltada",
+        "Hacer clic en un resultado abre esa nota en el explorador y deja la carpeta correcta seleccionada",
+        "Estados explícitos y distinguibles: buscando, sin resultados, y resultados recortados por el tope",
+        "Se puede salir de la búsqueda y volver a la vista normal sin perder la nota que estaba abierta",
+        "El campo se puede vaciar con Escape",
+        "Un fallo de la búsqueda se muestra en su sitio con «Reintentar», sin romper el explorador",
+        "Una respuesta que llega tarde no pisa los resultados de una consulta más reciente",
+        "pnpm typecheck passes",
+        "pnpm test passes"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-003"
+      ]
+    },
+    {
+      "id": "US-005",
+      "title": "Filtro rápido en la lista de archivos",
+      "description": "Como usuario, quiero filtrar los archivos de la carpeta en la que estoy, que es distinto de buscar en todas.",
+      "acceptanceCriteria": [
+        "Campo de filtro en la cabecera de `app/file-list.tsx`, que filtra solo la carpeta seleccionada",
+        "Filtra por título y por nombre de archivo, sin distinguir mayúsculas ni acentos",
+        "El filtro se limpia al cambiar de carpeta",
+        "Con el filtro puesto, la cabecera indica cuántos de cuántos archivos se están mostrando",
+        "Ningún resultado muestra un mensaje claro, no una lista vacía sin explicación",
+        "El filtrado ocurre en el navegador sobre la lista ya cargada: no genera peticiones",
+        "pnpm typecheck passes",
+        "pnpm test passes"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": "",
+      "dependsOn": []
+    },
+    {
+      "id": "US-006",
+      "title": "Bandeja de entrada de notas sin procesar",
+      "description": "Como usuario, quiero una vista con todo lo que aún no he procesado, para no ir carpeta por carpeta buscándolo.",
+      "acceptanceCriteria": [
+        "Nueva vista de bandeja de entrada, accesible desde la cabecera, que lista todas las transcripciones sin historial de envío",
+        "Cada fila muestra título, fecha, carpeta y tamaño aproximado de la nota",
+        "La lista se ordena por fecha descendente, y las notas sin fecha van al final",
+        "La cabecera muestra el número de notas pendientes",
+        "Una nota que ya tiene borradores extraídos pero no enviados se distingue de una que no se ha tocado nunca",
+        "Hacer clic en una fila la abre en el explorador",
+        "Hay un control para reconstruir el índice y ver notas recién añadidas al disco",
+        "Con la bandeja vacía se muestra un estado final claro, no una tabla vacía",
+        "Si el recorrido alcanzó su límite, la vista lo dice en vez de aparentar que eso es todo",
+        "pnpm typecheck passes",
+        "pnpm test passes"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-002"
+      ]
+    },
+    {
+      "id": "US-007",
+      "title": "Selección múltiple en la bandeja",
+      "description": "Como usuario, quiero elegir varias notas de la bandeja, para actuar sobre todas a la vez.",
+      "acceptanceCriteria": [
+        "Cada fila de la bandeja tiene su casilla de selección",
+        "Hay «seleccionar todo» y «no seleccionar nada», y el «seleccionar todo» solo alcanza a las filas visibles con el filtro puesto",
+        "Una barra de acciones muestra cuántas hay seleccionadas y desaparece cuando no hay ninguna",
+        "La selección sobrevive al desplazamiento de la lista y se limpia al salir de la vista",
+        "La selección se limita a un número máximo por tanda, con una constante con nombre, y la interfaz lo explica al alcanzarlo",
+        "pnpm typecheck passes",
+        "pnpm test passes"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-006"
+      ]
+    },
+    {
+      "id": "US-008",
+      "title": "Cola de extracción por lotes",
+      "description": "Como usuario, quiero extraer varias transcripciones seguidas sin quedarme mirando cada una, para procesar de una vez lo acumulado.",
+      "acceptanceCriteria": [
+        "Desde la barra de acciones se lanza la extracción de todas las notas seleccionadas",
+        "Las notas se procesan **de una en una**, nunca en paralelo: un modelo local no soporta varias extracciones simultáneas",
+        "La cola muestra el progreso global y cuál se está procesando ahora",
+        "El resultado de cada nota se guarda como sus borradores, exactamente igual que si se hubiera extraído a mano",
+        "Una nota que falla no detiene la cola: se marca con su error y se sigue con la siguiente",
+        "Varios fallos seguidos sí detienen la cola, con el mismo criterio y el mismo razonamiento que `MAX_CONSECUTIVE_FAILURES` en el envío a Linear",
+        "La cola se puede cancelar; lo ya extraído se conserva y lo pendiente no se lanza",
+        "Al terminar hay un resumen: cuántas se extrajeron, cuántas fallaron y cuántas tareas salieron en total",
+        "Navegar a otra vista no cancela la cola, y volver muestra su estado real",
+        "Cada nota procesada desaparece de la bandeja de «sin tocar» y pasa a «extraída, sin enviar»",
+        "pnpm typecheck passes",
+        "pnpm test passes"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-007"
+      ]
+    },
+    {
+      "id": "US-009",
+      "title": "Revisar y enviar lo extraído",
+      "description": "Como usuario, quiero recorrer rápido lo que la cola extrajo y enviarlo, para cerrar la tanda sin volver a navegar carpeta por carpeta.",
+      "acceptanceCriteria": [
+        "La bandeja permite ver solo las notas con borradores extraídos y sin enviar",
+        "Desde una de esas filas se salta al explorador con la nota abierta y su tabla lista para revisar",
+        "Hay una forma de pasar a la siguiente nota pendiente de revisar sin volver a la bandeja",
+        "El envío a Linear sigue siendo por nota y con su panel actual: no se crea un envío masivo sin revisión",
+        "La bandeja refleja el resultado del envío en cuanto termina, sin recargar la página",
+        "El recuento de la cabecera se mantiene coherente con lo que se ve tras extraer y tras enviar",
+        "pnpm typecheck passes",
+        "pnpm test passes"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-008"
+      ]
+    }
+  ]
+}

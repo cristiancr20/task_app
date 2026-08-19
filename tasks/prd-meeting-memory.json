@@ -1,0 +1,234 @@
+{
+  "name": "Memoria de reuniones — estado de vuelta, compromisos abiertos y lo que no es una tarea",
+  "description": "Cierra el ciclo con Linear: consulta el estado real de los issues que cada nota produjo y lo refresca solo, muestra al abrir una reunion lo que sigue pendiente de reuniones anteriores del mismo proyecto, y captura decisiones, riesgos y preguntas abiertas en el mismo pase de extraccion.",
+  "branchName": "ralph/meeting-memory",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Cliente de Linear — consultar el estado de issues por id",
+      "description": "Como desarrollador, quiero preguntarle a Linear en qué estado están unos issues concretos, para poder informar de lo que produjo cada nota.",
+      "acceptanceCriteria": [
+        "Nueva función `fetchIssueStates(apiKey, ids)` en `lib/linear.ts` que devuelve, por issue: `id`, `identifier`, `title`, `url`, el nombre del estado y su tipo",
+        "El tipo de estado se expone como una unión propia (`triage`, `backlog`, `unstarted`, `started`, `completed`, `canceled`) y cualquier valor desconocido de Linear cae en `unstarted` en vez de romper el parseo",
+        "La consulta filtra por los ids pedidos en una sola petición por lote, no una petición por issue",
+        "Los ids se parten en lotes de tamaño acotado y comentado, con el mismo criterio de complejidad de query documentado en `listTeamsAndProjects`",
+        "La conexión se pagina con el patrón existente: tope de `MAX_PAGES` y corte cuando el cursor no avanza",
+        "Un id que Linear ya no conoce (issue borrado) simplemente no aparece en el resultado, sin lanzar",
+        "Una lista de ids vacía devuelve un resultado vacío sin llegar a hacer ninguna petición",
+        "Nodos con campos faltantes se descartan como hacen `readTeam` y `readProject`",
+        "Tests en `lib/linear.test.ts` con `fetch` stubeado: lote único, varios lotes, paginación, id inexistente, estado desconocido y error de Linear traducido",
+        "pnpm typecheck passes",
+        "pnpm test passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "",
+      "dependsOn": [],
+      "completionNotes": "Completed by agent"
+    },
+    {
+      "id": "US-002",
+      "title": "Ruta y wrapper de cliente para el estado de una nota",
+      "description": "Como frontend, quiero pedir el estado de los issues de una transcripción sin conocer la API key, para poder mostrarlo en la interfaz.",
+      "acceptanceCriteria": [
+        "Nueva ruta `POST /api/linear/issue-states` que recibe `{ path }` y responde `{ states }`",
+        "La ruta lee del historial de esa nota los ids ya creados, en el servidor: el navegador manda la ruta de la nota, nunca la lista de ids ni la credencial",
+        "Valida que `path` acabe en `.md` con `requireMarkdownPath` y usa `requireContextRoot()` y `errorResponse` de `lib/api.ts`, como el resto de rutas",
+        "Sin API key guardada responde 400 con mensaje en español, sin llamar a Linear",
+        "Una nota sin historial responde `{ states: [] }` con 200, no un error",
+        "Wrapper en `lib/issue-states-client.ts` con su guarda de forma `isX()`, siguiendo el patrón del resto de `lib/*-client.ts`",
+        "Tests del wrapper: respuesta válida, respuesta con forma inesperada y error del servidor propagado con su texto",
+        "pnpm typecheck passes",
+        "pnpm test passes"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-001"
+      ]
+    },
+    {
+      "id": "US-003",
+      "title": "Resumen de estado en la nota abierta",
+      "description": "Como usuario, quiero ver de un vistazo qué fue de las tareas que creé desde esta reunión, para saber si hay que insistir en algo.",
+      "acceptanceCriteria": [
+        "Nuevo hook `app/use-issue-states.ts` con el estado keyed por ruta de transcripción, como el resto de hooks del explorador",
+        "La consulta se lanza al abrir una nota que tiene historial, y el resultado se cachea en memoria durante la sesión",
+        "El componente `PushedHistory` (o el que ocupe su lugar) muestra el recuento agrupado: hechas, en curso, sin empezar y canceladas",
+        "Cada issue del historial muestra su estado actual junto a su `identifier` y sigue enlazando a Linear",
+        "Una nota sin historial no muestra el bloque y no lanza ninguna consulta",
+        "Sin API key el bloque muestra el historial como hoy, sin estados y sin error",
+        "Un fallo de la consulta deja el historial visible con un aviso discreto y un «Reintentar»; nunca sustituye al historial por un error",
+        "Una respuesta que llega tarde no escribe sobre otra nota",
+        "La función que agrupa los estados en recuentos es pura, vive fuera del componente y está cubierta por tests",
+        "pnpm typecheck passes",
+        "pnpm test passes"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-002"
+      ]
+    },
+    {
+      "id": "US-004",
+      "title": "El estado se refresca solo en segundo plano",
+      "description": "Como usuario, quiero que el estado se mantenga al día mientras tengo la app abierta, para no tener que refrescar a mano.",
+      "acceptanceCriteria": [
+        "El estado de la nota abierta se vuelve a consultar cada cierto intervalo, definido en una constante con nombre y comentada",
+        "El refresco se detiene cuando la pestaña no está visible (`document.visibilityState`) y se reanuda al volver, para no consumir cuota de Linear en segundo plano",
+        "Nunca hay dos consultas solapadas de la misma nota: si una sigue en vuelo, el tick se salta",
+        "Cambiar de nota cancela el ciclo de la anterior",
+        "Una nota sin historial o sin API key no programa ningún refresco",
+        "Un fallo del refresco automático no muestra error a pantalla completa ni borra el estado ya conocido; el último estado bueno se mantiene",
+        "Existe además un control manual de «Actualizar» que fuerza la consulta sin esperar al intervalo",
+        "El temporizador se limpia al desmontar, sin fugas",
+        "pnpm typecheck passes",
+        "pnpm test passes"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-003"
+      ]
+    },
+    {
+      "id": "US-005",
+      "title": "El progreso también se ve en la lista de archivos",
+      "description": "Como usuario, quiero distinguir en la lista qué reuniones ya están resueltas y cuáles siguen coleando, sin abrirlas una por una.",
+      "acceptanceCriteria": [
+        "El distintivo de nota ya procesada de `app/file-list.tsx` incorpora el progreso: cuántas de sus tareas están cerradas",
+        "Una nota con todo cerrado se distingue visualmente de una con trabajo pendiente",
+        "Los estados de las notas de la carpeta visible se piden en una sola petición, no una por archivo",
+        "Sin API key, el distintivo sigue mostrando lo de hoy (que la nota ya se envió) sin hueco ni error",
+        "Mientras los estados no han llegado, el distintivo no parpadea entre dos formas: muestra lo que ya sabía y se completa cuando llegan",
+        "Los colores salen de los tokens existentes; no se introduce ninguna variante `dark:` ni ningún color literal",
+        "pnpm typecheck passes",
+        "pnpm test passes"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-002"
+      ]
+    },
+    {
+      "id": "US-006",
+      "title": "El historial recuerda a qué proyecto se envió",
+      "description": "Como desarrollador, quiero saber a qué equipo y proyecto de Linear fue cada envío, para poder filtrar los pendientes por el proyecto que el usuario tiene delante.",
+      "acceptanceCriteria": [
+        "`HistoryEntry` en `lib/store.ts` incorpora `teamId: string | null` y `projectId: string | null`",
+        "La ruta de push guarda ambos al escribir la entrada del historial, tomándolos del plan ya validado",
+        "La normalización trata una entrada antigua sin esos campos como `null` en vez de descartarla: el historial existente no se pierde ni se corrompe",
+        "`addHistoryEntry` y `getHistory` siguen funcionando igual para quien no mire los campos nuevos",
+        "Tests en `lib/store.test.ts`: entrada nueva con proyecto, entrada antigua sin él, y campos con el tipo equivocado normalizados a `null`",
+        "pnpm typecheck passes",
+        "pnpm test passes"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": "",
+      "dependsOn": []
+    },
+    {
+      "id": "US-007",
+      "title": "Selector de compromisos pendientes",
+      "description": "Como desarrollador, quiero una función pura que decida qué pendientes mostrar en una nota, para que la regla esté en un sitio y se pueda testear.",
+      "acceptanceCriteria": [
+        "Nuevo módulo `lib/pending-commitments.ts`, sin dependencias de servidor, importable desde el navegador",
+        "Exporta una función que recibe el historial completo, los estados conocidos de los issues, la ruta de la nota abierta y el `projectId` seleccionado, y devuelve los pendientes a mostrar",
+        "Solo entran issues cuyo estado **no** es `completed` ni `canceled`",
+        "Solo entran issues enviados al mismo `projectId` que está seleccionado ahora",
+        "Las entradas antiguas del historial sin `projectId` quedan fuera cuando hay un proyecto seleccionado, para no mezclar clientes distintos",
+        "Los issues de la propia nota abierta quedan fuera: esos ya se ven en su propio bloque de estado",
+        "El resultado se ordena por antigüedad, del más viejo al más reciente, y cada elemento lleva la ruta y el título de la nota de la que salió",
+        "Sin `projectId` seleccionado la función devuelve lista vacía en vez de devolverlo todo",
+        "Tests en `lib/pending-commitments.test.ts` cubriendo cada regla por separado, incluido el historial mixto con entradas antiguas",
+        "pnpm typecheck passes",
+        "pnpm test passes"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-006"
+      ]
+    },
+    {
+      "id": "US-008",
+      "title": "Panel «Pendiente de reuniones anteriores»",
+      "description": "Como usuario, quiero ver al abrir una reunión qué quedó sin cerrar de las anteriores, para acordarme de preguntarlo.",
+      "acceptanceCriteria": [
+        "Nuevo componente que lista los pendientes que devuelve `lib/pending-commitments.ts`",
+        "Cada fila muestra: `identifier` enlazado a Linear, título, la persona que la transcripción puso al mando cuando la hay, cuánto tiempo lleva abierta y su estado actual",
+        "Cada fila indica de qué reunión salió, y hacer clic en ese origen abre esa nota",
+        "El panel no aparece cuando no hay pendientes, en vez de mostrar un bloque vacío",
+        "El panel se puede plegar, y si la lista es larga se limita a un número razonable con un «ver todas» que muestra el resto",
+        "Sin API key o sin proyecto seleccionado el panel no aparece",
+        "Los estados que alimentan el panel se reutilizan de la caché de sesión: abrir una nota no vuelve a consultar lo que ya se consultó",
+        "Los colores salen de los tokens existentes",
+        "pnpm typecheck passes",
+        "pnpm test passes"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-003",
+        "US-007"
+      ]
+    },
+    {
+      "id": "US-009",
+      "title": "El modelo extrae decisiones, riesgos y preguntas abiertas",
+      "description": "Como usuario, quiero que la extracción capture también lo que no es una tarea, porque las decisiones son lo primero que se pierde de una reunión.",
+      "acceptanceCriteria": [
+        "`TASKS_JSON_SCHEMA` en `lib/extractors/task.ts` incorpora tres listas más: decisiones, riesgos y preguntas abiertas, dentro del subconjunto de JSON Schema que aceptan tanto Ollama como Anthropic",
+        "Cada elemento de las tres listas lleva su propio texto y su `evidence`: la frase de la transcripción que lo prueba, copiada literal en su idioma original",
+        "Una decisión lleva además quién la tomó cuando la transcripción lo dice, o `null`",
+        "Un riesgo lleva además a qué afecta cuando se dice, o `null`",
+        "`SYSTEM_PROMPT` define los tres conceptos y deja claro que una decisión no es una tarea, que las tres listas pueden venir vacías y que **no se inventa nada**, con la misma contundencia que la regla de las tareas",
+        "El tipo que devuelve la extracción pasa a ser un resultado con las cuatro listas, y ambos extractores lo producen sin divergir",
+        "La normalización descarta elementos sin texto, recorta espacios y trata las tres listas ausentes como vacías",
+        "`/api/extract` responde las cuatro listas y la respuesta sigue siendo válida para un cliente que solo mire las tareas",
+        "Tests en `lib/extractors/task.test.ts` para la normalización de las tres listas nuevas: elementos vacíos, campos del tipo equivocado, listas ausentes y payload sin ninguna de ellas",
+        "pnpm typecheck passes",
+        "pnpm test passes"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": "",
+      "dependsOn": []
+    },
+    {
+      "id": "US-010",
+      "title": "Decisiones, riesgos y preguntas en la interfaz",
+      "description": "Como usuario, quiero leer y copiar lo que se decidió, lo que preocupa y lo que quedó en el aire, sin que se mezcle con las tareas que voy a enviar.",
+      "acceptanceCriteria": [
+        "Las tres listas se muestran en la columna de tareas, claramente separadas de la tabla que se envía a Linear",
+        "Cada elemento muestra su texto y permite ver la evidencia que lo respalda",
+        "Cada lista se puede copiar al portapapeles como Markdown, y hay un control para copiarlas todas juntas",
+        "Una lista vacía no ocupa espacio con un bloque vacío",
+        "Nada de esto se envía a Linear ni entra en el recuento del botón de envío",
+        "Las tres listas se persisten junto a los borradores de la nota y se restauran al recargar",
+        "Regenerar la extracción las reemplaza junto con las tareas, y el aviso de cambios manuales sigue contando solo las filas de la tabla",
+        "La función que convierte una lista en Markdown es pura y está cubierta por tests",
+        "pnpm typecheck passes",
+        "pnpm test passes"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-009"
+      ]
+    }
+  ],
+  "metadata": {
+    "updatedAt": "2026-08-19T23:54:41.407Z"
+  }
+}

@@ -1,15 +1,15 @@
 {
-  "id": "cead5646-3586-4d77-be44-5415f738bb43",
+  "id": "46fd4f4c-ffce-482b-acbb-d8f2ab1265b5",
   "status": "running",
-  "startedAt": "2026-08-19T21:44:55.757Z",
-  "updatedAt": "2026-08-19T22:11:50.095Z",
+  "startedAt": "2026-08-19T23:52:19.086Z",
+  "updatedAt": "2026-08-19T23:52:19.086Z",
   "agentPlugin": "claude",
   "trackerPlugin": "json",
   "executionScopes": [],
-  "prdPath": "./tasks/prd-linear-dedupe-duedate.json",
-  "currentIteration": 6,
+  "prdPath": "./tasks/prd-meeting-memory.json",
+  "currentIteration": 0,
   "maxIterations": 0,
   "totalTasks": 0,
-  "tasksCompleted": 6,
+  "tasksCompleted": 0,
   "cwd": "/Users/cristian/dev/tasks-app"
 }

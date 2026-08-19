@@ -6,6 +6,7 @@ import {
   LinearUnreachableError,
   buildIssueDescription,
   createIssue,
+  fetchIssueStates,
   linearGraphQL,
   listIssuesForDuplicateCheck,
   listTeamsAndProjects,
@@ -602,6 +603,247 @@ describe('listIssuesForDuplicateCheck', () => {
       name: 'LinearApiError',
       status: 400,
     })
+    expect(calls).toHaveLength(0)
+  })
+})
+
+describe('fetchIssueStates', () => {
+  /** One node as Linear sends it, with only the fields a test cares about overridden. */
+  function node(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 'iss_1',
+      identifier: 'ENG-1',
+      title: 'Escribir el informe',
+      url: 'https://linear.app/x/issue/ENG-1',
+      state: { name: 'Todo', type: 'unstarted' },
+      ...overrides,
+    }
+  }
+
+  function page(nodes: unknown[], pageInfo: { hasNextPage: boolean; endCursor: string | null }) {
+    return json({ data: { issues: { nodes, pageInfo } } })
+  }
+
+  /** The ids the call filtered by. */
+  function sentIds(call: Call): string[] {
+    return call.variables?.ids as string[]
+  }
+
+  // Mirrors ISSUE_ID_BATCH_SIZE in lib/linear.ts, which is not exported.
+  const BATCH_SIZE = 50
+  // Mirrors MAX_PAGES in lib/linear.ts, which is not exported.
+  const MAX_PAGES = 20
+
+  it('asks for every id in a single filtered request', async () => {
+    const calls = stubFetch(() =>
+      page(
+        [
+          node(),
+          node({
+            id: 'iss_2',
+            identifier: 'ENG-2',
+            title: 'Revisar',
+            url: 'https://linear.app/x/issue/ENG-2',
+            state: { name: 'Done', type: 'completed' },
+          }),
+        ],
+        { hasNextPage: false, endCursor: null },
+      ),
+    )
+
+    const states = await fetchIssueStates(API_KEY, ['iss_1', 'iss_2'])
+
+    expect(states).toEqual([
+      {
+        id: 'iss_1',
+        identifier: 'ENG-1',
+        title: 'Escribir el informe',
+        url: 'https://linear.app/x/issue/ENG-1',
+        stateName: 'Todo',
+        stateType: 'unstarted',
+      },
+      {
+        id: 'iss_2',
+        identifier: 'ENG-2',
+        title: 'Revisar',
+        url: 'https://linear.app/x/issue/ENG-2',
+        stateName: 'Done',
+        stateType: 'completed',
+      },
+    ])
+
+    // One request for the pair, not one per issue, and no cursor on the first page.
+    expect(calls).toHaveLength(1)
+    expect(calls[0].query).toContain('query IssueStates(')
+    expect(calls[0].variables).toEqual({ ids: ['iss_1', 'iss_2'] })
+  })
+
+  it('trims and deduplicates the ids it was given', async () => {
+    const calls = stubFetch(() => page([node()], { hasNextPage: false, endCursor: null }))
+
+    const states = await fetchIssueStates(API_KEY, [' iss_1 ', 'iss_1', '', '   '])
+
+    expect(sentIds(calls[0])).toEqual(['iss_1'])
+    expect(states).toHaveLength(1)
+  })
+
+  it('splits the ids into batches instead of one huge request', async () => {
+    const ids = Array.from({ length: BATCH_SIZE * 2 + 1 }, (_, i) => `iss_${i}`)
+    const calls = stubFetch((call) =>
+      page(
+        sentIds(call).map((id) => node({ id, identifier: id.toUpperCase() })),
+        { hasNextPage: false, endCursor: null },
+      ),
+    )
+
+    const states = await fetchIssueStates(API_KEY, ids)
+
+    expect(calls).toHaveLength(3)
+    expect(calls.map((call) => sentIds(call).length)).toEqual([BATCH_SIZE, BATCH_SIZE, 1])
+    expect(calls.flatMap(sentIds)).toEqual(ids)
+    expect(states.map((state) => state.id)).toEqual(ids)
+  })
+
+  it('follows the cursor to the end within a batch', async () => {
+    const calls = stubFetch((call) =>
+      call.variables?.after === 'issues-2'
+        ? page([node({ id: 'iss_2', identifier: 'ENG-2' })], {
+            hasNextPage: false,
+            endCursor: null,
+          })
+        : page([node()], { hasNextPage: true, endCursor: 'issues-2' }),
+    )
+
+    const states = await fetchIssueStates(API_KEY, ['iss_1', 'iss_2'])
+
+    expect(states.map((state) => state.id)).toEqual(['iss_1', 'iss_2'])
+    expect(calls.map((call) => call.variables)).toEqual([
+      { ids: ['iss_1', 'iss_2'] },
+      { ids: ['iss_1', 'iss_2'], after: 'issues-2' },
+    ])
+  })
+
+  it('stops at MAX_PAGES when the cursor never advances', async () => {
+    const calls = stubFetch(() => page([node()], { hasNextPage: true, endCursor: 'stuck' }))
+
+    await expect(fetchIssueStates(API_KEY, ['iss_1'])).resolves.toHaveLength(MAX_PAGES)
+    expect(calls).toHaveLength(MAX_PAGES)
+  })
+
+  it('stops when the last page carries no cursor', async () => {
+    const calls = stubFetch(() => page([node()], { hasNextPage: true, endCursor: null }))
+
+    await fetchIssueStates(API_KEY, ['iss_1'])
+
+    expect(calls).toHaveLength(1)
+  })
+
+  // A deleted issue is still in the note's history; Linear just does not send it
+  // back, and the rest of the batch has to survive that.
+  it('leaves out an id Linear no longer knows instead of throwing', async () => {
+    stubFetch(() => page([node({ id: 'iss_1' })], { hasNextPage: false, endCursor: null }))
+
+    const states = await fetchIssueStates(API_KEY, ['iss_1', 'iss_borrado'])
+
+    expect(states.map((state) => state.id)).toEqual(['iss_1'])
+  })
+
+  it.each<[string, string]>([
+    ['triage', 'triage'],
+    ['backlog', 'backlog'],
+    ['unstarted', 'unstarted'],
+    ['started', 'started'],
+    ['completed', 'completed'],
+    ['canceled', 'canceled'],
+  ])('reads the %s state type verbatim', async (type, expected) => {
+    stubFetch(() =>
+      page([node({ state: { name: 'X', type } })], { hasNextPage: false, endCursor: null }),
+    )
+
+    const [state] = await fetchIssueStates(API_KEY, ['iss_1'])
+
+    expect(state.stateType).toBe(expected)
+  })
+
+  // A type this build does not know must not sink the whole lookup.
+  it.each([
+    ['an unknown string', 'quantum'],
+    ['a missing state', undefined],
+    ['a non-string type', 7],
+  ])('falls back to unstarted for %s', async (_label, type) => {
+    stubFetch(() =>
+      page([node({ state: type === undefined ? undefined : { name: 'X', type } })], {
+        hasNextPage: false,
+        endCursor: null,
+      }),
+    )
+
+    const [state] = await fetchIssueStates(API_KEY, ['iss_1'])
+
+    expect(state.stateType).toBe('unstarted')
+  })
+
+  it('drops nodes with no id or no title and fills in the rest of a partial one', async () => {
+    stubFetch(() =>
+      page(
+        [
+          node({ id: '' }),
+          node({ id: 'no-title', title: '' }),
+          'not a node',
+          { id: 'iss_partial', title: 'Solo lo imprescindible' },
+          node({ id: 'iss_ok' }),
+        ],
+        { hasNextPage: false, endCursor: null },
+      ),
+    )
+
+    const states = await fetchIssueStates(API_KEY, ['iss_partial', 'iss_ok'])
+
+    expect(states.map((state) => state.id)).toEqual(['iss_partial', 'iss_ok'])
+    expect(states[0]).toEqual({
+      id: 'iss_partial',
+      identifier: '',
+      title: 'Solo lo imprescindible',
+      url: '',
+      stateName: '',
+      stateType: 'unstarted',
+    })
+  })
+
+  it('reports a response with no issues connection', async () => {
+    stubFetch(() => json({ data: { issues: null } }))
+
+    await expect(fetchIssueStates(API_KEY, ['iss_1'])).rejects.toMatchObject({
+      name: 'LinearApiError',
+      status: 502,
+    })
+  })
+
+  it('carries a rejection from Linear through untouched', async () => {
+    stubFetch(() => json({ errors: [{ message: 'Query too complex' }] }, 400))
+
+    await expect(fetchIssueStates(API_KEY, ['iss_1'])).rejects.toMatchObject({
+      status: 502,
+      message: 'Linear: Query too complex',
+    })
+  })
+
+  it('translates a bad key into a 401', async () => {
+    stubFetch(() => json({ errors: [{ message: 'Authentication required' }] }, 401))
+
+    await expect(fetchIssueStates(API_KEY, ['iss_1'])).rejects.toMatchObject({
+      status: 401,
+      message: 'Linear: Authentication required',
+    })
+  })
+
+  it.each([
+    ['the list is empty', []],
+    ['every id is blank', ['', '  ']],
+  ])('answers nothing without reaching the network when %s', async (_label, ids) => {
+    const calls = stubFetch(() => json({ data: {} }))
+
+    await expect(fetchIssueStates(API_KEY, ids)).resolves.toEqual([])
     expect(calls).toHaveLength(0)
   })
 })
