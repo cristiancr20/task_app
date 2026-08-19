@@ -263,6 +263,7 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
                 onUpdateRow={drafts.updateRow}
                 onRemoveRow={drafts.removeRow}
                 onAddRow={drafts.addRow}
+                onRetryLoad={drafts.retryLoad}
               />
             </div>
           </section>

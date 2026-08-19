@@ -5,6 +5,50 @@ after each iteration and it's included in prompts for context.
 
 ## Codebase Patterns (Study These First)
 
+### Persisting a client hook's state (US-010)
+Write-behind, not write-through. The pieces that make it safe are all in `lib/`
+(and therefore tested); the hook is wiring:
+- `lib/save-queue.ts` — debounce **per key**, and the key travels with the
+  value. That single decision is what makes «a late save is written under the
+  path it captured» true by construction rather than by a guard.
+- Writes for one key are *chained*. Every save carries the whole state, so two
+  overlapping requests leave whichever the server finished last on disk — not
+  necessarily the newer one.
+- Detect «worth saving» by fingerprinting the durable slice
+  (`JSON.stringify({rows, baseline, extracted})`) in an effect over the whole
+  state map, not by calling `save` from each mutation. Transient fields
+  serialise identically, so a spinner or a dialog never reaches disk, and every
+  future mutation is covered without being remembered. Side effects in a
+  `setState` updater would run twice under StrictMode; an effect does not.
+- Record the fingerprint of what a *load* returned before patching it in, or
+  the load is written straight back out.
+
+### A failed load must not become a write (US-010)
+Keep a per-path «savable» set that a path only enters on a successful read (or
+an extraction). Without it the empty table shown after a failed read is queued
+over the drafts on disk — a read failure silently turned into data loss. Found
+by driving the real UI with the route stubbed to 500, not by a test.
+And when the retry *succeeds* with rows typed meanwhile, neither side is stale:
+`mergeDrafts` keeps both. Choosing memory takes back curation the user never
+saw; choosing disk takes back the row they just typed.
+
+### Keys that outlive the page (US-010)
+The moment a list is restored from disk, a `let sequence = 0` counter in module
+scope is a bug: it re-issues keys that are already on screen, and one React key
+for two rows means an edit lands on both. `lib/draft-ids.ts` reserves the
+counter past whatever came back. Ids stay opaque on the wire — one it did not
+mint (`row-2-b`, a uuid) restores under its own name instead of being renamed.
+
+### Testing browser code when only `lib/**` is collected (US-010)
+`vitest.config.mts` collects `lib/**/*.test.ts` in a `node` environment, so
+nothing in `app/` is reachable and there is no DOM. Push every decidable piece
+into `lib/` — the transport, the debounce, the merge, the key generator — and
+leave the hook holding only React wiring. A `fetch` client is testable there:
+`vi.stubGlobal('fetch', …)` returning a real `new Response(JSON.stringify(…))`,
+`vi.unstubAllGlobals()` in `afterEach`. Timers too: `vi.useFakeTimers()` plus
+`await vi.advanceTimersByTimeAsync(ms)`, which drains microtasks as it goes —
+`advanceTimersByTimeAsync(0)` is the «let every promise settle» step.
+
 ### Sharing the atomic write (US-009)
 The 0600 temp-file+rename write lives in `lib/atomic-write.ts` (`writeJsonFile`),
 not in `lib/store.ts` — a second store gets the same guarantees for free.
@@ -624,4 +668,73 @@ binary on PATH, not a project check.
     `generating`/`error`/`confirming` plus a priority of `"blocker"`, a numeric
     `mentioned` and an id-less row answered the sieved state, and
     `.data/drafts.json` landed as `-rw-------`. Scratch file removed afterwards.
+---
+
+## 2026-08-19 - US-010
+
+The task table now survives a reload and a server restart.
+
+- `app/use-task-drafts.ts` — the by-path map became a cache in front of
+  `.data/drafts.json`. A note with no state in memory reads its drafts once on
+  selection; every change to the rows is written back with a 500 ms debounce;
+  the result of an extraction goes straight out through `saveNow`, baseline
+  included. Two new fields on `TaskDraftState`, `loading` and `loadError`, and a
+  `retryLoad` for the «Reintentar».
+- `lib/save-queue.ts` (new) — the debounce. One pending value per key, the key
+  captured with it, writes for a key chained, failures reported and dropped.
+- `lib/drafts-client.ts` (new) — `fetchDrafts` / `saveDrafts` over the routes
+  US-009 added, with the same «the route's Spanish travels verbatim» contract as
+  every other client.
+- `lib/drafts-merge.ts` (new) — what a note becomes when a read comes back: the
+  stored state, or the table on screen when an extraction beat the read, or both
+  when rows were typed into a table that could not be read.
+- `lib/draft-ids.ts` (new) — row keys, reserved past the ones restored.
+- `app/task-table.tsx` — a «Cargando tareas guardadas…» state instead of a false
+  «Aún no hay tareas», and a warning strip with «Reintentar» above the table
+  (never in place of it) when the read failed.
+
+`pnpm typecheck` and `pnpm test` pass — 10 files, 303 tests, 55 of them new.
+Seven mutations run against the new modules (reserve disabled, debounce removed,
+chaining removed, shape check removed, and the three `mergeDrafts` branches);
+every one turned tests red, and the files were restored afterwards.
+
+**Verified in the browser**, against `pnpm dev` and a real context folder:
+- Typing a 27-character title costs **one** `PUT`, not 27 — one `GET` on
+  selection, one `PUT` per settled burst.
+- Title, description, priority and the «incluir» checkbox come back byte for
+  byte after `reload`, and again after killing and restarting `next dev`.
+- «1 cambio manual» reads the same before and after a reload, because the
+  baseline is stored with the rows.
+- A real Ollama extraction (`qwen3:8b`) wrote `rows`, `baseline` and
+  `extracted` in one go, ~20 s in; a run that found nothing persisted
+  `extracted: true` with no rows, and the note still says «No se encontraron
+  tareas» after a reload rather than «Aún no hay tareas».
+- With the `GET` stubbed to 500: the notice appears, the table stays editable,
+  and **nothing is written**. With the `PUT` stubbed to 500: the edit stands,
+  the console names the note, and the next edit saves the text the failed one
+  was carrying.
+- `.data/drafts.json` stayed `-rw-------`. The scratch file was removed
+  afterwards; `config.json` was never touched.
+
+**Learnings:**
+- See the four new blocks in `## Codebase Patterns`.
+- **The bug the unit tests could not have found.** «Retry after a failed load»
+  looked finished — the notice appeared, memory was preserved — until the
+  browser showed the retry writing the one row typed during the outage *over*
+  the two rows on disk. Marking a path savable is not the same as knowing its
+  state came from disk. Fixed by `mergeDrafts`, whose three branches then went
+  into `lib/` precisely so they could be tested and mutation-checked.
+- The colliding-key case is not hypothetical: the row typed while the read was
+  failing really did come out as `row-2`, the same key a stored row held, since
+  the page had no way to know what was on disk. It is on the merge to part them.
+- React 19's StrictMode double-invokes state updaters in dev, so `addRow`
+  consumes two ids and the numbering skips. Harmless — they only have to be
+  unique — but it is why an id-per-row counter must never be treated as a count.
+- `playwright-cli` has no `network` command in 0.1.13 (it prints help). The
+  request count that mattered came from the `next dev` log instead, which is
+  better evidence anyway: it is the server saying what it received.
+- Element refs go stale when an `aria-label` changes — `uncheck e242` silently
+  did nothing after the row's label picked up the title that had just been
+  typed. Re-snapshot and re-resolve the ref after any edit that changes a label.
+
 ---

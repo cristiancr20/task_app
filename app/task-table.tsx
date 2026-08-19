@@ -31,6 +31,8 @@ type Props = {
   onUpdateRow: (id: string, changes: Partial<TaskDraft>) => void
   onRemoveRow: (id: string) => void
   onAddRow: () => void
+  /** «Reintentar» after the stored drafts failed to load. */
+  onRetryLoad: () => void
 }
 
 /** Linear's scale, in the words the user reads. */
@@ -63,10 +65,15 @@ export function TaskTable({
   onUpdateRow,
   onRemoveRow,
   onAddRow,
+  onRetryLoad,
 }: Props) {
   const rows = state?.rows ?? []
   const selected = rows.filter((row) => row.include).length
   const generating = state?.generating ?? false
+  // The stored rows are on their way, so the table has nothing to say yet —
+  // and neither «Añadir» nor «Generar» may run against a table that is about
+  // to be replaced by what comes back.
+  const loading = state?.loading ?? false
   const changes = countManualChanges(state)
   // The column only exists once there is a push to report on; before that every
   // row would read «Pendiente», which says nothing.
@@ -92,7 +99,7 @@ export function TaskTable({
           <button
             type="button"
             onClick={onAddRow}
-            disabled={!state || busy}
+            disabled={!state || loading || busy}
             className="rounded-lg border border-line-strong bg-surface px-2.5 py-1 text-xs font-medium shadow-panel transition-colors hover:bg-surface-2 disabled:opacity-50"
           >
             Añadir
@@ -100,7 +107,7 @@ export function TaskTable({
           <button
             type="button"
             onClick={onGenerate}
-            disabled={!state || generating || busy}
+            disabled={!state || loading || generating || busy}
             className="rounded-lg bg-accent px-2.5 py-1 text-xs font-semibold text-on-accent shadow-panel transition-colors hover:bg-accent-soft disabled:opacity-50 disabled:shadow-none"
           >
             {generating ? 'Generando…' : 'Generar tareas'}
@@ -113,6 +120,25 @@ export function TaskTable({
           the plain surface would rely on a hairline alone, which is exactly
           what stopped working when four white columns met. */}
       <div className="min-h-0 flex-1 overflow-y-auto bg-surface-2">
+        {/* Drafts that could not be read. Also above the table rather than in
+            place of it: the read failed, so whatever is in memory — including
+            rows added since — is all there is, and it stays editable. */}
+        {state?.loadError ? (
+          <p
+            role="alert"
+            className="flex items-center justify-between gap-3 border-b border-warn/30 bg-warn-wash px-4 py-3 text-sm text-warn"
+          >
+            <span className="min-w-0">{state.loadError}</span>
+            <button
+              type="button"
+              onClick={onRetryLoad}
+              className="shrink-0 rounded-lg border border-line-strong bg-surface px-2.5 py-1 text-xs font-medium text-content shadow-panel transition-colors hover:bg-surface-2"
+            >
+              Reintentar
+            </button>
+          </p>
+        ) : null}
+
         {/* The error sits above the table and never replaces it: a failed
             regeneration must not throw away rows the user already curated. */}
         {state?.error ? (
@@ -124,7 +150,9 @@ export function TaskTable({
           </p>
         ) : null}
 
-        {generating && rows.length === 0 ? (
+        {loading && rows.length === 0 ? (
+          <Loading />
+        ) : generating && rows.length === 0 ? (
           <ExtractionProgress />
         ) : rows.length === 0 ? (
           <Empty extracted={state?.extracted ?? false} />
@@ -420,6 +448,26 @@ function RowStatus({ result }: { result: PushRowResult | undefined }) {
     >
       <span className="truncate">{result.error}</span>
     </span>
+  )
+}
+
+/**
+ * The stored drafts are being read. It is a disk read of a small file, so this
+ * is normally one frame — but it has to exist all the same: rendering `Empty`
+ * meanwhile would tell the user their curated rows are gone, and «Aún no hay
+ * tareas» is exactly the message that invites regenerating them.
+ */
+function Loading() {
+  return (
+    <div className="flex flex-col items-center px-6 py-12 text-center" role="status" aria-live="polite">
+      <span
+        aria-hidden="true"
+        className="mb-3 h-1 w-32 overflow-hidden rounded-full bg-line"
+      >
+        <span className="block h-full w-1/3 animate-[indeterminate_1.4s_ease-in-out_infinite] rounded-full bg-accent" />
+      </span>
+      <p className="text-sm text-muted">Cargando tareas guardadas…</p>
+    </div>
   )
 }
 
