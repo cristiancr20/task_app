@@ -10,6 +10,7 @@ function row(overrides: Partial<DraftRow> = {}): DraftRow {
     description: '',
     priority: 'none',
     mentioned: null,
+    dueDate: null,
     evidence: '',
     include: true,
     ...overrides,

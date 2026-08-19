@@ -23,6 +23,11 @@ export type ExtractedTask = {
   priority: Priority
   /** Who the transcript put on the hook, verbatim; null when nobody was named. */
   mentioned: string | null
+  /**
+   * The deadline the transcript names, as `YYYY-MM-DD`; null when it names
+   * none, or when what the model answered was not a real calendar date.
+   */
+  dueDate: string | null
   /** The line from the transcript that justifies the task, quoted verbatim. */
   evidence: string
 }
@@ -76,13 +81,18 @@ export const TASKS_JSON_SCHEMA = {
             description:
               'Name of the person the transcript put in charge, exactly as written. Null if nobody was named.',
           },
+          dueDate: {
+            type: ['string', 'null'],
+            description:
+              'Absolute deadline in YYYY-MM-DD format, resolved against the meeting date when the transcript says it relatively. Null when the transcript sets no deadline.',
+          },
           evidence: {
             type: 'string',
             description:
               'The sentence from the transcript that proves this task exists, copied verbatim in its original language.',
           },
         },
-        required: ['title', 'description', 'priority', 'mentioned', 'evidence'],
+        required: ['title', 'description', 'priority', 'mentioned', 'dueDate', 'evidence'],
         additionalProperties: false,
       },
     },
@@ -107,6 +117,8 @@ export const SYSTEM_PROMPT = [
   '- Write "title" and "description" in English, even when the transcript is in another language. The title is imperative and one line ("Send the Q3 budget to Marta"), never a restatement of the whole discussion.',
   '- The description is your own English sentence about the task — who owes what, to whom, and by when. Translating or copying the evidence line into it is wrong.',
   '- "mentioned" is the name of the person put in charge, exactly as the transcript writes it, or null when nobody was named. Never guess an owner.',
+  '- "dueDate" is the deadline the transcript sets, always as an absolute YYYY-MM-DD date. Resolve relative wording ("el viernes", "in two weeks", "before the end of the month") against the meeting date given in the header, and answer with the resulting calendar date.',
+  '- When the transcript sets no deadline, or when there is no meeting date to resolve a relative one against, "dueDate" is null. Never invent a date, and never answer with the relative phrase itself.',
   '- "priority" reflects the urgency the transcript itself expresses: urgent when it blocks someone or is due immediately, high when a near deadline is named, low when it is explicitly not urgent, none when urgency is never mentioned.',
   '- Do not merge two commitments into one task, and do not split one commitment into several.',
 ].join('\n')
@@ -115,7 +127,9 @@ export const SYSTEM_PROMPT = [
 export function buildUserPrompt(transcript: string, meta: TranscriptMeta): string {
   const header = [
     `Title: ${meta.title}`,
-    meta.date ? `Date: ${meta.date}` : null,
+    meta.date
+      ? `Meeting date: ${meta.date} — resolve every relative deadline against this date.`
+      : 'Meeting date: unknown — relative deadlines cannot be resolved, so leave dueDate null.',
     meta.attendees.length > 0 ? `Attendees: ${meta.attendees.join(', ')}` : null,
   ].filter((line): line is string => line !== null)
 
@@ -159,7 +173,10 @@ function taskList(payload: unknown): unknown[] {
 /** One raw entry, or null when it carries no title to show. */
 function normalizeTask(raw: unknown): ExtractedTask | null {
   if (typeof raw !== 'object' || raw === null) return null
-  const { title, description, priority, mentioned, evidence } = raw as Record<string, unknown>
+  const { title, description, priority, mentioned, dueDate, evidence } = raw as Record<
+    string,
+    unknown
+  >
 
   const cleanTitle = text(title)
   if (!cleanTitle) return null
@@ -169,8 +186,41 @@ function normalizeTask(raw: unknown): ExtractedTask | null {
     description: text(description),
     priority: normalizePriority(priority),
     mentioned: text(mentioned) || null,
+    dueDate: normalizeDueDate(dueDate),
     evidence: text(evidence),
   }
+}
+
+/**
+ * Only a real calendar day survives, as `YYYY-MM-DD`. Models answer this field
+ * with the relative phrase they were told to resolve ("next Friday"), with a
+ * full ISO timestamp, or with a date that does not exist (`2026-02-31`); the
+ * first and the last are worse than no date at all, because they reach Linear
+ * as a rejected mutation or as a deadline nobody agreed to.
+ *
+ * The time part of a timestamp is dropped rather than disqualifying it: the
+ * day is the whole answer, and a model that adds `T00:00:00Z` still got it.
+ */
+function normalizeDueDate(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+
+  const match = /^(\d{4})-(\d{2})-(\d{2})(?:[T ].*)?$/.exec(value.trim())
+  if (!match) return null
+
+  const [, year, month, day] = match
+  if (Number(day) < 1 || Number(day) > daysInMonth(Number(year), Number(month))) return null
+
+  return `${year}-${month}-${day}`
+}
+
+/** 0 for a month outside 1–12, so any day of it is out of range. */
+function daysInMonth(year: number, month: number): number {
+  const lengths = [31, isLeapYear(year) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+  return lengths[month - 1] ?? 0
+}
+
+function isLeapYear(year: number): boolean {
+  return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0
 }
 
 /** Anything outside Linear's scale — including `null` or a made-up level — is `none`. */

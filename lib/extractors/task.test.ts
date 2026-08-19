@@ -10,6 +10,7 @@ function row(overrides: Record<string, unknown> = {}): Record<string, unknown> {
     description: 'Cristian owes Marta the Q3 budget before Friday.',
     priority: 'high',
     mentioned: 'Cristian',
+    dueDate: '2026-03-06',
     evidence: 'Cristian: yo te paso el presupuesto del Q3 antes del viernes.',
     ...overrides,
   }
@@ -37,6 +38,7 @@ describe('normalizeTasks: the shape of the payload', () => {
         description: 'Cristian owes Marta the Q3 budget before Friday.',
         priority: 'high',
         mentioned: 'Cristian',
+        dueDate: '2026-03-06',
         evidence: 'Cristian: yo te paso el presupuesto del Q3 antes del viernes.',
       },
     ])
@@ -154,6 +156,82 @@ describe('normalizeTasks: mentioned', () => {
   })
 })
 
+describe('normalizeTasks: dueDate', () => {
+  it('keeps a well-formed YYYY-MM-DD date', () => {
+    expect(normalizeTasks({ tasks: [row({ dueDate: '2026-08-19' })] })[0].dueDate).toBe(
+      '2026-08-19',
+    )
+  })
+
+  it('keeps the last day of a leap February', () => {
+    expect(normalizeTasks({ tasks: [row({ dueDate: '2028-02-29' })] })[0].dueDate).toBe(
+      '2028-02-29',
+    )
+  })
+
+  it('trims the surrounding whitespace before validating', () => {
+    expect(normalizeTasks({ tasks: [row({ dueDate: '  2026-08-19 ' })] })[0].dueDate).toBe(
+      '2026-08-19',
+    )
+  })
+
+  // The model was asked to resolve these against the meeting date; when it
+  // answers with the phrase itself the date is unknowable, not empty-ish.
+  it.each([
+    ['a relative phrase', 'next Friday'],
+    ['a phrase in the transcript language', 'antes de fin de mes'],
+    ['a European format', '19/08/2026'],
+    ['an American format', '08-19-2026'],
+    ['a date with no padding', '2026-8-9'],
+    ['a year alone', '2026'],
+    ['a month alone', '2026-08'],
+    ['the empty string', ''],
+    ['only spaces', '   '],
+    ['a sentence around a date', 'due on 2026-08-19'],
+  ])('is null for %s', (_label, dueDate) => {
+    expect(normalizeTasks({ tasks: [row({ dueDate })] })[0].dueDate).toBeNull()
+  })
+
+  // A day out of its month's range would reach Linear as a rejected mutation.
+  it.each([
+    ['a February that never happened', '2026-02-31'],
+    ['a 29th of a non-leap February', '2026-02-29'],
+    ['a 31st of a 30-day month', '2026-04-31'],
+    ['day zero', '2026-08-00'],
+    ['day 32', '2026-08-32'],
+    ['month zero', '2026-00-19'],
+    ['month 13', '2026-13-19'],
+  ])('is null for %s', (_label, dueDate) => {
+    expect(normalizeTasks({ tasks: [row({ dueDate })] })[0].dueDate).toBeNull()
+  })
+
+  it('trims a full ISO timestamp down to its date instead of discarding it', () => {
+    expect(normalizeTasks({ tasks: [row({ dueDate: '2026-08-19T00:00:00Z' })] })[0].dueDate).toBe(
+      '2026-08-19',
+    )
+    expect(
+      normalizeTasks({ tasks: [row({ dueDate: '2026-08-19T17:30:00+02:00' })] })[0].dueDate,
+    ).toBe('2026-08-19')
+  })
+
+  it('discards a timestamp whose date part is impossible', () => {
+    expect(
+      normalizeTasks({ tasks: [row({ dueDate: '2026-02-31T00:00:00Z' })] })[0].dueDate,
+    ).toBeNull()
+  })
+
+  it.each([
+    ['the field is missing', undefined],
+    ['it is null', null],
+    ['it is a number', 20260819],
+    ['it is a boolean', true],
+    ['it is an object', { date: '2026-08-19' }],
+    ['it is an array', ['2026-08-19']],
+  ])('is null when %s', (_label, dueDate) => {
+    expect(normalizeTasks({ tasks: [row({ dueDate })] })[0].dueDate).toBeNull()
+  })
+})
+
 describe('normalizeTasks: non-string scalars become strings', () => {
   it('stringifies a numeric title instead of discarding the row', () => {
     const tasks = normalizeTasks({ tasks: [row({ title: 2026 })] })
@@ -179,9 +257,10 @@ describe('normalizeTasks: non-string scalars become strings', () => {
   })
 
   it('drops the extra keys a model adds beyond the contract', () => {
-    const [task] = normalizeTasks({ tasks: [row({ dueDate: '2026-09-01', assigneeId: 'abc' })] })
+    const [task] = normalizeTasks({ tasks: [row({ labels: ['infra'], assigneeId: 'abc' })] })
     expect(Object.keys(task).sort()).toEqual([
       'description',
+      'dueDate',
       'evidence',
       'mentioned',
       'priority',
@@ -194,26 +273,35 @@ describe('buildUserPrompt', () => {
   it('includes the date and the attendees when the transcript has them', () => {
     const prompt = buildUserPrompt('Ana: yo lo mando.', meta())
     expect(prompt).toContain('Title: Weekly sync')
-    expect(prompt).toContain('Date: 2026-03-04')
+    expect(prompt).toContain('Meeting date: 2026-03-04')
     expect(prompt).toContain('Attendees: Ana, Beto')
   })
 
-  it('leaves the date line out when there is no date', () => {
+  // The date is the anchor every relative deadline is resolved against, so the
+  // prompt says what it is for instead of just stating it.
+  it('presents the date as the anchor for relative deadlines', () => {
+    expect(buildUserPrompt('Ana: yo lo mando.', meta())).toContain(
+      'Meeting date: 2026-03-04 — resolve every relative deadline against this date.',
+    )
+  })
+
+  it('says the deadlines cannot be resolved when the note has no date', () => {
     const prompt = buildUserPrompt('Ana: yo lo mando.', meta({ date: null }))
-    expect(prompt).not.toContain('Date:')
+    expect(prompt).toContain('Meeting date: unknown')
+    expect(prompt).toContain('dueDate null')
     expect(prompt).toContain('Attendees: Ana, Beto')
   })
 
   it('leaves the attendees line out when nobody is listed', () => {
     const prompt = buildUserPrompt('Ana: yo lo mando.', meta({ attendees: [] }))
     expect(prompt).not.toContain('Attendees:')
-    expect(prompt).toContain('Date: 2026-03-04')
+    expect(prompt).toContain('Meeting date: 2026-03-04')
   })
 
-  it('keeps only the title line when neither date nor attendees exist', () => {
+  it('keeps the title and the date lines when nobody is listed and there is no date', () => {
     const prompt = buildUserPrompt('Ana: yo lo mando.', meta({ date: null, attendees: [] }))
     expect(prompt.split('\n')[0]).toBe('Title: Weekly sync')
-    expect(prompt).not.toContain('Date:')
+    expect(prompt).toContain('Meeting date: unknown')
     expect(prompt).not.toContain('Attendees:')
   })
 

@@ -1,7 +1,7 @@
 {
   "name": "Fechas de vencimiento y detección de duplicados contra Linear",
-  "branchName": "ralph/linear-dedupe-duedate",
   "description": "Añade el campo dueDate de punta a punta (modelo, tabla editable y Linear) y una comprobación determinista de duplicados que consulta los issues existentes del proyecto de destino y marca las filas que ya existen antes de crear nada.",
+  "branchName": "ralph/linear-dedupe-duedate",
   "userStories": [
     {
       "id": "US-001",
@@ -20,9 +20,10 @@
         "pnpm test passes"
       ],
       "priority": 1,
-      "passes": false,
+      "passes": true,
       "notes": "",
-      "dependsOn": []
+      "dependsOn": [],
+      "completionNotes": "Completed by agent"
     },
     {
       "id": "US-002",
@@ -44,7 +45,9 @@
       "priority": 2,
       "passes": false,
       "notes": "",
-      "dependsOn": ["US-001"]
+      "dependsOn": [
+        "US-001"
+      ]
     },
     {
       "id": "US-003",
@@ -65,7 +68,9 @@
       "priority": 3,
       "passes": false,
       "notes": "",
-      "dependsOn": ["US-002"]
+      "dependsOn": [
+        "US-002"
+      ]
     },
     {
       "id": "US-004",
@@ -132,7 +137,10 @@
       "priority": 6,
       "passes": false,
       "notes": "",
-      "dependsOn": ["US-004", "US-005"]
+      "dependsOn": [
+        "US-004",
+        "US-005"
+      ]
     },
     {
       "id": "US-007",
@@ -154,7 +162,13 @@
       "priority": 7,
       "passes": false,
       "notes": "",
-      "dependsOn": ["US-002", "US-006"]
+      "dependsOn": [
+        "US-002",
+        "US-006"
+      ]
     }
-  ]
+  ],
+  "metadata": {
+    "updatedAt": "2026-08-19T21:47:57.907Z"
+  }
 }

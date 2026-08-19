@@ -72,6 +72,7 @@ function row(overrides: Partial<DraftRow> = {}): DraftRow {
     description: 'Marta needs it before the review on Friday.',
     priority: 'high',
     mentioned: 'Marta',
+    dueDate: '2026-03-06',
     evidence: 'Te paso el presupuesto antes del viernes.',
     include: true,
     ...overrides,
@@ -236,7 +237,7 @@ describe('getDrafts, on rows that are malformed', () => {
     plant('notes/a.md', { ...state(), baseline: [{ id: 'row-1' }, 'row-2'] })
 
     expect(getDrafts('notes/a.md').baseline).toEqual([
-      { id: 'row-1', title: '', description: '', priority: 'none', mentioned: null, evidence: '', include: true },
+      { id: 'row-1', title: '', description: '', priority: 'none', mentioned: null, dueDate: null, evidence: '', include: true },
     ])
   })
 

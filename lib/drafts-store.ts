@@ -170,6 +170,7 @@ function normalizeRow(input: unknown): DraftRow | null {
     description: text(input.description),
     priority: normalizePriority(input.priority),
     mentioned: typeof input.mentioned === 'string' ? input.mentioned : null,
+    dueDate: typeof input.dueDate === 'string' ? input.dueDate : null,
     evidence: text(input.evidence),
     // Everything the model returns starts included — curating is opting *out*,
     // so a missing flag restores the row rather than silently dropping it.

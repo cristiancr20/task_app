@@ -382,6 +382,7 @@ function blankDraft(): TaskDraft {
     description: '',
     priority,
     mentioned: null,
+    dueDate: null,
     evidence: '',
   }
 }

@@ -1,190 +1,65 @@
 {
   "version": 1,
-  "sessionId": "ef655f0f-1b97-413f-847d-7c6b69e1f31b",
+  "sessionId": "cead5646-3586-4d77-be44-5415f738bb43",
   "status": "running",
-  "startedAt": "2026-08-19T20:44:14.216Z",
-  "updatedAt": "2026-08-19T21:38:48.505Z",
-  "currentIteration": 10,
+  "startedAt": "2026-08-19T21:44:56.341Z",
+  "updatedAt": "2026-08-19T21:47:57.907Z",
+  "currentIteration": 0,
   "maxIterations": 0,
-  "tasksCompleted": 10,
+  "tasksCompleted": 0,
   "isPaused": false,
   "agentPlugin": "claude",
   "trackerState": {
     "plugin": "json",
     "executionScopes": [],
-    "prdPath": "./tasks/prd-hardening.json",
-    "totalTasks": 11,
+    "prdPath": "./tasks/prd-linear-dedupe-duedate.json",
+    "totalTasks": 7,
     "tasks": [
       {
         "id": "US-001",
-        "title": "Montar Vitest y el script test",
-        "status": "completed",
-        "completedInSession": true
+        "title": "El modelo extrae la fecha de vencimiento",
+        "status": "open",
+        "completedInSession": false
       },
       {
         "id": "US-002",
-        "title": "Tests de la guarda de path traversal",
-        "status": "completed",
-        "completedInSession": true
+        "title": "Columna de vencimiento editable en la tabla",
+        "status": "open",
+        "completedInSession": false
       },
       {
         "id": "US-003",
-        "title": "Tests del scanner de transcripciones",
-        "status": "completed",
-        "completedInSession": true
+        "title": "La fecha viaja hasta Linear",
+        "status": "open",
+        "completedInSession": false
       },
       {
         "id": "US-004",
-        "title": "Tests de la normalización de la respuesta del modelo",
-        "status": "completed",
-        "completedInSession": true
+        "title": "Cliente de Linear: listar los issues que ya existen",
+        "status": "open",
+        "completedInSession": false
       },
       {
         "id": "US-005",
-        "title": "Tests del cliente de Linear",
-        "status": "completed",
-        "completedInSession": true
+        "title": "Módulo de similitud de texto",
+        "status": "open",
+        "completedInSession": false
       },
       {
         "id": "US-006",
-        "title": "Tests del store de configuración",
-        "status": "completed",
-        "completedInSession": true
+        "title": "Comprobación de duplicados por transcripción",
+        "status": "open",
+        "completedInSession": false
       },
       {
         "id": "US-007",
-        "title": "El servidor solo escucha en localhost",
-        "status": "completed",
-        "completedInSession": true
-      },
-      {
-        "id": "US-008",
-        "title": "Las credenciales en disco no son legibles por otros usuarios",
-        "status": "completed",
-        "completedInSession": true
-      },
-      {
-        "id": "US-009",
-        "title": "Capa de persistencia de los borradores de tareas",
-        "status": "completed",
-        "completedInSession": true
-      },
-      {
-        "id": "US-010",
-        "title": "Los borradores sobreviven a una recarga",
-        "status": "completed",
-        "completedInSession": true
-      },
-      {
-        "id": "US-011",
-        "title": "README real",
+        "title": "La tabla marca los duplicados y los excluye del envío",
         "status": "open",
         "completedInSession": false
       }
     ]
   },
-  "iterations": [
-    {
-      "iteration": 1,
-      "status": "completed",
-      "taskId": "US-001",
-      "taskTitle": "Montar Vitest y el script test",
-      "taskCompleted": true,
-      "durationMs": 143800,
-      "startedAt": "2026-08-19T20:44:15.841Z",
-      "endedAt": "2026-08-19T20:46:39.641Z"
-    },
-    {
-      "iteration": 2,
-      "status": "completed",
-      "taskId": "US-002",
-      "taskTitle": "Tests de la guarda de path traversal",
-      "taskCompleted": true,
-      "durationMs": 155654,
-      "startedAt": "2026-08-19T20:46:40.823Z",
-      "endedAt": "2026-08-19T20:49:16.477Z"
-    },
-    {
-      "iteration": 3,
-      "status": "completed",
-      "taskId": "US-003",
-      "taskTitle": "Tests del scanner de transcripciones",
-      "taskCompleted": true,
-      "durationMs": 207054,
-      "startedAt": "2026-08-19T20:49:17.553Z",
-      "endedAt": "2026-08-19T20:52:44.607Z"
-    },
-    {
-      "iteration": 4,
-      "status": "completed",
-      "taskId": "US-004",
-      "taskTitle": "Tests de la normalización de la respuesta del modelo",
-      "taskCompleted": true,
-      "durationMs": 152506,
-      "startedAt": "2026-08-19T20:52:45.708Z",
-      "endedAt": "2026-08-19T20:55:18.214Z"
-    },
-    {
-      "iteration": 5,
-      "status": "completed",
-      "taskId": "US-005",
-      "taskTitle": "Tests del cliente de Linear",
-      "taskCompleted": true,
-      "durationMs": 189923,
-      "startedAt": "2026-08-19T20:55:19.302Z",
-      "endedAt": "2026-08-19T20:58:29.225Z"
-    },
-    {
-      "iteration": 6,
-      "status": "completed",
-      "taskId": "US-006",
-      "taskTitle": "Tests del store de configuración",
-      "taskCompleted": true,
-      "durationMs": 196036,
-      "startedAt": "2026-08-19T20:58:30.336Z",
-      "endedAt": "2026-08-19T21:01:46.372Z"
-    },
-    {
-      "iteration": 7,
-      "status": "completed",
-      "taskId": "US-007",
-      "taskTitle": "El servidor solo escucha en localhost",
-      "taskCompleted": true,
-      "durationMs": 178678,
-      "startedAt": "2026-08-19T21:01:47.457Z",
-      "endedAt": "2026-08-19T21:04:46.135Z"
-    },
-    {
-      "iteration": 8,
-      "status": "completed",
-      "taskId": "US-008",
-      "taskTitle": "Las credenciales en disco no son legibles por otros usuarios",
-      "taskCompleted": true,
-      "durationMs": 135955,
-      "startedAt": "2026-08-19T21:04:47.226Z",
-      "endedAt": "2026-08-19T21:07:03.181Z"
-    },
-    {
-      "iteration": 9,
-      "status": "completed",
-      "taskId": "US-009",
-      "taskTitle": "Capa de persistencia de los borradores de tareas",
-      "taskCompleted": true,
-      "durationMs": 393210,
-      "startedAt": "2026-08-19T21:07:04.271Z",
-      "endedAt": "2026-08-19T21:13:37.481Z"
-    },
-    {
-      "iteration": 10,
-      "status": "completed",
-      "taskId": "US-010",
-      "taskTitle": "Los borradores sobreviven a una recarga",
-      "taskCompleted": true,
-      "durationMs": 1312265,
-      "startedAt": "2026-08-19T21:13:38.584Z",
-      "endedAt": "2026-08-19T21:35:30.849Z"
-    }
-  ],
+  "iterations": [],
   "skippedTaskIds": [],
   "cwd": "/Users/cristian/dev/tasks-app",
   "activeTaskIds": [],

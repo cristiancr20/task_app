@@ -11,6 +11,7 @@ function row(overrides: Partial<DraftRow> = {}): DraftRow {
     description: 'Antes del viernes',
     priority: 'high',
     mentioned: 'Ana',
+    dueDate: null,
     evidence: 'Ana: yo mando el presupuesto',
     include: true,
     ...overrides,
