@@ -3,10 +3,10 @@
   "sessionId": "46fd4f4c-ffce-482b-acbb-d8f2ab1265b5",
   "status": "running",
   "startedAt": "2026-08-19T23:52:19.741Z",
-  "updatedAt": "2026-08-19T23:54:41.408Z",
-  "currentIteration": 0,
+  "updatedAt": "2026-08-19T23:57:16.060Z",
+  "currentIteration": 1,
   "maxIterations": 0,
-  "tasksCompleted": 0,
+  "tasksCompleted": 1,
   "isPaused": false,
   "agentPlugin": "claude",
   "trackerState": {
@@ -18,8 +18,8 @@
       {
         "id": "US-001",
         "title": "Cliente de Linear — consultar el estado de issues por id",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-002",
@@ -77,7 +77,18 @@
       }
     ]
   },
-  "iterations": [],
+  "iterations": [
+    {
+      "iteration": 1,
+      "status": "completed",
+      "taskId": "US-001",
+      "taskTitle": "Cliente de Linear — consultar el estado de issues por id",
+      "taskCompleted": true,
+      "durationMs": 140055,
+      "startedAt": "2026-08-19T23:52:21.351Z",
+      "endedAt": "2026-08-19T23:54:41.406Z"
+    }
+  ],
   "skippedTaskIds": [],
   "cwd": "/Users/cristian/dev/tasks-app",
   "activeTaskIds": [],

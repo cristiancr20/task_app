@@ -24,6 +24,26 @@ after each iteration and it's included in prompts for context.
   never-advancing cursor and per-batch responses are exercised). `MAX_PAGES` and
   the batch size are not exported, so tests mirror them as local constants.
 
+### Browser wrappers (`lib/*-client.ts`)
+
+- One function per route, all built the same way: `fetch` inside a `try` whose
+  `catch` throws «No se pudo contactar con el servidor de la aplicación.»,
+  `const body: unknown = await response.json().catch(() => null)`, then
+  `if (!response.ok) throw new Error(errorMessage(body))` — the route's own
+  Spanish travels verbatim, with a per-call fallback for a failure that carries
+  no text — then an `isX()` shape guard whose failure is «El servidor devolvió
+  una respuesta inesperada.».
+- Server types (`lib/linear.ts`, `lib/drafts-store.ts`) cross as `import type`
+  only: those modules read `process.env` and the filesystem and must not reach
+  the client bundle.
+- Anything the browser must not be able to state — the API key, the ids of the
+  issues a note created — is read server-side from `lib/store.ts`; the request
+  carries the note path and nothing more.
+- Tests stub `fetch` with a local `stubFetch()` that records `{ url, init }`,
+  and cover: the URL/method/body actually sent, `cache: 'no-store'`, the happy
+  answer, the route message passed through, both fallbacks (no text, not even
+  JSON), a table of malformed shapes via `it.each`, and a rejected `fetch`.
+
 ---
 
 ## 2026-08-19 - US-001
@@ -50,4 +70,42 @@ after each iteration and it's included in prompts for context.
   - Deduplicating the ids matters because the same issue can appear twice in a
     note's history, and its copies could land in different batches — Linear
     would then return it once per batch.
+---
+
+## 2026-08-19 - US-002
+- `POST /api/linear/issue-states` (`app/api/linear/issue-states/route.ts`): takes
+  `{ path }` and answers `{ states }`. The path is validated with
+  `requireMarkdownPath(await pathFromBody(request))`, `requireContextRoot()` is
+  called because the history is keyed by a root-relative path, the API key is
+  read from the config (400 in Spanish when missing, before Linear is touched),
+  and the ids come from `getHistory(relPath)` — the browser never sends ids or
+  the credential. A note with no history yields no ids, and `fetchIssueStates`
+  answers `[]` without a request, so it is a 200 `{ states: [] }`.
+- `lib/issue-states-client.ts`: `fetchIssueStates(relPath)` wrapper with
+  `isIssueStates()`/`isIssueState()` shape guards, type-only import from
+  `lib/linear.ts`, route text rethrown verbatim and its own fallback message.
+- Files changed: `app/api/linear/issue-states/route.ts` (new),
+  `lib/issue-states-client.ts` (new), `lib/issue-states-client.test.ts` (new:
+  valid answer, path-only POST body, `no-store`, empty report, route message
+  passed through, fallbacks for a body with no text and for non-JSON, eight
+  malformed shapes, non-JSON 200, network failure).
+- `pnpm typecheck` and `pnpm test` pass (483 tests, +17).
+- **Learnings:**
+  - The key check runs *before* the history read on purpose: «no key» is
+    actionable in /settings, while an empty `{ states: [] }` would read as
+    «nothing to report». The two acceptance criteria only disagree on a note
+    that has neither, and US-003 does not query notes without history anyway.
+  - The client guard checks `stateType` against the union, not just
+    `typeof === 'string'`, because US-003 groups the counters by it — a value
+    outside the union would be counted as nothing at all.
+  - There is no `lint` script in `package.json`; `pnpm lint` falls through to
+    whatever `lint` is on `PATH` (Android's, here). The quality gates are
+    `pnpm typecheck` and `pnpm test`, as `AGENTS.md` says.
+- **Reusable pattern:** every `lib/*-client.ts` wrapper is the same five steps —
+  `fetch` in a `try` that rethrows «No se pudo contactar con el servidor de la
+  aplicación.», `await response.json().catch(() => null)`, `if (!response.ok)
+  throw new Error(errorMessage(body))` with a per-call fallback string, an
+  `isX()` shape guard whose failure is «El servidor devolvió una respuesta
+  inesperada.», then return the payload. Types cross from server modules as
+  `import type` only.
 ---
