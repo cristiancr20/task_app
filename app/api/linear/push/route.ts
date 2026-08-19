@@ -1,5 +1,5 @@
 import { errorResponse, HttpError, jsonBody, pathOf, requireContextRoot } from '@/lib/api'
-import { PRIORITIES, type Priority } from '@/lib/extractors/task'
+import { PRIORITIES, normalizeDueDate, type Priority } from '@/lib/extractors/task'
 import { runPush, type PushPlan } from '@/lib/linear-push'
 import type { PushEvent, PushTaskInput, PushedIssue } from '@/lib/push-events'
 import { addHistoryEntry, getConfig } from '@/lib/store'
@@ -99,6 +99,9 @@ function readTask(input: unknown): PushTaskInput {
     description: string(task.description),
     priority: priority(task.priority),
     mentioned: string(task.mentioned).trim() || null,
+    // A date Linear would refuse is dropped, not rejected: the row is one of
+    // many, and losing its deadline is worth far less than losing the push.
+    dueDate: normalizeDueDate(task.dueDate),
     evidence: string(task.evidence),
   }
 }

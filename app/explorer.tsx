@@ -110,6 +110,7 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
         description: row.description,
         priority: row.priority,
         mentioned: row.mentioned,
+        dueDate: row.dueDate,
         evidence: row.evidence,
       })),
     })

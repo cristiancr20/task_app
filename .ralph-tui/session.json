@@ -3,10 +3,10 @@
   "sessionId": "cead5646-3586-4d77-be44-5415f738bb43",
   "status": "running",
   "startedAt": "2026-08-19T21:44:56.341Z",
-  "updatedAt": "2026-08-19T21:50:43.593Z",
-  "currentIteration": 1,
+  "updatedAt": "2026-08-19T21:53:49.825Z",
+  "currentIteration": 2,
   "maxIterations": 0,
-  "tasksCompleted": 1,
+  "tasksCompleted": 2,
   "isPaused": false,
   "agentPlugin": "claude",
   "trackerState": {
@@ -24,8 +24,8 @@
       {
         "id": "US-002",
         "title": "Columna de vencimiento editable en la tabla",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-003",
@@ -69,6 +69,16 @@
       "durationMs": 179872,
       "startedAt": "2026-08-19T21:44:58.034Z",
       "endedAt": "2026-08-19T21:47:57.906Z"
+    },
+    {
+      "iteration": 2,
+      "status": "completed",
+      "taskId": "US-002",
+      "taskTitle": "Columna de vencimiento editable en la tabla",
+      "taskCompleted": true,
+      "durationMs": 164594,
+      "startedAt": "2026-08-19T21:47:58.998Z",
+      "endedAt": "2026-08-19T21:50:43.592Z"
     }
   ],
   "skippedTaskIds": [],

@@ -93,6 +93,7 @@ export async function* runPush(
         priority: task.priority,
         projectId: plan.projectId,
         parentId,
+        dueDate: task.dueDate,
         source: sourceOf(task, source),
       })
       created += 1

@@ -32,6 +32,18 @@ from `lib/drafts-store`, which `TaskDraft` structurally is) and re-export it
 from the original module so existing imports keep resolving — that is how
 `countManualChanges` ended up in `lib/drafts-changes.ts`.
 
+### Verifying a route against a stub Linear without touching `.data/`
+
+`LINEAR_API_URL` is read at module load, so a throwaway `lib/zz-*.test.ts`
+(deleted before finishing) must set `process.env.LINEAR_API_URL` to a
+`http.createServer` listening on port 0 *before* `await import('@/lib/linear')`
+— a static import would freeze the real endpoint. The route itself is
+importable the same way (`@/app/api/linear/push/route`) once `@/lib/store` and
+`@/lib/transcripts` are `vi.mock`ed, which is what keeps the check off the real
+`.data/config.json` and off the configured context root. `POST()` returns a
+normal `Response`, so `await response.text()` gives the whole NDJSON stream to
+assert on.
+
 ### There is no `pnpm lint`
 
 package.json has only `dev`, `build`, `start`, `typecheck`, `test`,
@@ -117,5 +129,52 @@ The «Vence» column, editable, plus the change count that has to notice it.
   null, so the `|| null` at the call site is what keeps `''` out of the state —
   and out of `sameDraft`, where `'' !== null` would count a cleared-then-
   restored field as a permanent edit.
+
+---
+
+## 2026-08-19 - US-003
+
+The due date now travels from the table to the Linear issue.
+
+- `lib/linear.ts`: `dueDate?: string | null` on `CreateIssueInput`, trimmed in
+  `createIssue` and spread into the `IssueCreateInput` only when it carries a
+  value — the same conditional omission `projectId` and `parentId` use.
+- `lib/push-events.ts`: `dueDate: string | null` on `PushTaskInput` (required,
+  so every place that builds the wire payload fails typecheck until it sends it).
+- `app/api/linear/push/route.ts`: `readTask` runs the date through
+  `normalizeDueDate`, so a row the user typed by hand with an unusable date
+  loses only its deadline instead of sinking the whole push.
+- `lib/extractors/task.ts`: `normalizeDueDate` is now exported (it was already
+  written and tested; only the keyword and its doc comment changed).
+- `lib/linear-push.ts`: passes `dueDate: task.dueDate` on every task. The parent
+  keeps its three-field call — it stands for the meeting, not for a commitment.
+- `app/explorer.tsx`: `dueDate: row.dueDate` in the tasks it POSTs.
+- `lib/linear.test.ts`: `sends dueDate when the task carries one` (asserting the
+  trim) plus an `it.each` over null/undefined/empty/blank asserting the key is
+  absent from the mutation input.
+
+**Learnings:**
+
+- `IssueCreateInput.dueDate` is a `TimelessDate`, so `''` is not a value it
+  takes — and `''` is exactly what an emptied date input produces upstream. The
+  field arrives as `string | null` from the table, so conditional omission
+  (`dueDate ? { dueDate } : {}`, the `projectId`/`parentId` spelling) is what
+  makes null, undefined and `''` all mean «no deadline» without a flat key ever
+  reaching the API. Not verified against the real API — the stub accepts
+  anything — but omission is the case the mutation is known to handle.
+- Making `PushTaskInput.dueDate` required rather than optional is what made
+  `app/explorer.tsx` fail typecheck — that literal is the only place that builds
+  the request body, and an optional field would have shipped a silently
+  date-less push that every test still passed.
+- The route reuses `normalizeDueDate` instead of a second validator: a row added
+  by hand never went through the extractor, so without it the browser is the
+  only thing standing between a typo and the mutation. Exporting it also keeps
+  the leap-year and impossible-date rules (and their tests) in one place.
+- Verified against a local GraphQL stub through `LINEAR_API_URL`: a push with a
+  parent sent `{title: 'Weekly sync', projectId: 'p1'}` with no `dueDate` key at
+  all, the dated task sent `dueDate: '2026-08-28'`, and the undated one omitted
+  it. Through the real route, `'el viernes'` and `'2026-02-31'` were dropped to
+  no key while `'2026-09-01T10:00:00Z'` arrived as `'2026-09-01'`, and the
+  stream still ended `{"type":"done","created":4,"failed":0}`.
 
 ---

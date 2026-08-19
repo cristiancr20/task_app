@@ -209,6 +209,30 @@ describe('createIssue', () => {
     expect(input).not.toHaveProperty('parentId')
   })
 
+  it('sends dueDate when the task carries one', async () => {
+    const calls = stubFetch(() => json(created))
+
+    await createIssue(API_KEY, { teamId: 't1', title: 'Tarea', dueDate: ' 2026-08-28 ' })
+
+    expect(sentInput(calls[0]).dueDate).toBe('2026-08-28')
+  })
+
+  // Sending `dueDate: null` would work on a create but `dueDate: ''` is an
+  // invalid date Linear refuses, so the key is left out entirely rather than
+  // sent empty — the same omission projectId and parentId get.
+  it.each([
+    ['null', null],
+    ['undefined', undefined],
+    ['empty', ''],
+    ['blank', '   '],
+  ])('omits dueDate when %s', async (_label, value) => {
+    const calls = stubFetch(() => json(created))
+
+    await createIssue(API_KEY, { teamId: 't1', title: 'Tarea', dueDate: value })
+
+    expect(sentInput(calls[0])).not.toHaveProperty('dueDate')
+  })
+
   it('rejects a 200 that says success: false', async () => {
     // The issue node is present and valid on purpose: with `issue: null` the
     // next guard down would throw anyway and the test would stay green even

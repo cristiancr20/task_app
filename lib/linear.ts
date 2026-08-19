@@ -218,6 +218,8 @@ export type CreateIssueInput = {
   projectId?: string | null
   /** The issue this one becomes a sub-issue of — how a meeting groups its tasks. */
   parentId?: string | null
+  /** The deadline, `YYYY-MM-DD`. Omitted, the issue lands in Linear without one. */
+  dueDate?: string | null
   /** Appended to `description` as a traceability block. Omitted for a parent issue. */
   source?: IssueSource | null
 }
@@ -267,6 +269,7 @@ export async function createIssue(
 
   const projectId = input.projectId?.trim()
   const parentId = input.parentId?.trim()
+  const dueDate = input.dueDate?.trim()
 
   const variables = {
     input: {
@@ -276,6 +279,11 @@ export async function createIssue(
       priority: LINEAR_PRIORITY[input.priority ?? 'none'],
       ...(projectId ? { projectId } : {}),
       ...(parentId ? { parentId } : {}),
+      // `dueDate` is a `TimelessDate`, so an empty string is not a value it
+      // accepts — and the field arrives here as whatever the table holds. Same
+      // conditional omission as above rather than a flat key, which keeps null,
+      // undefined and `''` all meaning «no deadline».
+      ...(dueDate ? { dueDate } : {}),
     },
   }
 

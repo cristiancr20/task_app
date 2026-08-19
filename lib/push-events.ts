@@ -24,6 +24,8 @@ export type PushTaskInput = {
   description: string
   priority: Priority
   mentioned: string | null
+  /** The deadline as `YYYY-MM-DD`, or null when the task carries none. */
+  dueDate: string | null
   evidence: string
 }
 

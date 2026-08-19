@@ -192,7 +192,11 @@ function normalizeTask(raw: unknown): ExtractedTask | null {
 }
 
 /**
- * Only a real calendar day survives, as `YYYY-MM-DD`. Models answer this field
+ * Only a real calendar day survives, as `YYYY-MM-DD`. It is exported because
+ * `POST /api/linear/push` needs the very same rule on the date the browser
+ * sends: a row the user typed by hand never went through the extractor.
+ *
+ * Models answer this field
  * with the relative phrase they were told to resolve ("next Friday"), with a
  * full ISO timestamp, or with a date that does not exist (`2026-02-31`); the
  * first and the last are worse than no date at all, because they reach Linear
@@ -201,7 +205,7 @@ function normalizeTask(raw: unknown): ExtractedTask | null {
  * The time part of a timestamp is dropped rather than disqualifying it: the
  * day is the whole answer, and a model that adds `T00:00:00Z` still got it.
  */
-function normalizeDueDate(value: unknown): string | null {
+export function normalizeDueDate(value: unknown): string | null {
   if (typeof value !== 'string') return null
 
   const match = /^(\d{4})-(\d{2})-(\d{2})(?:[T ].*)?$/.exec(value.trim())
