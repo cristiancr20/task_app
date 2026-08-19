@@ -5,6 +5,7 @@ import Link from 'next/link'
 import type { PushedIssue } from '@/lib/push-events'
 
 import { PushProgress } from './progress'
+import type { DuplicateCheckStatus } from './use-duplicate-check'
 import type { PushTargetApi } from './use-push-target'
 
 type ParentApi = {
@@ -39,9 +40,25 @@ type PushApi = {
   onPush: () => void
 }
 
+/**
+ * The duplicate check, as the panel needs to see it: whether it can run at
+ * all, whether it is running, and why it could not — never enough to stop a
+ * push, only enough to read before starting one.
+ */
+type DuplicateApi = {
+  status: DuplicateCheckStatus
+  /** The destination's issues are loading, or a re-check is about to run. */
+  checking: boolean
+  /** Why the destination could not be read, or null. */
+  error: string | null
+  /** «Buscar duplicados». */
+  onCheck: () => void
+}
+
 type Props = {
   target: PushTargetApi
   parent: ParentApi
+  duplicates: DuplicateApi
   push: PushApi
 }
 
@@ -64,7 +81,7 @@ const LABEL = 'text-xs font-medium text-muted'
  * because retrying is not a different action — it is the same push over what is
  * left, and what was created is no longer part of it.
  */
-export function PushPanel({ target, parent, push }: Props) {
+export function PushPanel({ target, parent, duplicates, push }: Props) {
   const reason = pushBlockedBy(target, parent, push)
   const severalTeams = target.teams.length > 1
   const running = push.status === 'running'
@@ -158,6 +175,33 @@ export function PushPanel({ target, parent, push }: Props) {
             className={`${FIELD} w-full`}
           />
         ) : null}
+
+        {/* The check runs on its own — after an extraction, and whenever the
+            destination changes — so the button is for asking again once
+            somebody else has filed something in Linear. It never gates the
+            push: what it knows is shown in the table, and what it does not
+            know is shown here. */}
+        <div className="flex items-start justify-between gap-2 pt-0.5">
+          <button
+            type="button"
+            onClick={duplicates.onCheck}
+            disabled={duplicates.status === 'unavailable' || duplicates.checking || running}
+            className="rounded-lg border border-line-strong bg-surface px-2.5 py-1 text-xs font-medium shadow-panel transition-colors hover:bg-surface-2 disabled:opacity-50"
+          >
+            {duplicates.checking ? 'Buscando duplicados…' : 'Buscar duplicados'}
+          </button>
+          {/* A notice, not a dialog: a check that could not run is information
+              about the check, and interrupting the curating over it would cost
+              more than it is worth. */}
+          <p
+            aria-live="polite"
+            className={`min-w-0 flex-1 pt-1 text-right text-xs ${
+              duplicates.status === 'error' ? 'text-warn' : 'text-muted'
+            }`}
+          >
+            {duplicateNote(duplicates)}
+          </p>
+        </div>
 
         {reason ? (
           <p className="text-xs text-muted">
@@ -267,6 +311,19 @@ function IssueLink({ issue, label }: { issue: PushedIssue; label?: string }) {
       </a>
     </li>
   )
+}
+
+/**
+ * What the check has to say next to its button. Every one of these is a state
+ * the push runs in regardless — the check informs the decision, it does not
+ * make it — so none of them is phrased as something to fix first.
+ */
+function duplicateNote(duplicates: DuplicateApi): string {
+  if (duplicates.status === 'unavailable') return 'Elige el destino para comprobar duplicados.'
+  if (duplicates.status === 'error')
+    return duplicates.error ?? 'No se pudieron comprobar los duplicados.'
+  if (duplicates.checking) return 'Comparando con lo que ya hay en el proyecto…'
+  return 'Comparado con los issues del proyecto.'
 }
 
 /**

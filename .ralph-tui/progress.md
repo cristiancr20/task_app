@@ -17,6 +17,28 @@ before finishing — an uncommitted `probe.mts` at the root is not a test file
 and nothing collects it. Whatever the probe printed belongs in the comment next
 to the constant; that is the only record of why the number is what it is.
 
+### A hook that fetches per destination and answers per note
+
+`app/use-duplicate-check.ts` is the shape to copy when a hook caches two things
+with different lifetimes: the remote data belongs to the *destination* (one
+`Record` keyed by a string built from the ids — a fresh `{teamId, projectId}`
+object per render says nothing, so the key is the identity) and the results
+belong to the *note* (a second `Record` keyed by path, like the drafts and the
+push run). Three details are what make it behave:
+
+- Every asynchronous write goes under the key it was asked for *and* is dropped
+  when a newer round has replaced it (`previous[key]?.key !== next.key`), which
+  is what keeps a slow answer off another note and off another project.
+- A debounced effect must not depend on the arrays it reads. `rows` is a new
+  literal on most renders, so the effect deps hold a **signature string**
+  (`id:title` joined) and the callback reads the current rows from a ref
+  updated by an effect declared *above* it — effects of one commit run in
+  declaration order, so the ref is fresh when the timer is scheduled.
+- «Do it again» needs its own counter. A re-check button that only re-ran the
+  effects would find every row already scored and every destination already
+  fetched; the `attempt` number rides in both keys, so bumping it invalidates
+  the request and the results at once.
+
 ### Adding a field to `ExtractedTask` touches five literals
 
 `ExtractedTask` (lib/extractors/task.ts) is spread into `DraftRow`
@@ -309,5 +331,60 @@ titles are, with no model call and nothing imported at all.
   word: «Revisar» is a whole title in a note, and a normaliser that returned
   `''` for it would score it 0 against every issue — silently, since 0 is also
   what a genuinely empty string gets.
+
+---
+
+## 2026-08-19 - US-006
+
+The duplicate check itself: the destination's issues read once, every row of
+the table scored against them, and nothing blocked by the answer.
+
+- `lib/duplicate-check.ts` (new, pure): `DuplicateScope` with
+  `scopeKeyOf`/`scopeFromKey` (the destination as one comparable string);
+  `matchIssue` → `DuplicateMatch` (`score`, `identifier`, `title`, `url`,
+  `closed`, `duplicate`) with `MIN_REPORTED_SCORE`; `checkRows`, which keeps
+  the previous `RowCheck` of a row whose title has not changed and forgets the
+  rows it is not given; `pendingRowIds`, `needsCheck`, `matchesOf` and
+  `isOpenDuplicate`.
+- `app/use-duplicate-check.ts` (new): the destination's issues cached by scope
+  key and reused across notes, the results keyed by transcript path, a 400 ms
+  debounce over the scoring, an `attempt` counter behind «Buscar duplicados»,
+  and `status`/`error` that are never a reason not to push.
+- `app/push-panel.tsx`: the «Buscar duplicados» button and its notice — inline,
+  `aria-live`, `text-warn` for a failed check, `text-muted` otherwise.
+- `app/explorer.tsx`: the scope (only with a project chosen), the set of rows
+  already created in this push, and the hook wired to both.
+- `lib/duplicate-check.test.ts` (new): 36 cases over the scope key and its
+  round trip, the match and its fields, the threshold and the floor, the reuse
+  and invalidation in `checkRows`, `needsCheck` across destination and round,
+  and what `matchesOf` refuses to show.
+
+**Learnings:**
+
+- `similarity` never returns 0 between two real Spanish titles: «Migrar el
+  endpoint de pagos» against «Contratar el seguro de la oficina» is 0.093, from
+  shared bigrams alone. So «the closest issue» and «is there a match» are two
+  questions, and `matchIssue` needs a floor (`MIN_REPORTED_SCORE = 0.3`, the
+  measured ceiling of unrelated pairs from US-005) or every row would carry a
+  9% match nobody would make. Four tests failed on exactly this assumption
+  before the floor existed.
+- Storing the title *inside* each `RowCheck` is what makes an edit invalidate
+  its own result with no extra bookkeeping: `matchesOf` drops any check whose
+  title no longer matches the row, so the badge disappears on the first
+  keystroke and comes back when the debounce lands. The same comparison is what
+  `checkRows` reuses to re-score one row instead of the table.
+- Only a chosen project is a scope worth checking. The client supports a
+  team-wide listing, but a check against the whole team reports tasks from
+  other projects as duplicates — so the explorer passes `null` until there is a
+  project, and the hook reads that as «not conclusive».
+- A closed match is deliberately not a duplicate for the purposes of blocking:
+  `isOpenDuplicate` is `duplicate && !closed`, because a task that was done
+  once and is asked for again is ordinary. The `closed` flag still travels so
+  the row can say which of the two it is.
+- The React part could not be covered by the suite (`lib/**/*.test.ts`, node
+  environment, no DOM), so everything that could be made pure was moved out of
+  the hook — the hook is left with the fetch, the debounce and the two caches,
+  and `pnpm build` is what checks that none of `lib/linear.ts` reached the
+  client bundle through it.
 
 ---

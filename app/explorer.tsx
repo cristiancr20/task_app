@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { FileList } from './file-list'
 import { FolderTree } from './folder-tree'
@@ -8,6 +8,7 @@ import { PushPanel } from './push-panel'
 import { PushedHistory } from './pushed-history'
 import { TaskTable } from './task-table'
 import { TranscriptPreview } from './transcript-preview'
+import { useDuplicateCheck } from './use-duplicate-check'
 import { useFolderListings } from './use-folder-listings'
 import { usePushOptions } from './use-push-options'
 import { createdIssuesOf, parentIssueOf, usePushRun } from './use-push-run'
@@ -94,6 +95,35 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
   const created = rows.filter((row) => results[row.id]?.state === 'created').length
   const parentIssue = parentIssueOf(run.state)
   const createdIssues = createdIssuesOf(run.state)
+
+  // What the duplicate check is aimed at. Only a chosen project counts: the
+  // whole team is a far wider net than the user asked for, and a check against
+  // it would report tasks that belong to another piece of work entirely. With
+  // no key, no team or no project the check simply has nothing to say.
+  const duplicateScope = useMemo(
+    () =>
+      target.status === 'ready' && target.teamId && target.projectId
+        ? { teamId: target.teamId, projectId: target.projectId }
+        : null,
+    [target.projectId, target.status, target.teamId],
+  )
+  // Rows this push already created: they are in Linear because they were just
+  // put there, so they are the one thing the check must not look at.
+  const createdRowIds = useMemo(
+    () =>
+      new Set(
+        Object.entries(results).flatMap(([id, result]) =>
+          result.state === 'created' ? [id] : [],
+        ),
+      ),
+    [results],
+  )
+  const duplicates = useDuplicateCheck({
+    relPath: selectedFile,
+    scope: duplicateScope,
+    rows,
+    skipRowIds: createdRowIds,
+  })
 
   function startPush() {
     run.push({
@@ -237,6 +267,12 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
                 title: parentTitle,
                 onToggle: pushOptions.setCreateParent,
                 onTitleChange: pushOptions.setParentTitle,
+              }}
+              duplicates={{
+                status: duplicates.status,
+                checking: duplicates.checking,
+                error: duplicates.error,
+                onCheck: duplicates.recheck,
               }}
               push={{
                 status: run.state.status,
