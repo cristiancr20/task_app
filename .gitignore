@@ -42,3 +42,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local-only artefacts: browser snapshots and agent iteration logs. Both capture
+# whatever was on screen or in the transcript folder, so they never get committed.
+/.playwright-cli/
+/.ralph-tui/iterations/
