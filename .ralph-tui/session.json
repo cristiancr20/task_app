@@ -3,10 +3,10 @@
   "sessionId": "cead5646-3586-4d77-be44-5415f738bb43",
   "status": "running",
   "startedAt": "2026-08-19T21:44:56.341Z",
-  "updatedAt": "2026-08-19T21:47:57.907Z",
-  "currentIteration": 0,
+  "updatedAt": "2026-08-19T21:50:43.593Z",
+  "currentIteration": 1,
   "maxIterations": 0,
-  "tasksCompleted": 0,
+  "tasksCompleted": 1,
   "isPaused": false,
   "agentPlugin": "claude",
   "trackerState": {
@@ -18,8 +18,8 @@
       {
         "id": "US-001",
         "title": "El modelo extrae la fecha de vencimiento",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-002",
@@ -59,7 +59,18 @@
       }
     ]
   },
-  "iterations": [],
+  "iterations": [
+    {
+      "iteration": 1,
+      "status": "completed",
+      "taskId": "US-001",
+      "taskTitle": "El modelo extrae la fecha de vencimiento",
+      "taskCompleted": true,
+      "durationMs": 179872,
+      "startedAt": "2026-08-19T21:44:58.034Z",
+      "endedAt": "2026-08-19T21:47:57.906Z"
+    }
+  ],
   "skippedTaskIds": [],
   "cwd": "/Users/cristian/dev/tasks-app",
   "activeTaskIds": [],

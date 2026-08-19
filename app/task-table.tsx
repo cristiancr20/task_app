@@ -375,6 +375,23 @@ function Row({
             ))}
           </select>
 
+          {/* The date the model read out of the transcript, editable because
+              it is the field it gets wrong most: a misread «el viernes» goes
+              to Linear as a deadline nobody agreed to. An empty field is a
+              task with no deadline, so it is stored as null rather than as the
+              empty string the input actually holds. */}
+          <label className="flex items-center gap-1.5 text-xs text-muted">
+            Vence
+            <input
+              type="date"
+              value={row.dueDate ?? ''}
+              onChange={(event) => onUpdate({ dueDate: event.target.value || null })}
+              disabled={busy}
+              aria-label="Vence"
+              className={`${FIELD} w-auto`}
+            />
+          </label>
+
           {row.mentioned ? (
             <span className="chip">
               <span className="text-muted">@</span>

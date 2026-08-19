@@ -23,6 +23,15 @@ literal rather than copied. The full list:
 `lib/extractors/{ollama,claude}.ts` need nothing: both hand the model the same
 `TASKS_JSON_SCHEMA` and pipe the answer through `normalizeTasks`.
 
+### A story asking for tests of `app/` code means moving it to `lib/`
+
+`vitest.config.mts` collects `lib/**/*.test.ts` and nothing else, and AGENTS.md
+asks for pure functions rather than React components. So when logic in `app/`
+needs coverage, extract the pure part into `lib/` (typed against `DraftRow`
+from `lib/drafts-store`, which `TaskDraft` structurally is) and re-export it
+from the original module so existing imports keep resolving — that is how
+`countManualChanges` ended up in `lib/drafts-changes.ts`.
+
 ### There is no `pnpm lint`
 
 package.json has only `dev`, `build`, `start`, `typecheck`, `test`,
@@ -67,5 +76,46 @@ Added `dueDate` to the extraction contract, end to end within the extractor.
 - `text()` in task.ts stringifies numbers and booleans; `normalizeDueDate`
   deliberately does not use it — a number can never be a `YYYY-MM-DD` date, and
   stringifying it would only make the regex do the rejecting.
+
+---
+
+## 2026-08-19 - US-002
+
+The «Vence» column, editable, plus the change count that has to notice it.
+
+- `app/task-table.tsx`: an `input type="date"` in the row's chip line, labelled
+  «Vence», styled with `FIELD`, `disabled={busy}` like every other editable
+  field, and `event.target.value || null` on change so an emptied field stores
+  null rather than `''`.
+- `lib/drafts-changes.ts` (new): `countManualChanges`, `ManualChanges`,
+  `NO_CHANGES` and `sameDraft`, moved out of `app/use-task-drafts.ts` verbatim
+  except for the new `a.dueDate === b.dueDate` comparison. It works on
+  `DraftRow`, which `TaskDraft` structurally is.
+- `app/use-task-drafts.ts`: imports the count and re-exports it
+  (`export { countManualChanges, type ManualChanges } from '@/lib/drafts-changes'`),
+  so `task-table.tsx`'s import of it from `./use-task-drafts` still resolves.
+- `lib/drafts-changes.test.ts` (new): the pre-existing behaviour (untouched
+  table, edited title, added/removed rows, unchecked «incluir») plus a
+  `dueDate` block — corrected date, date typed onto a row that had none,
+  cleared date, same date on both sides, and date-plus-priority counted once.
+- Persistence needed nothing: `normalizeRow` in `lib/drafts-store.ts` already
+  restores `dueDate` (US-001) and `durableOf` stores whole rows.
+
+**Learnings:**
+
+- `vitest.config.mts` only collects `lib/**/*.test.ts`, so a story that asks
+  for tests of something in `app/` means moving the pure part into `lib/`
+  rather than widening the glob — which is also what AGENTS.md asks for
+  ("cover pure functions and server-side logic, not React components").
+  `countManualChanges` was already free of React; only its parameter type had
+  to loosen from `TaskDraftState` to `{ rows, baseline }` (`ChangeableDrafts`).
+- The table has no `<table>`: it is a list of cards, so a "column" is a
+  labelled field in the row's `flex-wrap` chip line next to the priority
+  select. A visible `<label>` is needed there — an empty `input type=date`
+  shows `dd/mm/aaaa`, which names the format but not the field.
+- `event.target.value` of a date input is `''` when the user clears it, never
+  null, so the `|| null` at the call site is what keeps `''` out of the state —
+  and out of `sameDraft`, where `'' !== null` would count a cleared-then-
+  restored field as a permanent edit.
 
 ---

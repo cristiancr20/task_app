@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { createDraftIds } from '@/lib/draft-ids'
+import { countManualChanges } from '@/lib/drafts-changes'
 import { fetchDrafts, saveDrafts } from '@/lib/drafts-client'
 import { mergeDrafts } from '@/lib/drafts-merge'
 import type { DraftsState } from '@/lib/drafts-store'
@@ -67,56 +68,10 @@ const LOADING: TaskDraftState = { ...EMPTY, loading: true }
 /** Long enough that typing a word is one save, short enough to feel immediate. */
 const SAVE_DELAY_MS = 500
 
-/** How far the table has drifted from the last extraction, in rows. */
-export type ManualChanges = {
-  edited: number
-  added: number
-  removed: number
-  /** Rows the user touched in any way — what a regenerate would discard. */
-  total: number
-}
-
-const NO_CHANGES: ManualChanges = { edited: 0, added: 0, removed: 0, total: 0 }
-
-/**
- * The manual changes since the last extraction, counted in rows rather than in
- * keystrokes: a title typed one character at a time is one edited row, and the
- * number has to be one the user recognises before agreeing to lose it.
- *
- * Unchecking «incluir» counts as an edit. It is curation work like any other,
- * and a regenerate wipes it just the same.
- */
-export function countManualChanges(state: TaskDraftState | undefined): ManualChanges {
-  if (!state) return NO_CHANGES
-
-  const original = new Map(state.baseline.map((row) => [row.id, row]))
-  let edited = 0
-  let added = 0
-  let kept = 0
-
-  for (const row of state.rows) {
-    const before = original.get(row.id)
-    if (!before) added += 1
-    else {
-      kept += 1
-      if (!sameDraft(before, row)) edited += 1
-    }
-  }
-
-  const removed = state.baseline.length - kept
-  return { edited, added, removed, total: edited + added + removed }
-}
-
-function sameDraft(a: TaskDraft, b: TaskDraft): boolean {
-  return (
-    a.title === b.title &&
-    a.description === b.description &&
-    a.priority === b.priority &&
-    a.mentioned === b.mentioned &&
-    a.evidence === b.evidence &&
-    a.include === b.include
-  )
-}
+// The count itself is pure row arithmetic and lives in `lib/drafts-changes`,
+// where the test suite can reach it; it is re-exported here because the table
+// asks the hook's own module for it, and `TaskDraft` is a `DraftRow`.
+export { countManualChanges, type ManualChanges } from '@/lib/drafts-changes'
 
 /**
  * Row keys. They outlive the page now that drafts are restored from disk, so
