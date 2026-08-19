@@ -3,10 +3,10 @@
   "sessionId": "ef655f0f-1b97-413f-847d-7c6b69e1f31b",
   "status": "running",
   "startedAt": "2026-08-19T20:44:14.216Z",
-  "updatedAt": "2026-08-19T20:52:44.608Z",
-  "currentIteration": 2,
+  "updatedAt": "2026-08-19T20:55:18.215Z",
+  "currentIteration": 3,
   "maxIterations": 0,
-  "tasksCompleted": 2,
+  "tasksCompleted": 3,
   "isPaused": false,
   "agentPlugin": "claude",
   "trackerState": {
@@ -30,8 +30,8 @@
       {
         "id": "US-003",
         "title": "Tests del scanner de transcripciones",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-004",
@@ -103,6 +103,16 @@
       "durationMs": 155654,
       "startedAt": "2026-08-19T20:46:40.823Z",
       "endedAt": "2026-08-19T20:49:16.477Z"
+    },
+    {
+      "iteration": 3,
+      "status": "completed",
+      "taskId": "US-003",
+      "taskTitle": "Tests del scanner de transcripciones",
+      "taskCompleted": true,
+      "durationMs": 207054,
+      "startedAt": "2026-08-19T20:49:17.553Z",
+      "endedAt": "2026-08-19T20:52:44.607Z"
     }
   ],
   "skippedTaskIds": [],

@@ -30,6 +30,19 @@ after each iteration and it's included in prompts for context.
 - Lay out the fixture as `base/root/` with the "outside" files at `base/`, so a
   `..` escape targets a file that actually exists. Two sibling `mkdtemp` dirs
   make escape tests pass for the wrong reason (missing target, not refused).
+- ### Testing pure normalisers (US-004)
+- Drive `it.each` off the exported constant (`PRIORITIES`) instead of a hardcoded
+- copy, so the test enumerates the contract rather than duplicating it.
+- Use a local `row(overrides)` / `meta(overrides)` builder returning a valid
+- object, so each test varies only the field it is about. Spreading
+- `{ ...defaults, field: undefined }` is how you test "undefined"; use object
+- destructuring (`const { title: _t, ...rest } = row()`) for "key absent".
+- For a normaliser, the realistic bad input is the *neighbouring API's* encoding,
+- not a typo: Linear's priority scale is numeric, so `priority: 1` is the case
+- that happens in production. Test it alongside `'blocker'`.
+- A shared coercion helper (`text()`) makes "wrong type" and "empty" the same
+- code path — pin both directions, since dropping the scalar branch turns a
+- numeric title into a *discarded row*, not merely a wrong string.
 - Mutation-check any test that asserts something is *refused*: flip the guard to
   `if (false && ...)`, re-run, confirm the test goes red, restore. A green suite
   against a disabled guard means the test proves nothing.
@@ -226,5 +239,76 @@ a temp directory whose fixtures the test writes itself.
 - `pnpm typecheck` -> passes.
 - Ten mutations run against `lib/transcripts.ts`, each caught (1-3 failures);
   file restored to a clean diff afterwards (`git status` clean for it).
+
+---
+## 2026-08-19 - US-004
+Covered `normalizeTasks` and `buildUserPrompt` in `lib/extractors/task.ts` — the
+last layer between a local model's answer and both the table and Linear — with
+56 tests (89 total in the suite now). Pure logic, no fixtures needed.
+
+**What was implemented**
+- `lib/extractors/task.test.ts`, with two local builders so each test varies only
+  the field it is about: `row(overrides)` (a well-formed raw task) and
+  `meta(overrides)` (a `TranscriptMeta`).
+- `normalizeTasks: the shape of the payload`
+  - the `{ tasks: [...] }` wrapper and a bare array at the root both work;
+  - `{ tasks: ... }` that is an object / string / null is treated as no tasks;
+  - nine off-contract payloads (`null`, `undefined`, string, `''`, number,
+    boolean, object without `tasks`, `{}`, `[]`) each give `[]` and are asserted
+    not to throw;
+  - non-object rows (`null`, string, number, `[]`, `undefined`) are dropped
+    individually without taking the valid rows around them down.
+- `normalizeTasks: the title decides whether a row survives`
+  - no `title` key at all, `''`, `'   '`, `'\t\n '`, `null`, `undefined`, an
+    object and an array all discard the row; a valid title comes back trimmed.
+- `normalizeTasks: priority`
+  - all five levels of `PRIORITIES` are preserved (driven off the exported
+    constant, so a sixth level cannot be added without the test noticing);
+  - `blocker`, `urgente`, `null`, `undefined`, `''`, `'   '`, an object and an
+    array all fall back to `none`;
+  - the numeric levels `0..4` — Linear's own scale, what a model reaches for
+    when it ignores the enum — also fall back to `none`;
+  - `HIGH`, `Urgent` and `'  MeDiUm  '` normalize to the lowercase level.
+- `normalizeTasks: mentioned` — missing, `null`, `''`, spaces and an object give
+  `null`; a name comes back trimmed.
+- `normalizeTasks: non-string scalars` — a numeric title keeps the row (as
+  `'2026'`), numbers/booleans in `description`/`evidence`/`mentioned` are
+  stringified, non-scalars empty the field, and keys beyond the contract
+  (`dueDate`, `assigneeId`) do not survive into the returned object.
+- `buildUserPrompt` — date and attendees appear when present, each line is
+  omitted independently when absent, only `Title:` remains when both are
+  missing, and the transcript is trimmed before the closing instruction.
+
+**Files changed**
+- `lib/extractors/task.test.ts` (new). No production code touched:
+  `normalizeTasks`, `buildUserPrompt` and `PRIORITIES` were already exported.
+
+**Learnings**
+- **`it.each` over the exported `PRIORITIES` constant** beats hardcoding the five
+  strings: the test enumerates the contract rather than a copy of it.
+- The interesting invalid priority is a *number*, not a typo. Linear's API scale
+  is numeric (1 = urgent), so `priority: 1` is the realistic bad answer, and
+  `text()` stringifies it to `'1'` — which is exactly why the whitelist check
+  after it matters. A suite that only tests `'blocker'` misses the case that
+  actually happens.
+- `text()` doing double duty (trim + stringify scalars) means "numeric field"
+  and "empty field" are the same code path; both directions need pinning, since
+  removing the scalar branch turns a numeric title into a *dropped row*, not a
+  wrong string.
+- **Mutation-checked all 13 guards** this suite exists to pin: bare-array accept,
+  the non-object payload guard, `Array.isArray(tasks)`, the non-object row guard,
+  the empty-title drop, `.toLowerCase()`, the `PRIORITIES` whitelist,
+  `text(mentioned) || null`, the number/boolean branch of `text`, `.trim()`, and
+  the three `buildUserPrompt` conditionals (date, attendees, transcript trim).
+  Each produces 1-9 red tests; no assertion is decorative.
+
+**Verification**
+- `pnpm test` -> 3 files, 89 tests passed, exit code 0.
+- `pnpm typecheck` -> passes.
+- 13 mutations run against `lib/extractors/task.ts`, each caught; file restored
+  (`git diff lib/extractors/task.ts` empty afterwards).
+- Note: **there is no `lint` script in `package.json`** — `pnpm lint` falls
+  through to an unrelated `lint` binary on PATH (Android's) and its help text is
+  not a passing lint run. The gates in this repo are `typecheck` and `test`.
 
 ---
