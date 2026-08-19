@@ -47,6 +47,23 @@ after each iteration and it's included in prompts for context.
   `if (false && ...)`, re-run, confirm the test goes red, restore. A green suite
   against a disabled guard means the test proves nothing.
 
+### Redirecting `.data/` in a test (US-006)
+- `DATA_DIR` is `process.cwd() + '/.data'`, frozen at module load, so an env var
+  set inside the test is too late — replace the module:
+  `vi.mock('@/lib/data-dir', async () => { ... mkdtempSync ... })`. The factory
+  runs once, before the module under test is imported.
+- Have the factory return `DATA_DIR` and import it back in the test
+  (`import { DATA_DIR } from '@/lib/data-dir'`) instead of keeping a second copy
+  of the path — the fixture and the code under test can then never disagree.
+- Mock `@/lib/data-dir` even though `lib/store.ts` imports `'./data-dir'`:
+  Vitest keys mocks by resolved path, and both specifiers resolve to the same
+  file.
+- `beforeEach` should empty the folder rather than re-create it, so the path in
+  the already-loaded mock stays valid across tests.
+- Guard against the test silently hitting the real folder: assert
+  `readdirSync(DATA_DIR)` and check the real `.data/config.json` mtime is
+  unchanged after the run.
+
 ---
 
 ### HTTP clients: stubbing fetch (US-005)
@@ -386,5 +403,57 @@ is touched.
   confirm `git diff` on the source is empty.
 - `AbortSignal.timeout(15_000)` in the code under test does not keep Vitest
   alive; the whole suite still finishes in ~300ms.
+
+---
+
+## 2026-08-19 - US-006 - Tests del store de configuración
+
+Covered `lib/store.ts` end to end — read, normalisation, atomic write — with 41
+tests running against a temp `.data/`, so the developer's real config is never
+read nor written.
+
+**What was implemented**
+- `lib/store.test.ts` rewritten. `vi.mock('@/lib/data-dir', ...)` replaces the
+  module with one whose `DATA_DIR` is a fresh `mkdtempSync` folder; the test
+  imports `DATA_DIR` back from the mock so both sides name the same directory.
+  `beforeEach` empties the folder, `afterAll` removes it.
+- `getConfig`: missing file, invalid JSON, empty file, and a root that is an
+  array / string / null all yield the defaults.
+- Wrong types: `recentFolders` as a string and `history` as an array fall back
+  to `[]` / `{}` while the valid `contextRoot`, `ollamaModel`, `linearApiKey`
+  and `lastProjectId` around them survive; non-string members inside
+  `recentFolders` are dropped; `contextRoot` / `lastProjectId` null out.
+- `provider`: unknown name, empty string, number and absent all fall to
+  `'ollama'`; `'claude'` is kept, so the fallback is not just a constant.
+- History normalisation: an entry without `pushedAt`, with a non-string
+  `pushedAt`, without `issues`, with a non-array `issues`, or that is not an
+  object is discarded; the note key disappears when every entry goes; an entry
+  with an *empty* issues array is kept; a malformed issue is dropped without
+  taking its entry with it.
+- `updateConfig` merges over what is stored, persists, writes a complete config
+  from nothing, normalises the merge (a bad partial cannot poison the file) and
+  rebuilds from defaults over a corrupt file.
+- `addHistoryEntry` appends most-recent-last across three pushes, keeps notes on
+  separate keys, persists, refuses a malformed entry without losing the previous
+  ones, and leaves the rest of the config alone.
+- `getPushSummaries`: totals issues across pushes with the last timestamp, omits
+  a note whose pushes created no issue, summarises notes independently, and
+  still counts an empty push when the note produced issues elsewhere.
+- The atomic write: `readdirSync(DATA_DIR)` equals exactly `['config.json']`
+  after three writes, and the file is pretty JSON ending in a newline.
+
+**Files changed**
+- `lib/store.test.ts` (rewritten). `lib/store.ts` untouched.
+
+**Learnings:**
+- `pnpm test` -> 4 files, 163 tests passed. `pnpm typecheck` passes. `.data/`
+  kept its original mtime throughout.
+- 14 mutations run against `lib/store.ts`, every one caught; `git diff
+  lib/store.ts` empty afterwards.
+- **Check that a mutation actually applied.** The first `updateConfig`-skips-
+  `normalize` run came back green — the regex had said `return normalize(` when
+  the source says `const next = normalize(`, so nothing was patched. A green
+  mutation run means "the test is weak" *or* "the edit missed"; print
+  `git diff --stat` on the file next to the result to tell them apart.
 
 ---

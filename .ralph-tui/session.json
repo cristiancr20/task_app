@@ -3,10 +3,10 @@
   "sessionId": "ef655f0f-1b97-413f-847d-7c6b69e1f31b",
   "status": "running",
   "startedAt": "2026-08-19T20:44:14.216Z",
-  "updatedAt": "2026-08-19T20:58:29.226Z",
-  "currentIteration": 4,
+  "updatedAt": "2026-08-19T21:01:46.373Z",
+  "currentIteration": 5,
   "maxIterations": 0,
-  "tasksCompleted": 4,
+  "tasksCompleted": 5,
   "isPaused": false,
   "agentPlugin": "claude",
   "trackerState": {
@@ -42,8 +42,8 @@
       {
         "id": "US-005",
         "title": "Tests del cliente de Linear",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-006",
@@ -123,6 +123,16 @@
       "durationMs": 152506,
       "startedAt": "2026-08-19T20:52:45.708Z",
       "endedAt": "2026-08-19T20:55:18.214Z"
+    },
+    {
+      "iteration": 5,
+      "status": "completed",
+      "taskId": "US-005",
+      "taskTitle": "Tests del cliente de Linear",
+      "taskCompleted": true,
+      "durationMs": 189923,
+      "startedAt": "2026-08-19T20:55:19.302Z",
+      "endedAt": "2026-08-19T20:58:29.225Z"
     }
   ],
   "skippedTaskIds": [],
