@@ -5,6 +5,19 @@ after each iteration and it's included in prompts for context.
 
 ## Codebase Patterns (Study These First)
 
+### Documenting a command in the README (US-011)
+Run every command the README tells the reader to run, and assert the *effect*,
+not the output. `pnpm dev -H 0.0.0.0` overrides the script's own
+`-H 127.0.0.1` only because Next lets a later flag win — the real argv is
+`next dev -H 127.0.0.1 -p 3300 -H 0.0.0.0` — and the banner looks the same
+either way, so `lsof -nP -iTCP:3300 -sTCP:LISTEN` showing `*:3300` is the proof
+(see «Verifying what a server binds to»).
+Read defaults off the source when writing them down (`OLLAMA_URL`,
+`ANTHROPIC_API_URL`, `LINEAR_API_URL` each carry theirs as a `??` fallback), and
+copy user-facing instructions from the UI that already states them rather than
+paraphrasing — two wordings for one instruction is two things to keep in sync.
+The README is in Spanish because the UI, the error messages and the stories are.
+
 ### Persisting a client hook's state (US-010)
 Write-behind, not write-through. The pieces that make it safe are all in `lib/`
 (and therefore tested); the hook is wiring:
@@ -736,5 +749,48 @@ every one turned tests red, and the files were restored afterwards.
 - Element refs go stale when an `aria-label` changes — `uncheck e242` silently
   did nothing after the row's label picked up the title that had just been
   typed. Re-snapshot and re-resolve the ref after any edit that changes a label.
+
+---
+## 2026-08-19 - US-011
+
+Replaced the create-next-app boilerplate `README.md` with a real one, in
+Spanish — the UI, the error strings and the stories are all Spanish, so a README
+in English would be the only English thing a newcomer meets.
+
+**Files changed**
+- `README.md` (rewritten). No source or test changes.
+
+Sections, one per acceptance criterion: what the app does (explore `.md`
+transcripts, extract tasks with Ollama or Claude, push them to Linear), startup
+(`pnpm install` / `pnpm dev` on http://localhost:3300), prerequisites (a local
+Ollama with a pulled model *or* an Anthropic key, plus a Linear key to push),
+the three cards of `/settings`, the `OLLAMA_URL` / `ANTHROPIC_API_URL` /
+`LINEAR_API_URL` overrides with their defaults and what each is for, what
+`.data/` holds and that it is git-ignored, `pnpm typecheck` / `pnpm test`, and
+the no-authentication warning behind the `127.0.0.1` binding.
+
+**Verified**
+- `pnpm dev -H 0.0.0.0` really does override the script's `-H 127.0.0.1`:
+  `lsof -nP -iTCP:3300 -sTCP:LISTEN` showed `TCP *:3300 (LISTEN)` instead of
+  `TCP 127.0.0.1:3300`. Server killed straight after; port free.
+- Every default in the env-var table read off the source, not memory:
+  `lib/ollama.ts`, `lib/extractors/claude.ts`, `lib/linear.ts`.
+- `pnpm typecheck` passes; `pnpm test` -> 10 files, 303 tests passed.
+- No `create-next-app` / `bootstrapped` / `Deploy on Vercel` strings left.
+
+**Learnings:**
+- **Don't document a flag you haven't watched bind.** «Append `-H 0.0.0.0`»
+  only works if Next's CLI lets a later flag win over the one already in the
+  script; the command line really is
+  `next dev -H 127.0.0.1 -p 3300 -H 0.0.0.0`. It does — confirmed for both `-H`
+  and `-p` — but the banner alone would not have proved it: Next prints a
+  `Network:` line either way (the US-007 trap). `lsof` is what says `*:3300`.
+- Read the wording off the UI before writing it into the README. The Linear
+  form already tells the user «Settings → Security & access → API keys»; the
+  README saying «Personal API keys» would have been a second, drifting source
+  of truth for the same instruction.
+- The parent issue is a checkbox («Agrupar bajo una tarea padre»), not part of
+  every push — `lib/linear-push.ts` treats `plan.parentTitle` as optional. An
+  intro paragraph that promises one per meeting overstates what the app does.
 
 ---

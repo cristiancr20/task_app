@@ -3,10 +3,10 @@
   "sessionId": "ef655f0f-1b97-413f-847d-7c6b69e1f31b",
   "status": "running",
   "startedAt": "2026-08-19T20:44:14.216Z",
-  "updatedAt": "2026-08-19T21:13:38.598Z",
-  "currentIteration": 9,
+  "updatedAt": "2026-08-19T21:38:48.505Z",
+  "currentIteration": 10,
   "maxIterations": 0,
-  "tasksCompleted": 9,
+  "tasksCompleted": 10,
   "isPaused": false,
   "agentPlugin": "claude",
   "trackerState": {
@@ -72,8 +72,8 @@
       {
         "id": "US-010",
         "title": "Los borradores sobreviven a una recarga",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-011",
@@ -173,12 +173,20 @@
       "durationMs": 393210,
       "startedAt": "2026-08-19T21:07:04.271Z",
       "endedAt": "2026-08-19T21:13:37.481Z"
+    },
+    {
+      "iteration": 10,
+      "status": "completed",
+      "taskId": "US-010",
+      "taskTitle": "Los borradores sobreviven a una recarga",
+      "taskCompleted": true,
+      "durationMs": 1312265,
+      "startedAt": "2026-08-19T21:13:38.584Z",
+      "endedAt": "2026-08-19T21:35:30.849Z"
     }
   ],
   "skippedTaskIds": [],
   "cwd": "/Users/cristian/dev/tasks-app",
-  "activeTaskIds": [
-    "US-010"
-  ],
+  "activeTaskIds": [],
   "subagentPanelVisible": false
 }
