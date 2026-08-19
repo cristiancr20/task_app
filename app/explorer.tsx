@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
+import { decideDuplicates, exclusionKey, scopeKeyOf } from '@/lib/duplicate-check'
+
 import { FileList } from './file-list'
 import { FolderTree } from './folder-tree'
 import { PushPanel } from './push-panel'
@@ -124,6 +126,36 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
     rows,
     skipRowIds: createdRowIds,
   })
+
+  // Which rows the app has already unchecked on its own, per destination — see
+  // `exclusionKey`. It is the whole of «una sola vez»: the ids stay here after
+  // the row is unchecked, so checking it back is a decision the check does not
+  // get to overrule, and it is the same memory that tells a re-marked row from
+  // one nobody has touched.
+  const [autoExcluded, setAutoExcluded] = useState<ReadonlySet<string>>(() => new Set())
+  const duplicateScopeKey = scopeKeyOf(duplicateScope)
+  const decisions = useMemo(
+    () => decideDuplicates(rows, duplicates.matches, duplicateScopeKey, autoExcluded),
+    [autoExcluded, duplicateScopeKey, duplicates.matches, rows],
+  )
+
+  // Unchecking is a change to the rows, so it belongs in an effect rather than
+  // in the render that decided it. It settles in one pass: the rows it names
+  // come back unchecked and their keys are remembered, so the next `decisions`
+  // has nothing left to exclude.
+  // `excludeRows` rather than `drafts`: the hook returns a fresh object every
+  // render, and this effect must be about the rows it names, not about React.
+  const { excludeRows } = drafts
+  const { toExclude } = decisions
+  useEffect(() => {
+    if (toExclude.length === 0 || !duplicateScopeKey) return
+    excludeRows(toExclude)
+    setAutoExcluded((previous) => {
+      const next = new Set(previous)
+      for (const id of toExclude) next.add(exclusionKey(duplicateScopeKey, id))
+      return next
+    })
+  }, [duplicateScopeKey, excludeRows, toExclude])
 
   function startPush() {
     run.push({
@@ -272,6 +304,7 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
                 status: duplicates.status,
                 checking: duplicates.checking,
                 error: duplicates.error,
+                excluded: decisions.excluded,
                 onCheck: duplicates.recheck,
               }}
               push={{
@@ -294,6 +327,10 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
                 state={drafts.state}
                 results={results}
                 busy={run.state.status === 'running'}
+                matches={duplicates.matches}
+                forcedRows={decisions.forced}
+                showDuplicates={duplicates.status !== 'unavailable'}
+                checkingDuplicates={duplicates.checking}
                 onGenerate={drafts.generate}
                 onConfirmGenerate={drafts.confirmGenerate}
                 onCancelGenerate={drafts.cancelGenerate}

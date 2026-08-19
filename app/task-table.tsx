@@ -2,6 +2,11 @@
 
 import { useEffect } from 'react'
 
+import {
+  type DuplicateMatch,
+  MATCH_GRADE_LABELS,
+  matchGrade,
+} from '@/lib/duplicate-check'
 import { PRIORITIES, type Priority } from '@/lib/extractors/task'
 
 import { ExtractionProgress } from './progress'
@@ -25,6 +30,25 @@ type Props = {
   results: Record<string, PushRowResult>
   /** A push is in flight: the rows it is creating must not change underneath it. */
   busy: boolean
+  /**
+   * What each row already looks like in the push destination, by row id. Only
+   * ever read when `showDuplicates` is on, and a row with no entry simply has
+   * no answer yet — never «no duplicates».
+   */
+  matches: Record<string, DuplicateMatch | null>
+  /**
+   * Rows the user checked back after the check unchecked them: they go to
+   * Linear like any other row, and the table says that is on purpose.
+   */
+  forcedRows: ReadonlySet<string>
+  /**
+   * There is a destination to check against. With no API key and no project
+   * there is no question to answer, so nothing about duplicates is drawn —
+   * rather than a row of permanent «no disponible».
+   */
+  showDuplicates: boolean
+  /** The check is running. It is said out loud, and it stops nothing. */
+  checkingDuplicates: boolean
   onGenerate: () => void
   onConfirmGenerate: () => void
   onCancelGenerate: () => void
@@ -59,6 +83,10 @@ export function TaskTable({
   state,
   results,
   busy,
+  matches,
+  forcedRows,
+  showDuplicates,
+  checkingDuplicates,
   onGenerate,
   onConfirmGenerate,
   onCancelGenerate,
@@ -92,6 +120,14 @@ export function TaskTable({
           {/* Says out loud what «Generar tareas» is about to ask about. */}
           {changes.total > 0 ? (
             <span className="chip border-warn/30 text-warn">{describeChanges(changes)}</span>
+          ) : null}
+          {/* The check runs in the background and nothing waits for it — the
+              push button included — so the only thing owed to the user is
+              knowing that the badges below are still on their way. */}
+          {showDuplicates && checkingDuplicates ? (
+            <span aria-live="polite" className="chip">
+              Comprobando duplicados…
+            </span>
           ) : null}
         </div>
 
@@ -169,6 +205,8 @@ export function TaskTable({
                 row={row}
                 result={showStatus ? results[row.id] : undefined}
                 showStatus={showStatus}
+                match={showDuplicates ? (matches[row.id] ?? null) : null}
+                forced={forcedRows.has(row.id)}
                 busy={busy}
                 onUpdate={(changes) => onUpdateRow(row.id, changes)}
                 onRemove={() => onRemoveRow(row.id)}
@@ -279,6 +317,8 @@ function Row({
   row,
   result,
   showStatus,
+  match,
+  forced,
   busy,
   onUpdate,
   onRemove,
@@ -287,6 +327,10 @@ function Row({
   /** How this row ended in the last push; undefined means it is still pending. */
   result: PushRowResult | undefined
   showStatus: boolean
+  /** The closest issue the destination already holds, or null for none. */
+  match: DuplicateMatch | null
+  /** This row is going anyway, after the check took it out of the push. */
+  forced: boolean
   busy: boolean
   onUpdate: (changes: Partial<TaskDraft>) => void
   onRemove: () => void
@@ -350,6 +394,11 @@ function Row({
       {/* Everything below is indented to the title, so the checkbox column
           reads as a single gutter down the list. */}
       <div className="mt-2 flex flex-col gap-2 pl-6 pr-9">
+        {/* Directly under the title it is about, and above the fields: what
+            already exists in Linear is the first thing to know before editing
+            anything, and the row was probably unchecked over it. */}
+        {match ? <DuplicateBadge match={match} forced={forced} /> : null}
+
         <textarea
           value={row.description}
           onChange={(event) => onUpdate({ description: event.target.value })}
@@ -422,6 +471,65 @@ function Row({
       </div>
     </li>
   )
+}
+
+/**
+ * What the destination already holds that looks like this row.
+ *
+ * Three cases, and they are three different pieces of advice — so they differ
+ * in words and in colour rather than in a number:
+ *
+ *   an open duplicate      warn: creating it would put two live copies of the
+ *                          same task in the same project, which is the only
+ *                          case the row is unchecked over
+ *   a closed duplicate     muted: it was done or dropped once and is being
+ *                          asked for again, which is ordinary
+ *   a near match           muted: below `DUPLICATE_THRESHOLD`, so this is
+ *                          «have a look», not «you already did this»
+ *
+ * The score itself never appears. `matchGrade` turns it into the band it
+ * belongs to, because 0.68 means nothing without the measurements it came from
+ * and «coincidencia alta» means what it says.
+ */
+function DuplicateBadge({ match, forced }: { match: DuplicateMatch; forced: boolean }) {
+  const open = match.duplicate && !match.closed
+  const tone = open
+    ? 'border-warn/30 bg-warn-wash text-warn'
+    : 'border-line-strong text-muted'
+
+  return (
+    <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+      {/* The identifier links out, because judging the match means reading the
+          issue — and the note is not something to navigate away from. */}
+      <a
+        href={match.url}
+        target="_blank"
+        rel="noreferrer noopener"
+        title={match.title}
+        className={`chip ${tone} font-medium hover:underline`}
+      >
+        <span>{duplicateHeadline(match)}</span>
+        <span className="font-mono">{match.identifier}</span>
+        <span className="font-normal">· {MATCH_GRADE_LABELS[matchGrade(match.score)]}</span>
+      </a>
+
+      {/* The issue's own title, so the match is judged on the tasks rather than
+          on the word «alta». Truncated: it competes with nothing here. */}
+      <span className="min-w-0 flex-1 truncate text-xs text-muted" title={match.title}>
+        {match.title}
+      </span>
+
+      {forced ? (
+        <span className="chip shrink-0 border-warn/30 text-warn">Se enviará igualmente</span>
+      ) : null}
+    </div>
+  )
+}
+
+/** What the badge calls the match, which is the whole of the advice in it. */
+function duplicateHeadline(match: DuplicateMatch): string {
+  if (!match.duplicate) return 'Quizá ya exista'
+  return match.closed ? 'Ya existe, cerrada' : 'Ya existe'
 }
 
 /**

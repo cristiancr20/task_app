@@ -3,8 +3,14 @@ import { describe, expect, it } from 'vitest'
 import {
   checkRows,
   type CheckableRow,
+  decideDuplicates,
+  type DuplicateMatch,
+  exclusionKey,
+  type IncludableRow,
   isOpenDuplicate,
+  MATCH_GRADE_LABELS,
   matchesOf,
+  matchGrade,
   matchIssue,
   needsCheck,
   type PathChecks,
@@ -307,5 +313,198 @@ describe('isOpenDuplicate', () => {
   it('is false when there is no match, and when there is no answer yet', () => {
     expect(isOpenDuplicate(null)).toBe(false)
     expect(isOpenDuplicate(undefined)).toBe(false)
+  })
+})
+
+describe('matchGrade', () => {
+  it('never reports the score itself — every band is a phrase', () => {
+    for (const label of Object.values(MATCH_GRADE_LABELS)) {
+      expect(label.startsWith('coincidencia ')).toBe(true)
+      expect(/[0-9]/.test(label)).toBe(false)
+    }
+  })
+
+  it('calls the same title, normalisation aside, an exact match', () => {
+    expect(similarity('Migrar el endpoint de pagos', 'migrar endpoint de pagos')).toBe(1)
+    expect(matchGrade(1)).toBe('exacta')
+    expect(matchGrade(0.9)).toBe('exacta')
+  })
+
+  it('puts the measured reformulations in «alta», where the cut was chosen', () => {
+    // The pairs `DUPLICATE_THRESHOLD` was measured on, re-measured here so the
+    // band moves with the arithmetic rather than with a number copied once.
+    const reworded: [string, string][] = [
+      ['Migrar endpoint de pagos', 'Migración del endpoint de pagos'],
+      ['Enviar el presupuesto a Marta', 'Mandar presupuesto a Marta'],
+      ['Actualizar la documentación del API', 'Actualizar docs de la API'],
+      ['Configurar el pipeline de CI', 'Configuración del pipeline de CI'],
+    ]
+    for (const [a, b] of reworded) expect(matchGrade(similarity(a, b))).toBe('alta')
+  })
+
+  it('leaves a merely related pair below the duplicate threshold, as «baja»', () => {
+    const score = similarity(
+      'Migrar endpoint de pagos a la nueva API',
+      'Documentar el endpoint de pagos en la wiki',
+    )
+    expect(score).toBeLessThan(DUPLICATE_THRESHOLD)
+    expect(matchGrade(score)).toBe('baja')
+  })
+
+  it('cuts the bands where the measurements did, threshold included', () => {
+    expect(matchGrade(DUPLICATE_THRESHOLD)).toBe('media')
+    expect(matchGrade(DUPLICATE_THRESHOLD - 0.001)).toBe('baja')
+    expect(matchGrade(0.649)).toBe('media')
+    expect(matchGrade(0.65)).toBe('alta')
+    expect(matchGrade(0.899)).toBe('alta')
+  })
+
+  it('has a label for every band', () => {
+    for (const score of [0, 0.3, 0.4, 0.55, 0.6, 0.7, 0.95, 1]) {
+      expect(MATCH_GRADE_LABELS[matchGrade(score)]).toBeTruthy()
+    }
+  })
+})
+
+describe('exclusionKey', () => {
+  it('is one row of one destination', () => {
+    const key = exclusionKey('t1 p1', 'r1')
+    expect(key).not.toBe(exclusionKey('t1 p1', 'r2'))
+    expect(key).not.toBe(exclusionKey('t1 p2', 'r1'))
+    expect(exclusionKey('t1 p1', 'r1')).toBe(key)
+  })
+})
+
+describe('decideDuplicates', () => {
+  const SCOPE = 't1 p1'
+
+  function match(partial: Partial<DuplicateMatch> = {}): DuplicateMatch {
+    return {
+      score: 0.8,
+      identifier: 'ENG-11',
+      title: 'Migración del endpoint de pagos',
+      url: 'https://linear.app/acme/issue/ENG-11',
+      closed: false,
+      duplicate: true,
+      ...partial,
+    }
+  }
+
+  function row(partial: Partial<IncludableRow> & { id: string }): IncludableRow {
+    return { title: `título de ${partial.id}`, include: true, ...partial }
+  }
+
+  it('decides nothing without a destination — the check has not been asked', () => {
+    const decisions = decideDuplicates([row({ id: 'r1' })], { r1: match() }, null, new Set())
+    expect(decisions).toEqual({ toExclude: [], forced: new Set(), excluded: 0 })
+  })
+
+  it('takes an open duplicate out of the push the first time it is seen', () => {
+    const decisions = decideDuplicates([row({ id: 'r1' })], { r1: match() }, SCOPE, new Set())
+    expect(decisions.toExclude).toEqual(['r1'])
+    expect(decisions.forced.size).toBe(0)
+    expect(decisions.excluded).toBe(0)
+  })
+
+  it('does not take it out a second time — that is what the memory is for', () => {
+    const applied = new Set([exclusionKey(SCOPE, 'r1')])
+    // The user has checked the row back after the first round.
+    const decisions = decideDuplicates([row({ id: 'r1' })], { r1: match() }, SCOPE, applied)
+    expect(decisions.toExclude).toEqual([])
+    expect([...decisions.forced]).toEqual(['r1'])
+  })
+
+  it('counts the row it already unchecked as excluded, not as forced', () => {
+    const applied = new Set([exclusionKey(SCOPE, 'r1')])
+    const rows = [row({ id: 'r1', include: false })]
+    const decisions = decideDuplicates(rows, { r1: match() }, SCOPE, applied)
+    expect(decisions.excluded).toBe(1)
+    expect(decisions.forced.size).toBe(0)
+    expect(decisions.toExclude).toEqual([])
+  })
+
+  it('asks again in another destination, where it is a different question', () => {
+    const applied = new Set([exclusionKey('t1 p2', 'r1')])
+    const decisions = decideDuplicates([row({ id: 'r1' })], { r1: match() }, SCOPE, applied)
+    expect(decisions.toExclude).toEqual(['r1'])
+  })
+
+  it('leaves a closed duplicate alone — asking again for finished work is ordinary', () => {
+    const decisions = decideDuplicates(
+      [row({ id: 'r1' })],
+      { r1: match({ closed: true }) },
+      SCOPE,
+      new Set(),
+    )
+    expect(decisions).toEqual({ toExclude: [], forced: new Set(), excluded: 0 })
+  })
+
+  it('leaves a match that never reached the threshold alone', () => {
+    const decisions = decideDuplicates(
+      [row({ id: 'r1' })],
+      { r1: match({ score: 0.4, duplicate: false }) },
+      SCOPE,
+      new Set(),
+    )
+    expect(decisions.toExclude).toEqual([])
+  })
+
+  it('leaves a row with no answer yet alone, which is what keeps the push running', () => {
+    const rows = [row({ id: 'r1' }), row({ id: 'r2' })]
+    const decisions = decideDuplicates(rows, { r1: null }, SCOPE, new Set())
+    expect(decisions).toEqual({ toExclude: [], forced: new Set(), excluded: 0 })
+  })
+
+  it('reports each row once, whichever of the three it is', () => {
+    const applied = new Set([exclusionKey(SCOPE, 'r2'), exclusionKey(SCOPE, 'r3')])
+    const rows = [
+      row({ id: 'r1' }),
+      row({ id: 'r2' }),
+      row({ id: 'r3', include: false }),
+      row({ id: 'r4' }),
+    ]
+    const matches = {
+      r1: match(),
+      r2: match(),
+      r3: match(),
+      r4: match({ score: 0.2, duplicate: false }),
+    }
+    const decisions = decideDuplicates(rows, matches, SCOPE, applied)
+    expect(decisions.toExclude).toEqual(['r1'])
+    expect([...decisions.forced]).toEqual(['r2'])
+    expect(decisions.excluded).toBe(1)
+  })
+
+  it('settles in one pass: what it excluded is not excluded again', () => {
+    let rows = [row({ id: 'r1' }), row({ id: 'r2' })]
+    const matches = { r1: match(), r2: match() }
+    let applied = new Set<string>()
+
+    const first = decideDuplicates(rows, matches, SCOPE, applied)
+    expect(first.toExclude).toEqual(['r1', 'r2'])
+    // What the explorer's effect does with the answer.
+    rows = rows.map((one) => ({ ...one, include: false }))
+    applied = new Set(first.toExclude.map((id) => exclusionKey(SCOPE, id)))
+
+    const second = decideDuplicates(rows, matches, SCOPE, applied)
+    expect(second.toExclude).toEqual([])
+    expect(second.excluded).toBe(2)
+  })
+
+  it('spends its verdict on a row that came back from disk already unchecked', () => {
+    // The reload after a push: the exclusion is in `.data/drafts.json` but the
+    // memory of who made it is not, so the row is recorded now — otherwise
+    // checking it back would be answered by unchecking it a second time.
+    const rows = [row({ id: 'r1', include: false })]
+    const decisions = decideDuplicates(rows, { r1: match() }, SCOPE, new Set())
+    expect(decisions.toExclude).toEqual(['r1'])
+    expect(decisions.excluded).toBe(1)
+    expect(decisions.forced.size).toBe(0)
+
+    // And once it is recorded, checking it back is the user's decision to keep.
+    const applied = new Set([exclusionKey(SCOPE, 'r1')])
+    const after = decideDuplicates([row({ id: 'r1' })], { r1: match() }, SCOPE, applied)
+    expect(after.toExclude).toEqual([])
+    expect([...after.forced]).toEqual(['r1'])
   })
 })

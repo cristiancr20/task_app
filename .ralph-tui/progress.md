@@ -5,6 +5,35 @@ after each iteration and it's included in prompts for context.
 
 ## Codebase Patterns (Study These First)
 
+### An effect that acts on the rows it was computed from needs a memory
+
+«Uncheck this row once, and let the user put it back» is not the checkbox: the
+condition that triggered the exclusion (the row is an open duplicate) is still
+true after it, so an effect keyed on the condition alone unchecks the row again
+every time the user checks it. What makes it settle is a second piece of state
+recording *that the app has already decided* — `autoExcluded` in
+`app/explorer.tsx`, a `Set` of `exclusionKey(scopeKey, rowId)`.
+
+Three things follow, and all three are load-bearing:
+
+- The key is scoped, not just the row id. The same task duplicates something in
+  one project and nothing in the next, so the row gets one automatic verdict per
+  destination rather than one per session.
+- The verdict is spent on rows that are *already* in the target state too, not
+  only on the ones being changed now. The change is persisted (the row's
+  `include` goes to `.data/drafts.json`) while the memory only lives as long as
+  the page, so a reload otherwise finds the row changed, cannot tell who changed
+  it, and changes it again.
+- The decision is a pure function of (rows, answers, scope, memory) returning
+  *both* the work to do and how to describe what was already done —
+  `decideDuplicates` → `{ toExclude, forced, excluded }`. That is what makes it
+  testable with no DOM: call it, apply what the effect would apply, call it
+  again, and assert the second call has nothing left to do.
+
+The effect itself must depend on the destructured callback
+(`const { excludeRows } = drafts`), never on the hook's return value — those
+hooks return a fresh object every render.
+
 ### Calibrating a number against real examples: `npx tsx` from the repo root
 
 A threshold, a weight or a cutoff should be measured before it is written down,
@@ -386,5 +415,68 @@ the table scored against them, and nothing blocked by the answer.
   the hook — the hook is left with the fetch, the debounce and the two caches,
   and `pnpm build` is what checks that none of `lib/linear.ts` reached the
   client bundle through it.
+
+---
+
+## 2026-08-19 - US-007
+
+The check's answer, on screen: a badge per row, the row taken out of the push
+once, and the panel's count adding up again.
+
+- `lib/duplicate-check.ts`: `matchGrade`/`MATCH_GRADE_LABELS` (four bands over
+  the measured populations, so the decimal never reaches the table);
+  `IncludableRow`; `exclusionKey` (the verdict, per destination and per row);
+  `decideDuplicates` → `{ toExclude, forced, excluded }`, the whole of what the
+  duplicates mean for the push.
+- `app/task-table.tsx`: `DuplicateBadge` under the title — a `chip` linking to
+  the issue (`target="_blank"`), the identifier in mono, the grade in words,
+  the issue's own title truncated beside it, and «Se enviará igualmente» when
+  the row was checked back. Warn for an open duplicate, muted for a closed one
+  and for a near match. A «Comprobando duplicados…» chip in the header, and
+  `showDuplicates` gating all of it.
+- `app/push-panel.tsx`: `duplicates.excluded` and a second chip,
+  «N duplicadas excluidas», next to the count the button is about to create.
+- `app/explorer.tsx`: the `autoExcluded` memory, `decideDuplicates` in a
+  `useMemo`, and the effect that unchecks `toExclude` and records it.
+- `app/use-task-drafts.ts`: `excludeRows(ids)` — one patch for the whole list,
+  returning the previous state untouched when every row was already unchecked.
+- `lib/duplicate-check.test.ts`: 18 more cases over the bands (re-measuring the
+  reformulation pairs rather than asserting numbers copied from a comment), the
+  key, and every branch of `decideDuplicates` including the settle-in-one-pass
+  and reload paths.
+
+**Learnings:**
+
+- The bands were measured, not chosen (`npx tsx` at the repo root over
+  `similarity`, then deleted): identical-after-normalisation pairs are 1.000 on
+  the nose, reformulations 0.684–0.738, different-tasks-same-subject
+  0.420–0.569, unrelated 0.093–0.122. So 0.9 separates «the same words» from
+  the best reformulation and 0.65 sits in the gap under the worst one — and the
+  fourth band is «baja» rather than a fourth shade of yes, because below
+  `DUPLICATE_THRESHOLD` nothing is called a duplicate at all.
+- «Una sola vez» is a memory, and it has to be keyed by destination as well as
+  by row: the same task duplicates something in one project and nothing in the
+  next, so a row deserves one automatic verdict per destination rather than one
+  per session.
+- The verdict has to be spent on rows that are *already* unchecked, not only on
+  the ones being unchecked now. The exclusion is persisted with the row in
+  `.data/drafts.json` while the memory only lives as long as the page, so
+  without that the reload after a push finds the row unchecked, cannot tell who
+  unchecked it, and unchecks it a second time the moment the user asks for it
+  back. `excludeRows` is then a no-op on the rows and returns `prev` itself, so
+  neither a render nor a save comes of it.
+- A React effect that changes the rows it was computed from settles only if the
+  change removes its own trigger: unchecking alone does not (the row is still
+  an open duplicate), the memory is what does. The pair is testable without a
+  DOM — `decideDuplicates` twice, applying in between what the effect applies —
+  which is the «settles in one pass» case.
+- `useTaskDrafts` returns a fresh object every render, so an effect that calls
+  one of its functions must depend on the destructured function (stable through
+  `useCallback`), not on the hook's return value. Depending on `drafts` re-runs
+  the effect on every render of the page.
+- Nothing about the check reaches the push: `pushBlockedBy` never mentions it,
+  and the only thing the check does to the button is lower `pending` by
+  unchecking rows — which is exactly why the panel needs the second chip, or
+  the button and the table would disagree with nothing on screen to explain it.
 
 ---

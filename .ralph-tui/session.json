@@ -3,10 +3,10 @@
   "sessionId": "cead5646-3586-4d77-be44-5415f738bb43",
   "status": "running",
   "startedAt": "2026-08-19T21:44:56.341Z",
-  "updatedAt": "2026-08-19T22:11:50.013Z",
-  "currentIteration": 5,
+  "updatedAt": "2026-08-19T22:19:46.584Z",
+  "currentIteration": 6,
   "maxIterations": 0,
-  "tasksCompleted": 5,
+  "tasksCompleted": 6,
   "isPaused": false,
   "agentPlugin": "claude",
   "trackerState": {
@@ -48,8 +48,8 @@
       {
         "id": "US-006",
         "title": "Comprobación de duplicados por transcripción",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-007",
@@ -109,6 +109,16 @@
       "durationMs": 269369,
       "startedAt": "2026-08-19T21:57:44.477Z",
       "endedAt": "2026-08-19T22:02:13.846Z"
+    },
+    {
+      "iteration": 6,
+      "status": "completed",
+      "taskId": "US-006",
+      "taskTitle": "Comprobación de duplicados por transcripción",
+      "taskCompleted": true,
+      "durationMs": 575064,
+      "startedAt": "2026-08-19T22:02:14.947Z",
+      "endedAt": "2026-08-19T22:11:50.011Z"
     }
   ],
   "skippedTaskIds": [],

@@ -221,3 +221,123 @@ export function matchesOf(
 export function isOpenDuplicate(match: DuplicateMatch | null | undefined): boolean {
   return !!match && match.duplicate && !match.closed
 }
+
+/**
+ * How alike the two titles are, in the words a person reads.
+ *
+ * The score is a decimal that only means something next to the measurements it
+ * came from, so it never reaches the table — «coincidencia alta» does. The cuts
+ * are where the measured populations separate (`npx tsx` over `similarity`, the
+ * same pairs `DUPLICATE_THRESHOLD` was picked from):
+ *
+ *   identical, normalisation aside      1.000 on every pair
+ *   the same task, reformulated         0.684 … 0.738
+ *   different tasks, same subject       0.420 … 0.569
+ *   unrelated                           0.093 … 0.122
+ *
+ * So 0.9 separates «the same words» from the best reformulation (0.738), and
+ * 0.65 sits in the gap between the worst reformulation (0.684) and the closest
+ * merely-related pair (0.569). Below `DUPLICATE_THRESHOLD` nothing is called a
+ * duplicate at all, which is what makes the fourth band «baja» rather than a
+ * fourth shade of «yes».
+ */
+export type MatchGrade = 'exacta' | 'alta' | 'media' | 'baja'
+
+const EXACT_SCORE = 0.9
+const HIGH_SCORE = 0.65
+
+/** The band a score falls in. */
+export function matchGrade(score: number): MatchGrade {
+  if (score >= EXACT_SCORE) return 'exacta'
+  if (score >= HIGH_SCORE) return 'alta'
+  if (score >= DUPLICATE_THRESHOLD) return 'media'
+  return 'baja'
+}
+
+/** What each band is called next to the row. */
+export const MATCH_GRADE_LABELS: Record<MatchGrade, string> = {
+  exacta: 'coincidencia exacta',
+  alta: 'coincidencia alta',
+  media: 'coincidencia media',
+  baja: 'coincidencia baja',
+}
+
+/** A table row, as the exclusion arithmetic needs it. `TaskDraft` is one. */
+export type IncludableRow = CheckableRow & {
+  /** The «incluir» checkbox: this row is part of the next push. */
+  include: boolean
+}
+
+/**
+ * That a row was unchecked on the app's initiative, remembered per destination.
+ *
+ * The row id alone would be enough to auto-exclude «una sola vez», but a
+ * different project is a different question — a task that duplicates something
+ * in one project usually duplicates nothing in the next — so the memory is
+ * scoped and the row gets one automatic verdict per destination.
+ */
+export function exclusionKey(scopeKey: string, rowId: string): string {
+  return `${scopeKey}${KEY_SEPARATOR}${rowId}`
+}
+
+/** What the duplicates mean for the push, for the table and for the panel. */
+export type DuplicateDecisions = {
+  /**
+   * Rows the app has not yet spent its one automatic exclusion on: uncheck
+   * them, and remember that it did. Empty on every render after the first,
+   * which is what «una sola vez» amounts to — the user is then free to check
+   * the row back and nothing here touches it again.
+   *
+   * A row that is *already* unchecked is in here too, once. Unchecking it is a
+   * no-op, but spending the verdict on it is not: the exclusion is written to
+   * `.data/drafts.json` with the rest of the row while the memory only lives
+   * as long as the page, so without this the reload after a push would find
+   * the row unchecked, forget why, and uncheck it again the moment the user
+   * asked for it back.
+   */
+  toExclude: string[]
+  /**
+   * Rows going to Linear even though they already exist there: the user
+   * checked them back after the app unchecked them. They are pushed like any
+   * other row and the table says so.
+   */
+  forced: ReadonlySet<string>
+  /** Rows left out of this push because the destination already holds them. */
+  excluded: number
+}
+
+const NO_DECISIONS: DuplicateDecisions = { toExclude: [], forced: new Set(), excluded: 0 }
+
+/**
+ * Which rows the duplicate check takes out of the push, and which ones the
+ * user has put back.
+ *
+ * Only an *open* duplicate is acted on — see `isOpenDuplicate`: an issue that
+ * was completed or cancelled is reported and left alone, because asking again
+ * for work that was done once is ordinary. A row with no answer yet is not
+ * touched either, which is what keeps the check from blocking anything: the
+ * push runs on whatever is checked at that moment.
+ */
+export function decideDuplicates(
+  rows: readonly IncludableRow[],
+  matches: Record<string, DuplicateMatch | null | undefined>,
+  scopeKey: string | null,
+  applied: ReadonlySet<string>,
+): DuplicateDecisions {
+  if (!scopeKey) return NO_DECISIONS
+
+  const toExclude: string[] = []
+  const forced = new Set<string>()
+  let excluded = 0
+
+  for (const row of rows) {
+    if (!isOpenDuplicate(matches[row.id])) continue
+
+    if (!applied.has(exclusionKey(scopeKey, row.id))) toExclude.push(row.id)
+    else if (row.include) forced.add(row.id)
+
+    if (!row.include) excluded++
+  }
+
+  return { toExclude, forced, excluded }
+}

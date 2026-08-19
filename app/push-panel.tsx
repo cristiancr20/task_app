@@ -51,6 +51,12 @@ type DuplicateApi = {
   checking: boolean
   /** Why the destination could not be read, or null. */
   error: string | null
+  /**
+   * Rows left out of this push because the destination already holds them.
+   * They are already out of `push.pending`, so this only explains the gap
+   * between «10 tareas en la tabla» and the number on the button.
+   */
+  excluded: number
   /** «Buscar duplicados». */
   onCheck: () => void
 }
@@ -98,7 +104,17 @@ export function PushPanel({ target, parent, duplicates, push }: Props) {
       <div className="panel-head justify-between">
         <h2 className="panel-title">Enviar a Linear</h2>
         {target.status === 'ready' ? (
-          <span className="chip tabular-nums">{summary(willCreateParent, push.pending)}</span>
+          <div className="flex min-w-0 items-center gap-1.5">
+            <span className="chip tabular-nums">{summary(willCreateParent, push.pending)}</span>
+            {/* Why the count is lower than the table's: without this the button
+                and the list of rows disagree by however many the check took
+                out, and nothing on screen would account for the difference. */}
+            {duplicates.excluded > 0 ? (
+              <span className="chip border-warn/30 text-warn tabular-nums">
+                {excludedSummary(duplicates.excluded)}
+              </span>
+            ) : null}
+          </div>
         ) : null}
       </div>
 
@@ -383,6 +399,11 @@ function projectPlaceholder(target: PushTargetApi, severalTeams: boolean): strin
 function summary(willCreateParent: boolean, pending: number): string {
   const tasks = `${pending} tarea${pending === 1 ? '' : 's'}`
   return willCreateParent ? `${tasks} bajo una tarea padre` : tasks
+}
+
+/** «2 duplicadas excluidas», next to what the button is about to create. */
+function excludedSummary(excluded: number): string {
+  return excluded === 1 ? '1 duplicada excluida' : `${excluded} duplicadas excluidas`
 }
 
 /** «3 tareas creadas bajo la tarea padre · 1 fallida», once the run is over. */

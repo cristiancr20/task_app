@@ -100,6 +100,8 @@ export function useTaskDrafts(relPath: string | null): {
   /** «Cancelar» in the confirmation — the table is left exactly as it was. */
   cancelGenerate: () => void
   updateRow: (id: string, changes: Partial<TaskDraft>) => void
+  /** Uncheck several rows at once — what the duplicate check asks for. */
+  excludeRows: (ids: readonly string[]) => void
   removeRow: (id: string) => void
   addRow: () => void
   /** «Reintentar» after a failed load. */
@@ -276,6 +278,29 @@ export function useTaskDrafts(relPath: string | null): {
     [patchSelected],
   )
 
+  /**
+   * One patch rather than a loop of `updateRow`: the duplicate check hands over
+   * every row it wants out of the push at once, and a row that is already
+   * unchecked keeps its very object so the fingerprint — and with it the save —
+   * is not disturbed by a call that changes nothing.
+   */
+  const excludeRows = useCallback(
+    (ids: readonly string[]) => {
+      if (ids.length === 0) return
+      const excluded = new Set(ids)
+      patchSelected((prev) => {
+        const rows = prev.rows.map((row) =>
+          excluded.has(row.id) && row.include ? { ...row, include: false } : row,
+        )
+        // Every named row was already unchecked, which is the ordinary case
+        // once the check has run: returning the state itself keeps the render
+        // out of the way as well as the save.
+        return rows.every((row, at) => row === prev.rows[at]) ? prev : { ...prev, rows }
+      })
+    },
+    [patchSelected],
+  )
+
   const removeRow = useCallback(
     (id: string) => {
       patchSelected((prev) => ({ ...prev, rows: prev.rows.filter((row) => row.id !== id) }))
@@ -299,6 +324,7 @@ export function useTaskDrafts(relPath: string | null): {
     confirmGenerate,
     cancelGenerate,
     updateRow,
+    excludeRows,
     removeRow,
     addRow,
     retryLoad,
