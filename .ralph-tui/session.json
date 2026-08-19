@@ -3,10 +3,10 @@
   "sessionId": "ef655f0f-1b97-413f-847d-7c6b69e1f31b",
   "status": "running",
   "startedAt": "2026-08-19T20:44:14.216Z",
-  "updatedAt": "2026-08-19T20:55:18.215Z",
-  "currentIteration": 3,
+  "updatedAt": "2026-08-19T20:58:29.226Z",
+  "currentIteration": 4,
   "maxIterations": 0,
-  "tasksCompleted": 3,
+  "tasksCompleted": 4,
   "isPaused": false,
   "agentPlugin": "claude",
   "trackerState": {
@@ -36,8 +36,8 @@
       {
         "id": "US-004",
         "title": "Tests de la normalización de la respuesta del modelo",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-005",
@@ -113,6 +113,16 @@
       "durationMs": 207054,
       "startedAt": "2026-08-19T20:49:17.553Z",
       "endedAt": "2026-08-19T20:52:44.607Z"
+    },
+    {
+      "iteration": 4,
+      "status": "completed",
+      "taskId": "US-004",
+      "taskTitle": "Tests de la normalización de la respuesta del modelo",
+      "taskCompleted": true,
+      "durationMs": 152506,
+      "startedAt": "2026-08-19T20:52:45.708Z",
+      "endedAt": "2026-08-19T20:55:18.214Z"
     }
   ],
   "skippedTaskIds": [],

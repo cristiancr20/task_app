@@ -49,6 +49,31 @@ after each iteration and it's included in prompts for context.
 
 ---
 
+### HTTP clients: stubbing fetch (US-005)
+- Replace the global with `vi.stubGlobal('fetch', async (input, init) => ...)`
+  and undo it in `afterEach(() => vi.unstubAllGlobals())`. Import `vi` from
+  `vitest` — globals are off.
+- Return a **real `Response`** (`new Response(JSON.stringify(body), { status })`)
+  instead of a hand-rolled `{ ok, status, json }`. `ok` then derives from the
+  status exactly as in production, and a malformed-body test is just a
+  non-JSON string.
+- Make the stub a **function of the call**, not a queue: `stubFetch((call, i) =>
+  ...)` can answer the same page forever, which is what a "cursor that never
+  advances" test needs. Have it push each decoded call
+  (`JSON.parse(init.body)` -> `{ query, variables, headers }`) into an array it
+  returns, so assertions read `calls[0].variables`.
+- Assert on the **request** and not only the response for anything that shapes
+  the payload: that a field is *omitted* (`expect(input).not.toHaveProperty(
+  'projectId')`) is invisible from the return value.
+- Tell the two queries of a paginated client apart by their operation name
+  (`call.query.includes('query Teams(')`), not by call order — the order
+  changes as soon as pagination does.
+- A module-level cap that is not exported (`MAX_PAGES`) still gets pinned:
+  mirror it as a const in the test with a comment, assert the exact call count,
+  and a mutation of the real one goes red.
+
+---
+
 ### Parsing/frontmatter fixtures (US-003)
 - The `yaml` package parses on the **core schema**: `date: 2026-08-09` comes back
   a **string**, not a `Date`. The only spelling that yields a real `Date` is the
@@ -310,5 +335,56 @@ last layer between a local model's answer and both the table and Linear — with
 - Note: **there is no `lint` script in `package.json`** — `pnpm lint` falls
   through to an unrelated `lint` binary on PATH (Android's) and its help text is
   not a passing lint run. The gates in this repo are `typecheck` and `test`.
+
+---
+
+## 2026-08-19 - US-005 - Tests del cliente de Linear
+
+Covered the Linear client's parsing and payload building with 40 tests, all
+against a stubbed `fetch` — no request leaves the process and no real workspace
+is touched.
+
+**What was implemented**
+- `lib/linear.test.ts`, with a `stubFetch(reply)` helper that swaps the global
+  via `vi.stubGlobal`, records every decoded request, and answers with a real
+  `Response`.
+- `buildIssueDescription`: body returned untouched with no source; the full
+  block emitting `---`, `**Source:** <title> — <date>`, `**Mentioned:**` and the
+  evidence as a blockquote; a multi-line quote prefixed `>` on every line; an
+  all-blank source appending nothing; the date-only fallback title.
+- `createIssue`: the five priorities against Linear's scale
+  (urgent=1, high=2, medium=3, low=4, none=0) driven off an `it.each` table, the
+  default when none is given, `projectId`/`parentId` sent trimmed when present
+  and absent from the payload for null/undefined/empty/blank, a 200 carrying
+  `success: false` rejected, and empty team/title refused *before* any request.
+- `listTeamsAndProjects`: both cursors followed to exhaustion with the result
+  aggregated and sorted by name, no extra request when projects fit one page,
+  and a non-advancing cursor cut at MAX_PAGES on the teams loop and on the
+  projects loop.
+- `linearGraphQL`: the key sent bare in `Authorization`, 401 -> 401, 400 with
+  errors -> 502 keeping Linear's message, HTTP status reported when the body has
+  no errors, errors on a 200 surfaced, a rejecting fetch -> `LinearUnreachableError`,
+  and an empty key refused without touching the network.
+
+**Files changed**
+- `lib/linear.test.ts` (new). `lib/linear.ts` untouched.
+
+**Learnings:**
+- A `Response` built with the `Response` constructor is the least-effort stub
+  and the most faithful one; `ok` is derived, so a wrong-status test cannot pass
+  by accident.
+- **`{ success: false, issue: null }` is a fixture that tests nothing.** The
+  first version of the success-flag test stayed green with the guard replaced by
+  `if (false)`, because `readIssue(null)` throws the *next* `LinearApiError`,
+  also a 502. The fixture needs a **valid issue node** so the flag is the only
+  thing that can refuse it — and the assertion should pin the message, since two
+  different guards share the status.
+- Mutation-checked the whole file: disabling the success guard, flattening
+  `statusFor` to always 502, always sending `projectId`, mapping `urgent` to 2,
+  moving `MAX_PAGES` to 25, and quoting the evidence without splitting lines —
+  each turns the suite red (1-2 tests). Restore from a copy taken beforehand and
+  confirm `git diff` on the source is empty.
+- `AbortSignal.timeout(15_000)` in the code under test does not keep Vitest
+  alive; the whole suite still finishes in ~300ms.
 
 ---
