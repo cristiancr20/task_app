@@ -3,10 +3,10 @@
   "sessionId": "cead5646-3586-4d77-be44-5415f738bb43",
   "status": "running",
   "startedAt": "2026-08-19T21:44:56.341Z",
-  "updatedAt": "2026-08-19T21:53:49.825Z",
-  "currentIteration": 2,
+  "updatedAt": "2026-08-19T21:57:43.396Z",
+  "currentIteration": 3,
   "maxIterations": 0,
-  "tasksCompleted": 2,
+  "tasksCompleted": 3,
   "isPaused": false,
   "agentPlugin": "claude",
   "trackerState": {
@@ -30,8 +30,8 @@
       {
         "id": "US-003",
         "title": "La fecha viaja hasta Linear",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-004",
@@ -79,6 +79,16 @@
       "durationMs": 164594,
       "startedAt": "2026-08-19T21:47:58.998Z",
       "endedAt": "2026-08-19T21:50:43.592Z"
+    },
+    {
+      "iteration": 3,
+      "status": "completed",
+      "taskId": "US-003",
+      "taskTitle": "La fecha viaja hasta Linear",
+      "taskCompleted": true,
+      "durationMs": 185150,
+      "startedAt": "2026-08-19T21:50:44.673Z",
+      "endedAt": "2026-08-19T21:53:49.823Z"
     }
   ],
   "skippedTaskIds": [],

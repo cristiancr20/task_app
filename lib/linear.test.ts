@@ -7,6 +7,7 @@ import {
   buildIssueDescription,
   createIssue,
   linearGraphQL,
+  listIssuesForDuplicateCheck,
   listTeamsAndProjects,
 } from '@/lib/linear'
 
@@ -410,6 +411,198 @@ describe('listTeamsAndProjects', () => {
       name: 'LinearApiError',
       status: 502,
     })
+  })
+})
+
+describe('listIssuesForDuplicateCheck', () => {
+  /** One node as Linear sends it, with only the fields a test cares about overridden. */
+  function node(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 'iss_1',
+      identifier: 'ENG-1',
+      title: 'Escribir el informe',
+      url: 'https://linear.app/x/issue/ENG-1',
+      state: { name: 'Todo', type: 'unstarted' },
+      ...overrides,
+    }
+  }
+
+  function page(
+    parent: 'project' | 'team',
+    nodes: unknown[],
+    pageInfo: { hasNextPage: boolean; endCursor: string | null },
+  ) {
+    return json({ data: { [parent]: { issues: { nodes, pageInfo } } } })
+  }
+
+  it('asks the project for its issues and follows the cursor to the end', async () => {
+    const calls = stubFetch((call) =>
+      call.variables?.after === 'issues-2'
+        ? page('project', [node({ id: 'iss_2', identifier: 'ENG-2', title: 'Revisar' })], {
+            hasNextPage: false,
+            endCursor: null,
+          })
+        : page('project', [node()], { hasNextPage: true, endCursor: 'issues-2' }),
+    )
+
+    const issues = await listIssuesForDuplicateCheck(API_KEY, {
+      teamId: ' t1 ',
+      projectId: ' p1 ',
+    })
+
+    expect(issues.map((issue) => issue.identifier)).toEqual(['ENG-1', 'ENG-2'])
+    expect(issues[0]).toEqual({
+      id: 'iss_1',
+      identifier: 'ENG-1',
+      title: 'Escribir el informe',
+      url: 'https://linear.app/x/issue/ENG-1',
+      stateName: 'Todo',
+      closed: false,
+    })
+
+    expect(calls).toHaveLength(2)
+    expect(calls.every((call) => call.query.includes('query ProjectIssues('))).toBe(true)
+    // The team is not part of a project-scoped query, and the first page carries
+    // no cursor — sending `after: null` would ask Linear for a page before the first.
+    expect(calls.map((call) => call.variables)).toEqual([
+      { projectId: 'p1' },
+      { projectId: 'p1', after: 'issues-2' },
+    ])
+  })
+
+  it('falls back to the team when there is no project', async () => {
+    const calls = stubFetch(() => page('team', [node()], { hasNextPage: false, endCursor: null }))
+
+    await expect(
+      listIssuesForDuplicateCheck(API_KEY, { teamId: 't1', projectId: null }),
+    ).resolves.toHaveLength(1)
+
+    expect(calls[0].query).toContain('query TeamIssues(')
+    expect(calls[0].variables).toEqual({ teamId: 't1' })
+  })
+
+  // A blank project is what an unset dropdown sends; it means «the whole team»,
+  // not a project whose id is the empty string.
+  it.each([
+    ['undefined', undefined],
+    ['empty', ''],
+    ['blank', '   '],
+  ])('searches the team when projectId is %s', async (_label, projectId) => {
+    const calls = stubFetch(() => page('team', [], { hasNextPage: false, endCursor: null }))
+
+    await listIssuesForDuplicateCheck(API_KEY, { teamId: 't1', projectId })
+
+    expect(calls[0].query).toContain('query TeamIssues(')
+  })
+
+  it('marks completed and canceled states as closed', async () => {
+    stubFetch(() =>
+      page(
+        'project',
+        [
+          node({ id: 'a', state: { name: 'Done', type: 'completed' } }),
+          node({ id: 'b', state: { name: 'Cancelado', type: 'canceled' } }),
+          node({ id: 'c', state: { name: 'In Progress', type: 'started' } }),
+          node({ id: 'd', state: { name: 'Backlog', type: 'backlog' } }),
+        ],
+        { hasNextPage: false, endCursor: null },
+      ),
+    )
+
+    const issues = await listIssuesForDuplicateCheck(API_KEY, { teamId: 't1', projectId: 'p1' })
+
+    expect(issues.map((issue) => [issue.stateName, issue.closed])).toEqual([
+      ['Done', true],
+      ['Cancelado', true],
+      ['In Progress', false],
+      ['Backlog', false],
+    ])
+  })
+
+  it('drops nodes with no id or no title and fills in the rest of a partial one', async () => {
+    stubFetch(() =>
+      page(
+        'project',
+        [
+          node({ id: '' }),
+          node({ id: 'no-title', title: '' }),
+          'not a node',
+          { id: 'iss_partial', title: 'Solo lo imprescindible' },
+          node({ id: 'iss_ok' }),
+        ],
+        { hasNextPage: false, endCursor: null },
+      ),
+    )
+
+    const issues = await listIssuesForDuplicateCheck(API_KEY, { teamId: 't1', projectId: 'p1' })
+
+    expect(issues.map((issue) => issue.id)).toEqual(['iss_partial', 'iss_ok'])
+    expect(issues[0]).toEqual({
+      id: 'iss_partial',
+      identifier: '',
+      title: 'Solo lo imprescindible',
+      url: '',
+      stateName: '',
+      closed: false,
+    })
+  })
+
+  // Mirrors MAX_PAGES in lib/linear.ts, which is not exported.
+  const MAX_PAGES = 20
+
+  it('stops at MAX_PAGES when the cursor never advances', async () => {
+    const calls = stubFetch(() =>
+      page('project', [node()], { hasNextPage: true, endCursor: 'stuck' }),
+    )
+
+    await expect(
+      listIssuesForDuplicateCheck(API_KEY, { teamId: 't1', projectId: 'p1' }),
+    ).resolves.toHaveLength(MAX_PAGES)
+    expect(calls).toHaveLength(MAX_PAGES)
+  })
+
+  it('stops when the last page carries no cursor', async () => {
+    const calls = stubFetch(() =>
+      page('project', [node()], { hasNextPage: true, endCursor: null }),
+    )
+
+    await listIssuesForDuplicateCheck(API_KEY, { teamId: 't1', projectId: 'p1' })
+
+    expect(calls).toHaveLength(1)
+  })
+
+  it('reports a response with no issues connection', async () => {
+    stubFetch(() => json({ data: { project: null } }))
+
+    await expect(
+      listIssuesForDuplicateCheck(API_KEY, { teamId: 't1', projectId: 'p1' }),
+    ).rejects.toMatchObject({ name: 'LinearApiError', status: 502 })
+  })
+
+  it('carries a rejection from Linear through untouched', async () => {
+    stubFetch(() => json({ errors: [{ message: 'Query too complex' }] }, 400))
+
+    await expect(
+      listIssuesForDuplicateCheck(API_KEY, { teamId: 't1', projectId: 'p1' }),
+    ).rejects.toMatchObject({ status: 502, message: 'Linear: Query too complex' })
+  })
+
+  it('translates a bad key into a 401', async () => {
+    stubFetch(() => json({ errors: [{ message: 'Authentication required' }] }, 401))
+
+    await expect(
+      listIssuesForDuplicateCheck(API_KEY, { teamId: 't1' }),
+    ).rejects.toMatchObject({ status: 401, message: 'Linear: Authentication required' })
+  })
+
+  it('refuses an empty team before reaching the network', async () => {
+    const calls = stubFetch(() => json({ data: {} }))
+
+    await expect(listIssuesForDuplicateCheck(API_KEY, { teamId: '  ' })).rejects.toMatchObject({
+      name: 'LinearApiError',
+      status: 400,
+    })
+    expect(calls).toHaveLength(0)
   })
 })
 

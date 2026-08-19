@@ -196,6 +196,121 @@ async function restOfProjects(
   return projects
 }
 
+/** An issue that already lives in the destination, as the duplicate check reads it. */
+export type ExistingIssue = {
+  id: string
+  /** The human key, e.g. `ENG-42`. */
+  identifier: string
+  title: string
+  url: string
+  /** The workflow state's own name, verbatim from Linear — «In Progress», «Done». */
+  stateName: string
+  /**
+   * The state's type is `completed` or `canceled`. Linear lets a workspace
+   * rename its states freely, so the name alone cannot tell a finished issue
+   * from a live one — the type can, and a match against a closed issue means
+   * something different from a match against an open one.
+   */
+  closed: boolean
+}
+
+/** Where to look for existing issues: the project when there is one, else the team. */
+export type DuplicateCheckScope = {
+  teamId: string
+  /** The project the push is aimed at; omitted, the whole team is searched. */
+  projectId?: string | null
+}
+
+/**
+ * How many issues one page asks for.
+ *
+ * Unlike TEAMS_QUERY these two hold a single connection, and everything under
+ * it is flat but for `state` — no nested `pageInfo`, which is what tips the
+ * complexity score over Linear's budget and earns a "Query too complex". 50 is
+ * the same conservative figure PROJECT_PAGE_SIZE already runs at, and with
+ * MAX_PAGES it covers 1000 issues per destination. As with the queries above,
+ * do not raise it without re-testing this exact query against the real API.
+ */
+const ISSUE_PAGE_SIZE = 50
+
+const PROJECT_ISSUES_QUERY = `query ProjectIssues($projectId: String!, $after: String) {
+  project(id: $projectId) {
+    issues(first: ${ISSUE_PAGE_SIZE}, after: $after) {
+      nodes {
+        id
+        identifier
+        title
+        url
+        state { name type }
+      }
+      pageInfo { hasNextPage endCursor }
+    }
+  }
+}`
+
+const TEAM_ISSUES_QUERY = `query TeamIssues($teamId: String!, $after: String) {
+  team(id: $teamId) {
+    issues(first: ${ISSUE_PAGE_SIZE}, after: $after) {
+      nodes {
+        id
+        identifier
+        title
+        url
+        state { name type }
+      }
+      pageInfo { hasNextPage endCursor }
+    }
+  }
+}`
+
+/**
+ * Every issue already in the destination, so the tasks about to be pushed can
+ * be compared against them. A project narrows the search to what the push would
+ * land in; without one the team is the destination, so the team is the scope.
+ *
+ * Paginated like `listTeamsAndProjects`: a conservative page size, `MAX_PAGES`
+ * as the backstop, and the loop ends as soon as the cursor stops advancing — a
+ * duplicate check that silently saw only the first page would wave through the
+ * very issue it exists to catch.
+ */
+export async function listIssuesForDuplicateCheck(
+  apiKey: string,
+  scope: DuplicateCheckScope,
+): Promise<ExistingIssue[]> {
+  const teamId = scope.teamId.trim()
+  if (!teamId) throw new LinearApiError(400, 'Falta el equipo de Linear cuyos issues consultar.')
+
+  const projectId = scope.projectId?.trim()
+  const query = projectId ? PROJECT_ISSUES_QUERY : TEAM_ISSUES_QUERY
+  const target = projectId ? { projectId } : { teamId }
+  // Which field of `data` the connection hangs from, one per query above.
+  const parent = projectId ? 'project' : 'team'
+
+  const issues: ExistingIssue[] = []
+  let after: string | null = null
+
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const body: unknown = await linearGraphQL(apiKey, query, {
+      ...target,
+      ...(after ? { after } : {}),
+    })
+    const connection = readConnection(isRecord(body) ? body[parent] : null, 'issues')
+    if (!connection) {
+      throw new LinearApiError(502, 'Linear respondió sin la lista de issues.')
+    }
+
+    for (const node of connection.nodes) {
+      const issue = readExistingIssue(node)
+      if (issue) issues.push(issue)
+    }
+
+    if (!connection.hasNextPage || !connection.endCursor) break
+    after = connection.endCursor
+  }
+
+  return issues
+}
+
 /** Where a task came from, appended to the issue body so it can be traced back. */
 export type IssueSource = {
   /** Title of the meeting the task was extracted from. */
@@ -335,6 +450,32 @@ export function buildIssueDescription(description: string, source?: IssueSource 
   if (!body) return lines.join('\n')
 
   return [body, '', '---', '', ...lines].join('\n')
+}
+
+/**
+ * An issue node, or null when it is missing what the comparison needs — an
+ * issue with no id or no title cannot be matched against a task nor linked to,
+ * so it is dropped rather than left to break the listing, the same way
+ * `readTeam` and `readProject` handle a partial node.
+ */
+function readExistingIssue(node: unknown): ExistingIssue | null {
+  if (!isRecord(node)) return null
+
+  const { id, identifier, title, url, state } = node
+  if (typeof id !== 'string' || !id) return null
+  if (typeof title !== 'string' || !title) return null
+
+  const workflowState = isRecord(state) ? state : null
+  const stateType = typeof workflowState?.type === 'string' ? workflowState.type : ''
+
+  return {
+    id,
+    identifier: typeof identifier === 'string' ? identifier : '',
+    title,
+    url: typeof url === 'string' ? url : '',
+    stateName: typeof workflowState?.name === 'string' ? workflowState.name : '',
+    closed: stateType === 'completed' || stateType === 'canceled',
+  }
 }
 
 function readIssue(node: unknown): LinearIssue | null {

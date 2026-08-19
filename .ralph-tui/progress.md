@@ -44,6 +44,27 @@ importable the same way (`@/app/api/linear/push/route`) once `@/lib/store` and
 normal `Response`, so `await response.text()` gives the whole NDJSON stream to
 assert on.
 
+### A `GET /api/linear/*` route is three files, always the same three
+
+Every Linear read follows the shape `/api/linear/{verify,projects,issues}` already
+share, and a new one that skips a layer breaks the convention the UI relies on:
+
+- `lib/linear.ts` — the query and the parsing, throwing `LinearApiError`. It
+  never reads the store, so the tests can drive it with a stubbed `fetch`.
+- `app/api/linear/<name>/route.ts` — reads the key with `getConfig()`
+  server-side (never from the URL), validates its own parameters with
+  `HttpError(400, …)` in Spanish, and wraps everything in
+  `try/catch → errorResponse(err, '')`, which already maps `LinearApiError` and
+  `LinearUnreachableError` to a status and a message.
+- `lib/<name>-client.ts` — a browser wrapper that type-only-imports its types
+  from `lib/linear.ts` (that module reads `process.env`, so nothing else of it
+  may reach the client bundle), rethrows `body.error` verbatim, and re-checks
+  the shape with a local guard before handing the data to the UI.
+
+An optional id must be left out of the query string entirely rather than sent
+empty: `projectId=` reaches the route as a project called `''`, which is not the
+same as «no project».
+
 ### There is no `pnpm lint`
 
 package.json has only `dev`, `build`, `start`, `typecheck`, `test`,
@@ -176,5 +197,54 @@ The due date now travels from the table to the Linear issue.
   it. Through the real route, `'el viernes'` and `'2026-02-31'` were dropped to
   no key while `'2026-09-01T10:00:00Z'` arrived as `'2026-09-01'`, and the
   stream still ended `{"type":"done","created":4,"failed":0}`.
+
+---
+
+## 2026-08-19 - US-004
+
+Reading back what already exists in the push destination, so a later story can
+compare it against the tasks about to be created.
+
+- `lib/linear.ts`: `ExistingIssue` (`id`, `identifier`, `title`, `url`,
+  `stateName`, `closed`), `DuplicateCheckScope` (`teamId` + optional
+  `projectId`), `PROJECT_ISSUES_QUERY`/`TEAM_ISSUES_QUERY` at
+  `ISSUE_PAGE_SIZE = 50` with the choice commented like the queries above, and
+  `listIssuesForDuplicateCheck` — the `listTeamsAndProjects` loop verbatim
+  (`MAX_PAGES`, break when the cursor stops advancing) reading through the
+  existing `readConnection`. `readExistingIssue` drops a node with no id or no
+  title and fills in the rest, like `readTeam`/`readProject`.
+- `app/api/linear/issues/route.ts`: `GET ?teamId=&projectId=`, answering
+  `{ issues }`; 400 when `teamId` is missing, key from `getConfig()`,
+  `errorResponse` for everything else.
+- `lib/linear-client.ts`: `fetchLinearIssues(scope)` with its own `isIssues`
+  guard, following `fetchLinearTeams`.
+- `lib/linear.test.ts`: a `listIssuesForDuplicateCheck` block — two-page
+  pagination asserting the variables of each call, the team fallback for
+  undefined/empty/blank `projectId`, the state-type mapping, partial and
+  malformed nodes, the `MAX_PAGES` backstop and a cursor-less last page, and the
+  translation of a 400/401 out of Linear.
+- `lib/linear-client.test.ts` (new): URL building, `body.error` passthrough, the
+  fallback message, an unexpected shape and a network failure.
+
+**Learnings:**
+
+- `closed` is derived from `state.type` (`completed`/`canceled`), never from
+  `state.name`: a workspace renames its states freely, so «Done» proves nothing.
+  The name still travels because it is what the UI would show.
+- Both issue queries hold a *single* connection with a flat node (only `state`
+  is nested, and it is an object, not a connection), so the complexity trap that
+  forced `TEAMS_QUERY` down to 25x50 does not apply — the pagination stays at 50
+  anyway, for 1000 issues per destination with `MAX_PAGES`.
+- One loop covers both scopes by picking the query, the variables *and* the
+  `data` field to read (`project` vs `team`) up front — `readConnection(body[parent],
+  'issues')` is then the same call for either. Duplicating the loop per scope was
+  the alternative and would have duplicated the pagination too.
+- Verified against a local GraphQL stub through `LINEAR_API_URL` with
+  `@/lib/store` mocked (the throwaway-test pattern above): the route followed
+  the cursor across two pages, sent the key in `Authorization`, dropped the
+  id-less node, answered the two issues with `closed: true/false`, answered
+  `{"error":"Falta el parámetro «teamId» con el equipo de Linear."}` with a 400,
+  and switched to `query TeamIssues(` with `{ teamId: 't1' }` when `projectId`
+  arrived blank.
 
 ---
