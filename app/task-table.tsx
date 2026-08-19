@@ -4,6 +4,8 @@ import { useEffect } from 'react'
 
 import { PRIORITIES, type Priority } from '@/lib/extractors/task'
 
+import { ExtractionProgress } from './progress'
+
 import type { PushRowResult } from './use-push-run'
 import {
   countManualChanges,
@@ -40,9 +42,8 @@ const PRIORITY_LABELS: Record<Priority, string> = {
   none: 'Sin prioridad',
 }
 
-const CELL = 'align-top px-3 py-2'
 const FIELD =
-  'w-full rounded-md border border-line-strong bg-surface px-2 py-1.5 text-sm text-content outline-none placeholder:text-muted focus:border-accent'
+  'w-full rounded-lg border border-line-strong bg-surface px-2.5 py-1.5 text-sm text-content outline-none transition-colors placeholder:text-muted focus:border-accent'
 
 /**
  * The bottom panel: what will be created in Linear, before it is created.
@@ -73,108 +74,79 @@ export function TaskTable({
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-3">
-        <div className="flex items-baseline gap-3">
-          <h2 className="text-sm font-medium text-content">Tareas</h2>
+      <header className="panel-head justify-between gap-2 py-1.5">
+        <div className="flex min-w-0 items-center gap-2">
+          <h2 className="panel-title">Tareas</h2>
           {rows.length > 0 ? (
-            <span className="text-xs text-muted">
-              {selected} de {rows.length} seleccionada{rows.length === 1 ? '' : 's'}
+            <span className="chip tabular-nums">
+              {selected} de {rows.length}
             </span>
           ) : null}
           {/* Says out loud what «Generar tareas» is about to ask about. */}
           {changes.total > 0 ? (
-            <span className="text-xs text-warn">
-              {describeChanges(changes)}
-            </span>
+            <span className="chip border-warn/30 text-warn">{describeChanges(changes)}</span>
           ) : null}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-1.5">
           <button
             type="button"
             onClick={onAddRow}
             disabled={!state || busy}
-            className="rounded-md border border-line-strong px-3 py-1.5 text-sm font-medium transition-colors hover:bg-surface-2 disabled:opacity-50"
+            className="rounded-lg border border-line-strong bg-surface px-2.5 py-1 text-xs font-medium shadow-panel transition-colors hover:bg-surface-2 disabled:opacity-50"
           >
-            Añadir tarea
+            Añadir
           </button>
           <button
             type="button"
             onClick={onGenerate}
             disabled={!state || generating || busy}
-            className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent transition-colors hover:bg-accent-soft disabled:opacity-60"
+            className="rounded-lg bg-accent px-2.5 py-1 text-xs font-semibold text-on-accent shadow-panel transition-colors hover:bg-accent-soft disabled:opacity-50 disabled:shadow-none"
           >
             {generating ? 'Generando…' : 'Generar tareas'}
           </button>
         </div>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      {/* The list is recessed and every task is a card on it — the same figure
+          against ground the file list gets from the panel it sits in. Cards on
+          the plain surface would rely on a hairline alone, which is exactly
+          what stopped working when four white columns met. */}
+      <div className="min-h-0 flex-1 overflow-y-auto bg-surface-2">
         {/* The error sits above the table and never replaces it: a failed
             regeneration must not throw away rows the user already curated. */}
         {state?.error ? (
           <p
             role="alert"
-            className="border-b border-danger/30 bg-danger-wash px-5 py-3 text-sm text-danger"
+            className="border-b border-danger/30 bg-danger-wash px-4 py-3 text-sm text-danger"
           >
             {state.error}
           </p>
         ) : null}
 
         {generating && rows.length === 0 ? (
-          <p className="px-5 py-6 text-sm text-muted">
-            Extrayendo tareas de la transcripción…
-          </p>
+          <ExtractionProgress />
         ) : rows.length === 0 ? (
           <Empty extracted={state?.extracted ?? false} />
         ) : (
-          <table className="w-full border-collapse text-left">
-            <thead className="sticky top-0 bg-surface-2 text-xs text-muted">
-              <tr className="border-b border-line">
-                <th scope="col" className="w-10 px-3 py-2 font-medium">
-                  <span className="sr-only">Incluir</span>
-                </th>
-                <th scope="col" className="w-1/4 px-3 py-2 font-medium">
-                  Título
-                </th>
-                <th scope="col" className="w-1/3 px-3 py-2 font-medium">
-                  Descripción
-                </th>
-                {/* Wide enough for «Sin prioridad» plus the select's own
-                    chevron, which otherwise clips the longest option. */}
-                <th scope="col" className="w-40 px-3 py-2 font-medium">
-                  Prioridad
-                </th>
-                <th scope="col" className="w-32 px-3 py-2 font-medium">
-                  Mencionado
-                </th>
-                <th scope="col" className="px-3 py-2 font-medium">
-                  Evidencia
-                </th>
-                {showStatus ? (
-                  <th scope="col" className="w-44 px-3 py-2 font-medium">
-                    Estado
-                  </th>
-                ) : null}
-                <th scope="col" className="w-10 px-3 py-2 font-medium">
-                  <span className="sr-only">Eliminar</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <Row
-                  key={row.id}
-                  row={row}
-                  result={showStatus ? results[row.id] : undefined}
-                  showStatus={showStatus}
-                  busy={busy}
-                  onUpdate={(changes) => onUpdateRow(row.id, changes)}
-                  onRemove={() => onRemoveRow(row.id)}
-                />
-              ))}
-            </tbody>
-          </table>
+          // A list of stacked cards rather than a table. Seven columns need
+          // roughly a thousand pixels before title and description stop being
+          // slivers, and this panel is half a split pane — so the fields that
+          // get edited take the full width, and the read-only ones (mentioned,
+          // evidence, outcome) sit underneath where they cost no width at all.
+          <ul className="flex flex-col gap-2 p-2">
+            {rows.map((row) => (
+              <Row
+                key={row.id}
+                row={row}
+                result={showStatus ? results[row.id] : undefined}
+                showStatus={showStatus}
+                busy={busy}
+                onUpdate={(changes) => onUpdateRow(row.id, changes)}
+                onRemove={() => onRemoveRow(row.id)}
+              />
+            ))}
+          </ul>
         )}
       </div>
 
@@ -291,24 +263,30 @@ function Row({
   onUpdate: (changes: Partial<TaskDraft>) => void
   onRemove: () => void
 }) {
-  // An excluded row stays legible but visibly out of the push.
-  const dimmed = row.include ? '' : 'opacity-50'
+  // An excluded row stays legible but visibly out of the push: dimmed, and on
+  // the recessed fill rather than on the card surface the included ones get.
   const label = row.title.trim() || 'tarea sin título'
 
   return (
-    <tr className={`border-b border-line ${dimmed}`}>
-      <td className={CELL}>
+    <li
+      className={`rounded-xl border p-2.5 transition-colors ${
+        row.include
+          ? 'border-line bg-surface shadow-panel'
+          : 'border-dashed border-line-strong bg-transparent opacity-60'
+      }`}
+    >
+      {/* Checkbox and title on one line: including a row and naming it are the
+          two things done most, so they sit at the top where the eye lands. */}
+      <div className="flex items-start gap-2">
         <input
           type="checkbox"
           checked={row.include}
           onChange={(event) => onUpdate({ include: event.target.checked })}
           disabled={busy}
           aria-label={`Incluir ${label}`}
-          className="mt-2 h-4 w-4 accent-accent"
+          className="mt-2 h-4 w-4 shrink-0 accent-accent"
         />
-      </td>
 
-      <td className={CELL}>
         <input
           type="text"
           value={row.title}
@@ -316,11 +294,34 @@ function Row({
           disabled={busy}
           aria-label="Título"
           placeholder="Título de la tarea"
-          className={FIELD}
+          className={`${FIELD} min-w-0 flex-1 font-medium`}
         />
-      </td>
 
-      <td className={CELL}>
+        <button
+          type="button"
+          onClick={onRemove}
+          disabled={busy}
+          aria-label={`Eliminar ${label}`}
+          title="Eliminar"
+          className="mt-1 shrink-0 rounded-lg border border-transparent p-1.5 text-muted transition-colors hover:border-danger/40 hover:bg-danger-wash hover:text-danger"
+        >
+          <svg
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            className="size-3.5"
+            aria-hidden="true"
+          >
+            <path d="m4 4 8 8M12 4l-8 8" />
+          </svg>
+        </button>
+      </div>
+
+      {/* Everything below is indented to the title, so the checkbox column
+          reads as a single gutter down the list. */}
+      <div className="mt-2 flex flex-col gap-2 pl-6 pr-9">
         <textarea
           value={row.description}
           onChange={(event) => onUpdate({ description: event.target.value })}
@@ -328,62 +329,53 @@ function Row({
           aria-label="Descripción"
           rows={2}
           placeholder="Contexto de la tarea"
-          className={`${FIELD} resize-y`}
+          className={`${FIELD} w-full resize-y`}
         />
-      </td>
 
-      <td className={CELL}>
-        <select
-          value={row.priority}
-          onChange={(event) => onUpdate({ priority: event.target.value as Priority })}
-          disabled={busy}
-          aria-label="Prioridad"
-          className={FIELD}
-        >
-          {PRIORITIES.map((priority) => (
-            <option key={priority} value={priority}>
-              {PRIORITY_LABELS[priority]}
-            </option>
-          ))}
-        </select>
-      </td>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <select
+            value={row.priority}
+            onChange={(event) => onUpdate({ priority: event.target.value as Priority })}
+            disabled={busy}
+            aria-label="Prioridad"
+            className={`${FIELD} w-auto`}
+          >
+            {PRIORITIES.map((priority) => (
+              <option key={priority} value={priority}>
+                {PRIORITY_LABELS[priority]}
+              </option>
+            ))}
+          </select>
 
-      <td className={`${CELL} text-sm text-muted`}>
-        {row.mentioned ?? <span className="text-muted opacity-70">—</span>}
-      </td>
+          {row.mentioned ? (
+            <span className="chip">
+              <span className="text-muted">@</span>
+              <span className="text-content">{row.mentioned}</span>
+            </span>
+          ) : null}
 
-      <td className={`${CELL} text-sm text-muted`}>
+          {showStatus ? (
+            <span className="ml-auto">
+              <RowStatus result={result} />
+            </span>
+          ) : null}
+        </div>
+
+        {/* The quote is the defence against an invented task, so it is visible
+            rather than hidden behind a tooltip — but capped, because a long one
+            would push the next task off the screen. */}
         {row.evidence ? (
           <q
             title={row.evidence}
-            className="block max-h-20 overflow-y-auto italic leading-snug"
+            className="block max-h-16 overflow-y-auto rounded-r-md border-l-2 border-accent/30 bg-surface-2/70 py-1 pl-2 pr-1 text-xs italic leading-snug text-muted"
           >
             {row.evidence}
           </q>
         ) : (
-          <span className="text-muted opacity-70">Añadida manualmente</span>
+          <span className="text-xs text-muted opacity-70">Añadida manualmente</span>
         )}
-      </td>
-
-      {showStatus ? (
-        <td className={`${CELL} text-sm`}>
-          <RowStatus result={result} />
-        </td>
-      ) : null}
-
-      <td className={CELL}>
-        <button
-          type="button"
-          onClick={onRemove}
-          disabled={busy}
-          aria-label={`Eliminar ${label}`}
-          title="Eliminar"
-          className="mt-1 rounded-md border border-transparent px-2 py-1 text-sm text-muted transition-colors hover:border-danger/40 hover:text-danger"
-        >
-          ✕
-        </button>
-      </td>
-    </tr>
+      </div>
+    </li>
   )
 }
 
@@ -397,32 +389,36 @@ function Row({
  */
 function RowStatus({ result }: { result: PushRowResult | undefined }) {
   if (!result) {
-    return <span className="text-muted opacity-70">Pendiente</span>
+    return <span className="chip">Pendiente</span>
   }
 
   if (result.state === 'creating') {
-    return <span className="text-muted">Creando…</span>
+    return <span className="chip border-accent/30 text-accent">Creando…</span>
   }
 
   if (result.state === 'created') {
     const label = result.issue.identifier || 'Creada'
+    const className = 'chip border-ok/30 bg-ok-wash font-medium text-ok'
     return result.issue.url ? (
       <a
         href={result.issue.url}
         target="_blank"
         rel="noreferrer"
-        className="font-medium text-ok underline"
+        className={`${className} font-mono hover:underline`}
       >
-        {label}
+        ✓ {label}
       </a>
     ) : (
-      <span className="font-medium text-ok">{label}</span>
+      <span className={className}>✓ {label}</span>
     )
   }
 
   return (
-    <span title={result.error} className="block text-danger">
-      {result.error}
+    <span
+      title={result.error}
+      className="chip max-w-full border-danger/30 bg-danger-wash text-danger"
+    >
+      <span className="truncate">{result.error}</span>
     </span>
   )
 }
@@ -433,11 +429,28 @@ function RowStatus({ result }: { result: PushRowResult | undefined }) {
  */
 function Empty({ extracted }: { extracted: boolean }) {
   return (
-    <div className="px-5 py-6">
+    <div className="flex flex-col items-center px-6 py-12 text-center">
+      <span
+        aria-hidden="true"
+        className="mb-3 flex size-10 items-center justify-center rounded-xl border border-line bg-surface-2 text-muted"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="size-5"
+        >
+          <path d="M4 6h11M4 11h8M4 16h6" />
+          <path d="m14 17 2.5 2.5L21 15" />
+        </svg>
+      </span>
       <p className="text-sm font-medium text-content">
         {extracted ? 'No se encontraron tareas en esta transcripción' : 'Aún no hay tareas'}
       </p>
-      <p className="mt-1 text-sm text-muted">
+      <p className="mt-1 max-w-xs text-sm text-muted">
         {extracted
           ? 'La transcripción no contiene compromisos claros. Puedes añadir una tarea manualmente.'
           : 'Pulsa «Generar tareas» para extraerlas de la transcripción, o añade una manualmente.'}

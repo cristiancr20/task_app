@@ -185,7 +185,7 @@ function splitFrontmatter(raw: string): {
 }
 
 /** `2026-08-09 Weekly sync.md` → `Weekly sync`. */
-function titleFromFileName(fileName: string): string {
+export function titleFromFileName(fileName: string): string {
   const stem = fileName.replace(/\.md$/i, '')
   const withoutDate = stem.replace(/^\d{4}-\d{2}-\d{2}[ _-]*/, '')
   const cleaned = (withoutDate || stem).replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim()
@@ -264,7 +264,7 @@ function isMarkdown(fileName: string): boolean {
  * root-relative rather than as `/sub/notes.md` on the host filesystem — an
  * absolute path therefore misses (ENOENT) instead of reaching outside the root.
  */
-function normalizeRelPath(relPath: string): string {
+export function normalizeRelPath(relPath: string): string {
   const trimmed = (relPath ?? '').trim()
   if (!trimmed || trimmed === '.' || trimmed === '/') return ''
   return trimmed.replace(/\\/g, '/').replace(/^\/+/, '').replace(/\/+$/, '')

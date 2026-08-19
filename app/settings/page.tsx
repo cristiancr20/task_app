@@ -41,18 +41,27 @@ export default async function SettingsPage() {
           </div>
         </header>
 
-        <div className="flex flex-col gap-12">
-          <ContextFolderForm contextRoot={contextRoot} recentFolders={recentFolders} />
+        {/* One card per setting, on the same ground as the explorer's panels.
+            Run together on a bare page, the three forms read as one long form
+            with headings; boxed, each is a thing you can finish. */}
+        <div className="flex flex-col gap-4">
+          <section className="rounded-xl border border-line bg-surface p-6 shadow-panel">
+            <ContextFolderForm contextRoot={contextRoot} recentFolders={recentFolders} />
+          </section>
 
           {/* The stored key stays on the server: the form only learns it exists. */}
-          <ProviderForm
-            provider={provider}
-            ollamaModel={ollamaModel}
-            hasClaudeApiKey={claudeApiKey.trim() !== ''}
-            defaultModel={DEFAULT_OLLAMA_MODEL}
-          />
+          <section className="rounded-xl border border-line bg-surface p-6 shadow-panel">
+            <ProviderForm
+              provider={provider}
+              ollamaModel={ollamaModel}
+              hasClaudeApiKey={claudeApiKey.trim() !== ''}
+              defaultModel={DEFAULT_OLLAMA_MODEL}
+            />
+          </section>
 
-          <LinearForm hasLinearApiKey={linearApiKey.trim() !== ''} />
+          <section className="rounded-xl border border-line bg-surface p-6 shadow-panel">
+            <LinearForm hasLinearApiKey={linearApiKey.trim() !== ''} />
+          </section>
         </div>
       </main>
     </div>

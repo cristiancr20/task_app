@@ -1,0 +1,271 @@
+{
+  "name": "Hardening — red de seguridad, privacidad local y trabajo que no se pierde",
+  "description": "Batería de tests sobre la lógica pura del proyecto, bind del servidor a localhost, permisos restrictivos del archivo de credenciales, persistencia en disco de los borradores de tareas y un README real. No añade funcionalidad de producto.",
+  "branchName": "ralph/hardening",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Montar Vitest y el script test",
+      "description": "Como desarrollador, quiero un runner de tests configurado para poder verificar la lógica pura del proyecto en cada cambio.",
+      "acceptanceCriteria": [
+        "`vitest` instalado como devDependency con pnpm",
+        "package.json expone `\"test\": \"vitest run\"` (modo no interactivo, apto para CI y para agentes)",
+        "package.json expone `\"test:watch\": \"vitest\"` para desarrollo local",
+        "Los tests se ubican junto al código como `lib/**/*.test.ts` y esa convención queda documentada en AGENTS.md",
+        "La configuración usa el alias `@/` igual que tsconfig.json, de modo que `import { getConfig } from '@/lib/store'` funciona dentro de un test",
+        "El entorno de test es `node`",
+        "Existe al menos un test real que pasa (por ejemplo sobre `normalizeRelPath` o `titleFromFileName`), no un placeholder vacío",
+        "`pnpm test` termina con código de salida 0 y no queda en modo watch",
+        "pnpm typecheck passes",
+        "pnpm test passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "",
+      "dependsOn": [],
+      "completionNotes": "Completed by agent"
+    },
+    {
+      "id": "US-002",
+      "title": "Tests de la guarda de path traversal",
+      "description": "Como desarrollador, quiero cubrir con tests la única barrera que impide leer archivos fuera de la carpeta de contexto, para que un refactor no la abra sin que nadie se entere.",
+      "acceptanceCriteria": [
+        "Tests para `resolveInsideRoot` en lib/transcripts.test.ts, sobre un directorio temporal creado con `fs.mkdtempSync` y borrado al terminar",
+        "Una ruta relativa normal dentro de la raíz resuelve a la ruta absoluta esperada",
+        "`../fuera.md`, `sub/../../fuera.md` y variantes con múltiples `..` lanzan PathEscapesRootError",
+        "Una ruta absoluta (`/etc/passwd`) no escapa: se interpreta como relativa a la raíz y no alcanza el archivo real",
+        "Un symlink creado dentro de la raíz que apunta fuera de ella lanza PathEscapesRootError",
+        "Un symlink dentro de la raíz que apunta a otro archivo dentro de la raíz resuelve correctamente",
+        "`''`, `'.'` y `'/'` resuelven a la raíz misma",
+        "Una ruta escrita con backslashes se normaliza a separadores `/` y no escapa",
+        "Un path inexistente no lanza PathEscapesRootError (el ENOENT lo surface el llamador)",
+        "pnpm typecheck passes",
+        "pnpm test passes"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-001"
+      ]
+    },
+    {
+      "id": "US-003",
+      "title": "Tests del scanner de transcripciones",
+      "description": "Como desarrollador, quiero cubrir el parseo de los .md para que un cambio en el frontmatter no rompa silenciosamente los metadatos que ve el modelo.",
+      "acceptanceCriteria": [
+        "Tests para `readTranscript` y `listFolder` en lib/transcripts.test.ts, sobre un directorio temporal con fixtures escritos por el propio test",
+        "Frontmatter válido: title, date y attendees (lista YAML) se leen y el body vuelve sin el bloque `---`",
+        "attendees como línea única separada por comas produce el mismo array que la lista YAML",
+        "Frontmatter con YAML malformado se trata como texto del body y hasFrontmatter es false, sin lanzar",
+        "Un frontmatter que es un escalar o una secuencia también da hasFrontmatter: false",
+        "Sin frontmatter: el título sale del nombre de archivo (`2026-08-09 Weekly sync.md` da `Weekly sync`) y la fecha del prefijo YYYY-MM-DD",
+        "Un valor date que el parser YAML convierte en objeto Date se normaliza a YYYY-MM-DD",
+        "Un BOM al principio del archivo no impide detectar el frontmatter",
+        "listFolder devuelve solo .md, omite dotfiles y node_modules, y no recursiona",
+        "listFolder ordena por fecha descendente y, a igualdad, por título; los archivos sin fecha van al final",
+        "Un archivo ilegible no rompe el listado del resto de la carpeta",
+        "pnpm typecheck passes",
+        "pnpm test passes"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-001"
+      ]
+    },
+    {
+      "id": "US-004",
+      "title": "Tests de la normalización de la respuesta del modelo",
+      "description": "Como desarrollador, quiero cubrir normalizeTasks para que ninguna respuesta rara de un modelo local llegue a la tabla o a Linear.",
+      "acceptanceCriteria": [
+        "Tests en lib/extractors/task.test.ts",
+        "Acepta el envoltorio `{ tasks: [...] }` y también un array pelado en la raíz",
+        "Cualquier otro payload (null, string, número, objeto sin tasks) devuelve array vacío sin lanzar",
+        "Una fila sin título, con título vacío o con título solo de espacios se descarta",
+        "Una prioridad desconocida, null o numérica se normaliza a `none`; las cinco válidas se conservan",
+        "Una prioridad en mayúsculas (`HIGH`) se normaliza a `high`",
+        "mentioned vacío o solo espacios se normaliza a null; un nombre se conserva recortado",
+        "Campos numéricos o booleanos donde se esperaba string se convierten a string en vez de descartarse",
+        "buildUserPrompt incluye la fecha y los asistentes solo cuando existen",
+        "pnpm typecheck passes",
+        "pnpm test passes"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-001"
+      ]
+    },
+    {
+      "id": "US-005",
+      "title": "Tests del cliente de Linear",
+      "description": "Como desarrollador, quiero cubrir el parseo de las respuestas de Linear y la construcción del cuerpo del issue, sin tocar el workspace real.",
+      "acceptanceCriteria": [
+        "Tests en lib/linear.test.ts con global.fetch stubeado (`vi.stubGlobal`), sin ninguna petición de red real",
+        "buildIssueDescription sin source devuelve el body tal cual",
+        "buildIssueDescription con source completo emite el separador `---`, la línea `**Source:**` con título y fecha, `**Mentioned:**` y la evidencia como blockquote",
+        "Una evidencia de varias líneas se prefija con `>` en todas ellas",
+        "Con source pero sin ningún campo con contenido, no se añade bloque vacío",
+        "createIssue mapea las prioridades a la escala de Linear: urgent=1, high=2, medium=3, low=4, none=0",
+        "createIssue lanza LinearApiError cuando la respuesta trae success: false aunque el HTTP sea 200",
+        "createIssue omite projectId y parentId del input cuando llegan vacíos o nulos",
+        "listTeamsAndProjects sigue el cursor de equipos y el de proyectos hasta agotarlos y devuelve todo agregado y ordenado por nombre",
+        "Un cursor que no avanza no produce bucle infinito (se corta en MAX_PAGES)",
+        "Un 401 de Linear se traduce a LinearApiError con status 401; un 400 con errors se traduce a 502 conservando el mensaje de Linear",
+        "Un fallo de red (fetch que rechaza) produce LinearUnreachableError",
+        "pnpm typecheck passes",
+        "pnpm test passes"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-001"
+      ]
+    },
+    {
+      "id": "US-006",
+      "title": "Tests del store de configuración",
+      "description": "Como desarrollador, quiero cubrir la lectura, la normalización y la escritura atómica del config para que un archivo corrupto nunca tumbe una petición.",
+      "acceptanceCriteria": [
+        "Tests en lib/store.test.ts apuntando .data a un directorio temporal (variable de entorno o mock de lib/data-dir), sin tocar el .data real del desarrollador",
+        "Un archivo inexistente devuelve la config por defecto",
+        "Un archivo con JSON inválido devuelve la config por defecto en vez de lanzar",
+        "Un archivo con campos del tipo equivocado (recentFolders como string, history como array) devuelve los valores por defecto de esos campos y conserva los válidos",
+        "provider con un valor desconocido cae a 'ollama'",
+        "updateConfig fusiona el parcial sobre lo guardado y persiste el resultado",
+        "addHistoryEntry añade al final (más reciente último) y no pierde las entradas previas",
+        "Una entrada de historial sin pushedAt o sin issues se descarta al normalizar",
+        "getPushSummaries omite las notas cuyo historial no tiene ningún issue y cuenta bien issues y pushes de las demás",
+        "Tras una escritura no queda ningún archivo .tmp en el directorio",
+        "pnpm typecheck passes",
+        "pnpm test passes"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-001"
+      ]
+    },
+    {
+      "id": "US-007",
+      "title": "El servidor solo escucha en localhost",
+      "description": "Como usuario, quiero que la app no sea alcanzable desde la red local, para que nadie más pueda leer mis notas ni usar mi API key de Linear.",
+      "acceptanceCriteria": [
+        "El script `dev` de package.json incluye `-H 127.0.0.1`",
+        "El script `start` de package.json incluye `-H 127.0.0.1`",
+        "Al arrancar, la salida de Next ya no anuncia una URL `Network:` con la IP de la LAN",
+        "http://localhost:3300 sigue respondiendo 200",
+        "pnpm typecheck passes",
+        "pnpm test passes"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": "",
+      "dependsOn": []
+    },
+    {
+      "id": "US-008",
+      "title": "Las credenciales en disco no son legibles por otros usuarios",
+      "description": "Como usuario, quiero que el archivo con mis API keys tenga permisos restrictivos, para que otro usuario de la máquina no pueda leerlas.",
+      "acceptanceCriteria": [
+        "writeConfig en lib/store.ts escribe el archivo temporal con `mode: 0o600` antes del rename",
+        "Tras el rename, el archivo final queda en 0600 (verificado explícitamente, ya que el rename conserva el modo del temporal)",
+        "Si el archivo ya existía con permisos más laxos, la siguiente escritura lo deja en 0600",
+        "ensureDataDir en lib/data-dir.ts crea .data/ con `mode: 0o700`",
+        "Hay un test que escribe la config en un directorio temporal y comprueba que `fs.statSync(file).mode & 0o777` es 0o600",
+        "El test se salta a sí mismo en Windows (process.platform === 'win32')",
+        "pnpm typecheck passes",
+        "pnpm test passes"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-001"
+      ]
+    },
+    {
+      "id": "US-009",
+      "title": "Capa de persistencia de los borradores de tareas",
+      "description": "Como desarrollador, quiero guardar los borradores de tareas en disco por transcripción, para que la curación manual no dependa de la memoria del navegador.",
+      "acceptanceCriteria": [
+        "Nuevo módulo lib/drafts-store.ts que persiste en .data/drafts.json, con la misma escritura atómica y el mismo 0600 que lib/store.ts",
+        "La forma guardada está keyed por la ruta relativa a la carpeta de contexto, igual que history",
+        "Por cada nota se guardan las filas (id, title, description, priority, mentioned, evidence, include), el baseline de la última extracción y el flag extracted",
+        "No se persiste el estado transitorio: generating, error ni confirming",
+        "Exporta getDrafts(relPath), saveDrafts(relPath, state) y clearDrafts(relPath)",
+        "Un archivo ausente, corrupto o con filas malformadas devuelve vacío en vez de lanzar, con la misma normalización defensiva que lib/store.ts",
+        "Nueva ruta `GET /api/drafts?path=…` que devuelve los borradores guardados de una nota",
+        "Nueva ruta `PUT /api/drafts` con `{ path, rows, baseline, extracted }` que los guarda",
+        "Ambas rutas validan que path acabe en .md y usan requireContextRoot() y el manejo de errores de lib/api.ts, como el resto de rutas",
+        "Tests de lib/drafts-store.ts cubriendo guardado, lectura, archivo corrupto y normalización de filas inválidas",
+        "pnpm typecheck passes",
+        "pnpm test passes"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-001"
+      ]
+    },
+    {
+      "id": "US-010",
+      "title": "Los borradores sobreviven a una recarga",
+      "description": "Como usuario, quiero que las tareas que edité sigan ahí después de recargar la página o reiniciar el servidor, para no perder el trabajo de curación.",
+      "acceptanceCriteria": [
+        "Al seleccionar una transcripción, useTaskDrafts carga sus borradores guardados si aún no tiene estado en memoria para esa ruta",
+        "Mientras carga, la tabla muestra un estado de carga y no un «sin tareas» falso",
+        "Cada cambio en las filas (editar, añadir, borrar, marcar o desmarcar «incluir») se guarda con debounce de unos 500 ms, no en cada pulsación de tecla",
+        "El resultado de una extracción nueva se guarda junto con su baseline",
+        "Recargar la página con una nota seleccionada muestra exactamente las filas y las marcas que había antes",
+        "Reiniciar el servidor de desarrollo y volver a abrir la nota muestra lo mismo",
+        "countManualChanges da el mismo resultado tras recargar, porque el baseline también se persiste",
+        "Un fallo al guardar no rompe la edición: se registra y la UI sigue usable con el estado en memoria",
+        "Un fallo al cargar muestra un aviso con «Reintentar» y no borra lo que hubiera en memoria",
+        "Un guardado que llega tarde se escribe bajo la ruta que capturó, nunca sobre la nota que esté en pantalla",
+        "pnpm typecheck passes",
+        "pnpm test passes"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-009"
+      ]
+    },
+    {
+      "id": "US-011",
+      "title": "README real",
+      "description": "Como persona nueva en el repo, quiero un README que explique qué es esto y cómo arrancarlo, en vez del boilerplate de create-next-app.",
+      "acceptanceCriteria": [
+        "Explica en un párrafo qué hace la app: explorar transcripciones .md, extraer tareas con Ollama o Claude, y crearlas como issues en Linear",
+        "Documenta el arranque: pnpm install y pnpm dev en http://localhost:3300",
+        "Documenta los requisitos previos: Ollama corriendo en local con un modelo descargado, o una API key de Anthropic",
+        "Documenta la configuración inicial en /settings: carpeta de contexto, proveedor de extracción, API key de Linear",
+        "Documenta las variables de entorno de override que ya existen: OLLAMA_URL, ANTHROPIC_API_URL y LINEAR_API_URL, y para qué sirven",
+        "Documenta que .data/ guarda la configuración, las claves y el historial en local y que está en .gitignore",
+        "Documenta los comandos de calidad: pnpm typecheck y pnpm test",
+        "Advierte de que la app no tiene autenticación, por eso escucha solo en 127.0.0.1, y explica cómo exponerla a propósito con `-H 0.0.0.0`",
+        "No queda ningún resto del README de create-next-app",
+        "pnpm typecheck passes",
+        "pnpm test passes"
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-001",
+        "US-007"
+      ]
+    }
+  ],
+  "metadata": {
+    "updatedAt": "2026-08-19T20:46:39.642Z"
+  }
+}

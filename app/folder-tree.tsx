@@ -46,10 +46,10 @@ function TreeNode({ entry, depth, api }: { entry: FolderEntry; depth: number; ap
     <li>
       <div
         style={indent}
-        className={`flex items-center gap-0.5 rounded-md pr-1 text-sm transition-colors ${
+        className={`group flex items-center gap-1 rounded-lg pr-1 text-sm transition-colors ${
           selected
-            ? 'bg-accent-wash text-content'
-            : 'text-content hover:bg-surface-2'
+            ? 'bg-accent-wash font-medium text-accent'
+            : 'text-content hover:bg-line/60'
         }`}
       >
         {toggleable ? (
@@ -71,9 +71,12 @@ function TreeNode({ entry, depth, api }: { entry: FolderEntry; depth: number; ap
           onClick={() => api.onSelect(entry.relPath)}
           aria-current={selected ? 'true' : undefined}
           title={entry.name}
-          className={`flex-1 truncate py-1 text-left ${selected ? 'font-medium' : ''}`}
+          className="flex min-w-0 flex-1 items-center gap-1.5 py-1.5 text-left"
         >
-          {entry.name}
+          {/* The icon is what makes a row scannable as a folder at a glance,
+              and its open state doubles the chevron's answer. */}
+          <FolderIcon open={expanded} className={selected ? 'text-accent' : 'text-muted'} />
+          <span className="truncate">{entry.name}</span>
         </button>
       </div>
 
@@ -86,7 +89,7 @@ function TreeNode({ entry, depth, api }: { entry: FolderEntry; depth: number; ap
             <button
               type="button"
               onClick={() => api.onRetry(entry.relPath)}
-              className="mt-1 rounded border border-line-strong px-2 py-0.5 text-xs font-medium hover:bg-surface-2"
+              className="mt-1 rounded border border-line-strong px-2 py-0.5 text-xs font-medium hover:bg-surface"
             >
               Reintentar
             </button>
@@ -99,7 +102,14 @@ function TreeNode({ entry, depth, api }: { entry: FolderEntry; depth: number; ap
             Cargando…
           </p>
         ) : (
-          <ul className="flex flex-col gap-0.5">
+          // A hairline down the children ties them to the folder they came out
+          // of: past the second level, indentation alone stops being readable.
+          <ul className="relative flex flex-col gap-0.5">
+            <span
+              aria-hidden="true"
+              style={{ left: `${depth * 0.875 + 0.85}rem` }}
+              className="absolute inset-y-0 w-px bg-line"
+            />
             {children.map((child) => (
               <TreeNode key={child.relPath} entry={child} depth={depth + 1} api={api} />
             ))}
@@ -107,6 +117,28 @@ function TreeNode({ entry, depth, api }: { entry: FolderEntry; depth: number; ap
         )
       ) : null}
     </li>
+  )
+}
+
+/** Open and closed folder, sharing one outline so the two do not jump. */
+function FolderIcon({ open, className }: { open: boolean; className: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      className={`size-3.5 shrink-0 ${className}`}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {open ? (
+        <path d="M1.75 12.5V4.25a.75.75 0 0 1 .75-.75h3l1.5 1.75h4.25a.75.75 0 0 1 .75.75V6.5M1.75 12.5l1.6-4.55a.75.75 0 0 1 .71-.5h10.19l-1.6 4.55a.75.75 0 0 1-.71.5H1.75Z" />
+      ) : (
+        <path d="M1.75 12.25V4.25a.75.75 0 0 1 .75-.75h3l1.5 1.75h6.25a.75.75 0 0 1 .75.75v6.25a.75.75 0 0 1-.75.75H2.5a.75.75 0 0 1-.75-.75Z" />
+      )}
+    </svg>
   )
 }
 

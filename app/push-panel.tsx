@@ -4,6 +4,7 @@ import Link from 'next/link'
 
 import type { PushedIssue } from '@/lib/push-events'
 
+import { PushProgress } from './progress'
 import type { PushTargetApi } from './use-push-target'
 
 type ParentApi = {
@@ -45,7 +46,7 @@ type Props = {
 }
 
 const FIELD =
-  'rounded-md border border-line-strong bg-surface px-2 py-1.5 text-sm text-content outline-none placeholder:text-muted focus:border-accent disabled:opacity-50'
+  'rounded-lg border border-line-strong bg-surface px-2.5 py-1.5 text-sm text-content shadow-panel outline-none transition-colors placeholder:text-muted focus:border-accent disabled:opacity-50'
 const LABEL = 'text-xs font-medium text-muted'
 
 /**
@@ -72,13 +73,24 @@ export function PushPanel({ target, parent, push }: Props) {
   const willCreateParent = parent.create && !push.parentIssue
 
   return (
-    <div className="flex flex-col">
-      <div className="flex flex-wrap items-end gap-x-4 gap-y-3 px-5 py-3">
+    // Header of the tasks column, so it stacks instead of spreading: at this
+    // width a row of side-by-side fields wraps into an unreadable staircase.
+    // The whole block is recessed: it is the panel's controls, and the rows it
+    // acts on are what should stay on the light surface below.
+    <div className="flex flex-col border-b border-line bg-surface-2">
+      <div className="panel-head justify-between">
+        <h2 className="panel-title">Enviar a Linear</h2>
+        {target.status === 'ready' ? (
+          <span className="chip tabular-nums">{summary(willCreateParent, push.pending)}</span>
+        ) : null}
+      </div>
+
+      <div className="flex flex-col gap-2.5 px-3 py-3">
         {/* One team is not a choice: it is used silently, and only a workspace
             with several ever shows this. */}
         {severalTeams ? (
-          <div className="flex flex-col gap-1">
-            <label htmlFor="push-team" className={LABEL}>
+          <div className="flex items-center gap-3">
+            <label htmlFor="push-team" className={`${LABEL} w-20 shrink-0`}>
               Equipo
             </label>
             <select
@@ -86,7 +98,7 @@ export function PushPanel({ target, parent, push }: Props) {
               value={target.teamId}
               onChange={(event) => target.selectTeam(event.target.value)}
               disabled={running}
-              className={`${FIELD} w-44`}
+              className={`${FIELD} min-w-0 flex-1`}
             >
               <option value="">Selecciona un equipo</option>
               {target.teams.map((team) => (
@@ -98,8 +110,8 @@ export function PushPanel({ target, parent, push }: Props) {
           </div>
         ) : null}
 
-        <div className="flex flex-col gap-1">
-          <label htmlFor="push-project" className={LABEL}>
+        <div className="flex items-center gap-3">
+          <label htmlFor="push-project" className={`${LABEL} w-20 shrink-0`}>
             Proyecto
           </label>
           <select
@@ -107,7 +119,7 @@ export function PushPanel({ target, parent, push }: Props) {
             value={target.projectId}
             onChange={(event) => target.selectProject(event.target.value)}
             disabled={running || target.status !== 'ready' || target.projects.length === 0}
-            className={`${FIELD} w-56`}
+            className={`${FIELD} min-w-0 flex-1`}
           >
             <option value="">{projectPlaceholder(target, severalTeams)}</option>
             {target.projects.map((project) => (
@@ -118,80 +130,64 @@ export function PushPanel({ target, parent, push }: Props) {
           </select>
         </div>
 
-        <div className="flex flex-col gap-1">
-          <span className={LABEL}>Tarea padre</span>
-          <div className="flex items-center gap-2">
-            <input
-              id="push-parent"
-              type="checkbox"
-              checked={parent.create}
-              onChange={(event) => parent.onToggle(event.target.checked)}
-              disabled={running}
-              className="h-4 w-4 accent-accent"
-            />
-            <label htmlFor="push-parent" className="text-sm text-content">
-              Crear tarea padre
-            </label>
-          </div>
+        <div className="flex items-center gap-2 pt-0.5">
+          <input
+            id="push-parent"
+            type="checkbox"
+            checked={parent.create}
+            onChange={(event) => parent.onToggle(event.target.checked)}
+            disabled={running}
+            className="size-4 accent-accent"
+          />
+          <label htmlFor="push-parent" className="text-sm text-content">
+            Agrupar bajo una tarea padre
+          </label>
         </div>
 
         {/* Only worth showing once there is going to be a parent to name — and
             not once it exists, when the title can no longer change anything. */}
         {willCreateParent ? (
-          <div className="flex min-w-56 flex-1 flex-col gap-1">
-            <label htmlFor="push-parent-title" className={LABEL}>
-              Título de la tarea padre
-            </label>
-            <input
-              id="push-parent-title"
-              type="text"
-              value={parent.title}
-              onChange={(event) => parent.onTitleChange(event.target.value)}
-              disabled={running}
-              placeholder="Título de la reunión"
-              className={`${FIELD} w-full`}
-            />
-          </div>
+          <input
+            id="push-parent-title"
+            type="text"
+            value={parent.title}
+            onChange={(event) => parent.onTitleChange(event.target.value)}
+            disabled={running}
+            placeholder="Título de la tarea padre"
+            aria-label="Título de la tarea padre"
+            className={`${FIELD} w-full`}
+          />
         ) : null}
 
-        <div className="ml-auto flex items-center gap-3">
-          {reason ? (
-            <p className="max-w-xs text-xs text-muted">
-              {reason}{' '}
-              {target.status === 'no-key' ? (
-                <Link
-                  href="/settings"
-                  className="underline hover:text-content"
-                >
-                  Ir a ajustes
-                </Link>
-              ) : null}
-              {target.status === 'error' ? (
-                <button
-                  type="button"
-                  onClick={target.reload}
-                  className="underline hover:text-content"
-                >
-                  Reintentar
-                </button>
-              ) : null}
-            </p>
-          ) : (
-            <p className="text-xs text-muted">
-              {summary(willCreateParent, push.pending)}
-            </p>
-          )}
+        {reason ? (
+          <p className="text-xs text-muted">
+            {reason}{' '}
+            {target.status === 'no-key' ? (
+              <Link href="/settings" className="underline hover:text-content">
+                Ir a ajustes
+              </Link>
+            ) : null}
+            {target.status === 'error' ? (
+              <button
+                type="button"
+                onClick={target.reload}
+                className="underline hover:text-content"
+              >
+                Reintentar
+              </button>
+            ) : null}
+          </p>
+        ) : null}
 
-          <button
-            type="button"
-            onClick={push.onPush}
-            disabled={reason !== null}
-            title={reason ?? undefined}
-            className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent transition-colors hover:bg-accent-soft disabled:opacity-50"
-          >
-            {buttonLabel(push)}
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={push.onPush}
+          disabled={reason !== null}
+          title={reason ?? undefined}
+          className="w-full rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-on-accent shadow-panel transition-colors hover:bg-accent-soft disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
+        >
+          {buttonLabel(push)}
+        </button>
       </div>
 
       {push.status !== 'idle' ? <RunStatus push={push} /> : null}
@@ -215,11 +211,9 @@ function RunStatus({ push }: { push: PushApi }) {
   const finished = push.status === 'finished'
 
   return (
-    <div className="flex flex-col gap-2 border-t border-line px-5 py-2">
+    <div className="flex flex-col gap-2 border-t border-line bg-surface px-3 py-2.5">
       {push.progress && push.status === 'running' ? (
-        <p aria-live="polite" className="text-xs text-content">
-          {`Creando ${Math.max(push.progress.index, 1)} de ${push.progress.total}…`}
-        </p>
+        <PushProgress index={push.progress.index} total={push.progress.total} />
       ) : null}
 
       {finished ? (
@@ -261,11 +255,16 @@ function IssueLink({ issue, label }: { issue: PushedIssue; label?: string }) {
         href={issue.url}
         target="_blank"
         rel="noreferrer noopener"
-        className="text-content underline underline-offset-2 hover:text-accent"
+        className="group flex items-baseline gap-1.5 text-content transition-colors hover:text-accent"
       >
-        <span className="font-mono">{issue.identifier}</span> <span>{issue.title}</span>
+        <span className="shrink-0 rounded border border-line px-1 font-mono text-[0.6875rem] text-muted group-hover:border-accent/40 group-hover:text-accent">
+          {issue.identifier}
+        </span>
+        <span className="truncate underline decoration-transparent underline-offset-2 transition-colors group-hover:decoration-current">
+          {issue.title}
+        </span>
+        {label ? <span className="shrink-0 text-muted">({label})</span> : null}
       </a>
-      {label ? <span className="ml-1 text-muted">({label})</span> : null}
     </li>
   )
 }

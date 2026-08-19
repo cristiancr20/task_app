@@ -1,6 +1,5 @@
 'use client'
 
-import type { HistoryEntry } from '@/lib/store'
 import type { TranscriptView } from '@/lib/transcript-client'
 
 import { Markdown } from './markdown'
@@ -14,62 +13,85 @@ type Props = {
 
 const NUMBER = new Intl.NumberFormat('es-ES')
 const DAY = new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })
-const TIME = new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit' })
 
-/** The right panel: the note's text, and what has already been created from it. */
+/** The right panel: the note the user is reading, and nothing else. */
 export function TranscriptPreview({ state, onRetry }: Props) {
-  if (!state) return <NoSelection />
-
-  if (state.status === 'loading') {
-    return (
-      <p className="px-6 py-6 text-sm text-muted">Cargando transcripción…</p>
-    )
-  }
-
-  if (state.status === 'error') {
-    return (
-      <div className="px-6 py-6">
-        <p role="alert" className="text-sm text-danger">
-          {state.message}
-        </p>
-        <button
-          type="button"
-          onClick={onRetry}
-          className="mt-3 rounded-md border border-line-strong px-3 py-1.5 text-sm font-medium transition-colors hover:bg-surface-2"
-        >
-          Reintentar
-        </button>
+  return (
+    // The panel is named whatever it holds — empty, loading or read: three
+    // columns side by side each say what they are, and one of them dropping its
+    // header when nothing is selected reads as a panel that broke.
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="panel-head">
+        <h2 className="panel-title">Transcripción</h2>
+        {state?.status === 'ready' ? (
+          <span
+            className="chip ml-auto min-w-0 shrink font-mono"
+            title={state.transcript.meta.fileName}
+          >
+            <span className="truncate">{state.transcript.meta.fileName}</span>
+          </span>
+        ) : null}
       </div>
-    )
-  }
 
-  return <Loaded transcript={state.transcript} />
+      {!state ? (
+        <NoSelection />
+      ) : state.status === 'loading' ? (
+        <p className="px-6 py-6 text-sm text-muted">Cargando transcripción…</p>
+      ) : state.status === 'error' ? (
+        <div className="px-6 py-6">
+          <p role="alert" className="text-sm text-danger">
+            {state.message}
+          </p>
+          <button
+            type="button"
+            onClick={onRetry}
+            className="mt-3 rounded-lg border border-line-strong px-3 py-1.5 text-sm font-medium transition-colors hover:bg-surface-2"
+          >
+            Reintentar
+          </button>
+        </div>
+      ) : (
+        <Loaded transcript={state.transcript} />
+      )}
+    </div>
+  )
 }
 
 function Loaded({ transcript }: { transcript: TranscriptView }) {
-  const { meta, body, history } = transcript
+  const { meta, body } = transcript
 
   return (
     // The header stays put and only the text scrolls, so a long transcript
     // never pushes the layout out of the viewport.
     <div className="flex min-h-0 flex-1 flex-col">
-      <header className="border-b border-line px-6 py-4">
-        <h2 className="text-base font-semibold text-content">{meta.title}</h2>
-        <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
-          {meta.date ? <time dateTime={meta.date}>{formatDate(meta.date)}</time> : null}
-          {meta.attendees.length > 0 ? <span>{meta.attendees.join(', ')}</span> : null}
-          <span>~{NUMBER.format(meta.words)} palabras</span>
-          <span className="font-mono">{meta.fileName}</span>
+      {/* The note's own title block, on the reading surface rather than in the
+          panel head: it belongs to the text, not to the chrome around it. */}
+      <header className="border-b border-line px-6 pb-4 pt-5">
+        <h3 className="text-lg font-semibold leading-tight tracking-tight text-content">
+          {meta.title}
+        </h3>
+        <p className="mt-2 flex flex-wrap items-center gap-1.5">
+          {meta.date ? (
+            <time dateTime={meta.date} className="chip">
+              {formatDate(meta.date)}
+            </time>
+          ) : null}
+          <span className="chip tabular-nums">{NUMBER.format(meta.words)} palabras</span>
+          {meta.attendees.length > 0 ? (
+            <span className="chip min-w-0" title={meta.attendees.join(', ')}>
+              <span className="truncate">{meta.attendees.join(', ')}</span>
+            </span>
+          ) : null}
         </p>
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
-        {/* The notice sits above the text: whether the file was already pushed
-            changes what the user does with it. */}
-        {history.length > 0 ? <ProcessedNotice history={history} /> : null}
-
+        {/* Nothing but the note here. What has already been created from it is
+            reported in the Linear column (see `PushedHistory`), where it is
+            about the same thing as the panel around it — and where it is not
+            covering the first screenful of every note already pushed. */}
         {body.trim() ? (
-          <article className="max-w-3xl text-content">
+          <article className="max-w-3xl text-[0.9375rem] leading-7 text-content">
             <Markdown source={body} />
           </article>
         ) : (
@@ -82,59 +104,6 @@ function Loaded({ transcript }: { transcript: TranscriptView }) {
   )
 }
 
-/**
- * «Ya creaste tareas desde este archivo»: how many, when, and a link to each
- * issue. Entries are stored oldest first and shown newest first, since the last
- * push is the one that explains the current state of the file.
- */
-function ProcessedNotice({ history }: { history: HistoryEntry[] }) {
-  const entries = [...history].reverse()
-  const total = history.reduce((count, entry) => count + entry.issues.length, 0)
-  const latest = entries[0]
-
-  return (
-    // A note rather than an `aside`: the explorer already has one complementary
-    // landmark (the folder panel) and a second unlabelled one only adds noise.
-    <div
-      role="note"
-      className="mb-6 max-w-3xl rounded-lg border border-warn/30 bg-warn-wash px-4 py-3"
-    >
-      <p className="text-sm font-medium text-warn">
-        {total === 1 ? '1 tarea creada' : `${NUMBER.format(total)} tareas creadas`}{' '}
-        {history.length > 1
-          ? `en ${history.length} envíos, el último el ${formatPushedAt(latest.pushedAt)}`
-          : `el ${formatPushedAt(latest.pushedAt)}`}
-      </p>
-
-      {entries.map((entry, key) => (
-        <div key={key} className="mt-2">
-          {/* With a single push the date is already in the line above. */}
-          {history.length > 1 ? (
-            <p className="text-xs text-muted">
-              {formatPushedAt(entry.pushedAt)}
-            </p>
-          ) : null}
-          <ul className="mt-1 flex flex-col gap-1">
-            {entry.issues.map((issue) => (
-              <li key={issue.id} className="text-sm">
-                <a
-                  href={issue.url}
-                  target="_blank"
-                  rel="noreferrer noopener"
-                  className="text-warn underline underline-offset-2 hover:text-content"
-                >
-                  <span className="font-mono text-xs">{issue.identifier}</span>{' '}
-                  <span>{issue.title}</span>
-                </a>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ))}
-    </div>
-  )
-}
-
 function NoSelection() {
   return (
     <div className="flex flex-1 items-center justify-center px-6 py-10 text-center">
@@ -143,7 +112,7 @@ function NoSelection() {
           Elige un archivo para leerlo
         </p>
         <p className="mt-1 text-sm text-muted">
-          Su contenido aparecerá aquí, junto con las tareas que ya hayas creado desde él.
+          Su contenido aparecerá aquí, y a la derecha las tareas que salgan de él.
         </p>
       </div>
     </div>
@@ -157,12 +126,3 @@ function formatDate(iso: string): string {
   return Number.isNaN(date.getTime()) ? iso : DAY.format(date)
 }
 
-/**
- * `pushedAt` is a full timestamp, so — unlike a date-only string — it is safe
- * to let `Date` parse it and render it in the user's own timezone.
- */
-function formatPushedAt(pushedAt: string): string {
-  const date = new Date(pushedAt)
-  if (Number.isNaN(date.getTime())) return pushedAt
-  return `${DAY.format(date)} a las ${TIME.format(date)}`
-}

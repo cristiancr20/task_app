@@ -1,180 +1,89 @@
 {
   "version": 1,
-  "sessionId": "dbd2d121-904b-41be-9284-fd8f1c38d421",
+  "sessionId": "ef655f0f-1b97-413f-847d-7c6b69e1f31b",
   "status": "running",
-  "startedAt": "2026-08-10T04:30:47.188Z",
-  "updatedAt": "2026-08-10T05:02:33.539Z",
-  "currentIteration": 3,
+  "startedAt": "2026-08-19T20:44:14.216Z",
+  "updatedAt": "2026-08-19T20:46:39.643Z",
+  "currentIteration": 0,
   "maxIterations": 0,
-  "tasksCompleted": 3,
+  "tasksCompleted": 0,
   "isPaused": false,
   "agentPlugin": "claude",
   "trackerState": {
     "plugin": "json",
     "executionScopes": [],
-    "prdPath": "./tasks/prd.json",
-    "totalTasks": 21,
+    "prdPath": "./tasks/prd-hardening.json",
+    "totalTasks": 11,
     "tasks": [
       {
         "id": "US-001",
-        "title": "Project setup: typecheck gate, port 3300, data folder",
-        "status": "completed",
+        "title": "Montar Vitest y el script test",
+        "status": "open",
         "completedInSession": false
       },
       {
         "id": "US-002",
-        "title": "Config store: read/write local JSON state",
-        "status": "completed",
+        "title": "Tests de la guarda de path traversal",
+        "status": "open",
         "completedInSession": false
       },
       {
         "id": "US-003",
-        "title": "Filesystem scanner with path-traversal guard",
-        "status": "completed",
+        "title": "Tests del scanner de transcripciones",
+        "status": "open",
         "completedInSession": false
       },
       {
         "id": "US-004",
-        "title": "API routes for browsing folders and reading a transcript",
-        "status": "completed",
+        "title": "Tests de la normalización de la respuesta del modelo",
+        "status": "open",
         "completedInSession": false
       },
       {
         "id": "US-005",
-        "title": "Settings UI: context folder path with recents",
-        "status": "completed",
+        "title": "Tests del cliente de Linear",
+        "status": "open",
         "completedInSession": false
       },
       {
         "id": "US-006",
-        "title": "Settings UI: extraction provider selector",
-        "status": "completed",
+        "title": "Tests del store de configuración",
+        "status": "open",
         "completedInSession": false
       },
       {
         "id": "US-007",
-        "title": "Settings UI: Linear API key",
-        "status": "completed",
+        "title": "El servidor solo escucha en localhost",
+        "status": "open",
         "completedInSession": false
       },
       {
         "id": "US-008",
-        "title": "Explorer UI: folder tree and file list",
-        "status": "completed",
+        "title": "Las credenciales en disco no son legibles por otros usuarios",
+        "status": "open",
         "completedInSession": false
       },
       {
         "id": "US-009",
-        "title": "Transcript preview and already-processed notice",
-        "status": "completed",
+        "title": "Capa de persistencia de los borradores de tareas",
+        "status": "open",
         "completedInSession": false
       },
       {
         "id": "US-010",
-        "title": "Ollama extractor",
-        "status": "completed",
+        "title": "Los borradores sobreviven a una recarga",
+        "status": "open",
         "completedInSession": false
       },
       {
         "id": "US-011",
-        "title": "Claude API extractor",
-        "status": "completed",
-        "completedInSession": false
-      },
-      {
-        "id": "US-012",
-        "title": "Extraction API route with provider dispatch",
-        "status": "completed",
-        "completedInSession": false
-      },
-      {
-        "id": "US-013",
-        "title": "Editable task table",
-        "status": "completed",
-        "completedInSession": false
-      },
-      {
-        "id": "US-014",
-        "title": "Regenerate guard for manual edits",
-        "status": "completed",
-        "completedInSession": false
-      },
-      {
-        "id": "US-015",
-        "title": "Linear client: teams and projects",
-        "status": "completed",
-        "completedInSession": false
-      },
-      {
-        "id": "US-016",
-        "title": "Linear client: create issue, with optional parent",
-        "status": "completed",
-        "completedInSession": false
-      },
-      {
-        "id": "US-017",
-        "title": "Push panel: project selector and parent task option",
-        "status": "completed",
-        "completedInSession": false
-      },
-      {
-        "id": "US-018",
-        "title": "Push execution with progress, per-row status and retry",
-        "status": "completed",
-        "completedInSession": true
-      },
-      {
-        "id": "US-019",
-        "title": "Push results summary and history persistence",
-        "status": "completed",
-        "completedInSession": true
-      },
-      {
-        "id": "US-020",
-        "title": "Theme toggle: light, dark and system",
-        "status": "completed",
-        "completedInSession": true
-      },
-      {
-        "id": "US-021",
-        "title": "Adopt the shared design tokens and accent colour",
+        "title": "README real",
         "status": "open",
         "completedInSession": false
       }
     ]
   },
-  "iterations": [
-    {
-      "iteration": 1,
-      "status": "completed",
-      "taskId": "US-018",
-      "taskTitle": "Push execution with progress, per-row status and retry",
-      "taskCompleted": true,
-      "durationMs": 346549,
-      "startedAt": "2026-08-10T04:30:50.734Z",
-      "endedAt": "2026-08-10T04:36:37.283Z"
-    },
-    {
-      "iteration": 2,
-      "status": "completed",
-      "taskId": "US-019",
-      "taskTitle": "Push results summary and history persistence",
-      "taskCompleted": true,
-      "durationMs": 561158,
-      "startedAt": "2026-08-10T04:36:38.406Z",
-      "endedAt": "2026-08-10T04:45:59.564Z"
-    },
-    {
-      "iteration": 3,
-      "status": "completed",
-      "taskId": "US-020",
-      "taskTitle": "Theme toggle: light, dark and system",
-      "taskCompleted": true,
-      "durationMs": 439547,
-      "startedAt": "2026-08-10T04:46:00.664Z",
-      "endedAt": "2026-08-10T04:53:20.211Z"
-    }
-  ],
+  "iterations": [],
   "skippedTaskIds": [],
   "cwd": "/Users/cristian/dev/tasks-app",
   "activeTaskIds": [],

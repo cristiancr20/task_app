@@ -20,6 +20,19 @@ export type HistoryEntry = {
   issues: HistoryIssue[]
 }
 
+/**
+ * The history of one note condensed to what a row of the file list can show:
+ * how much it produced and when it last did.
+ */
+export type PushSummary = {
+  /** Issues created from the note across every push. */
+  issues: number
+  /** How many times it was pushed. */
+  pushes: number
+  /** Timestamp of the most recent push. */
+  lastPushedAt: string
+}
+
 export type Config = {
   recentFolders: string[]
   contextRoot: string | null
@@ -93,6 +106,33 @@ export function addHistoryEntry(relPath: string, entry: HistoryEntry): Config {
 /** Push history for `relPath`, oldest first. Empty when the file was never pushed. */
 export function getHistory(relPath: string): HistoryEntry[] {
   return getConfig().history[relPath] ?? []
+}
+
+/**
+ * One summary per note that has ever been pushed, keyed by the same
+ * root-relative path the history uses. Notes that were never pushed are absent
+ * rather than present with zeros, so a lookup answers the badge's question —
+ * «did this one already produce tasks?» — on its own.
+ */
+export function getPushSummaries(): Record<string, PushSummary> {
+  const summaries: Record<string, PushSummary> = {}
+  for (const [relPath, entries] of Object.entries(getConfig().history)) {
+    const summary = summarize(entries)
+    if (summary) summaries[relPath] = summary
+  }
+  return summaries
+}
+
+/** Entries are stored oldest first, so the last one is the most recent push. */
+function summarize(entries: HistoryEntry[]): PushSummary | null {
+  const issues = entries.reduce((count, entry) => count + entry.issues.length, 0)
+  if (issues === 0) return null
+
+  return {
+    issues,
+    pushes: entries.length,
+    lastPushedAt: entries[entries.length - 1].pushedAt,
+  }
 }
 
 /**

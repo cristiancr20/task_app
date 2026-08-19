@@ -1,4 +1,14 @@
-import type { FolderListing } from './transcripts'
+import type { PushSummary } from './store'
+import type { FolderListing, TranscriptMeta } from './transcripts'
+
+/** One `.md` row of a listing, plus what has already been created from it. */
+export type FileView = TranscriptMeta & {
+  /** Null when the note was never pushed — the row shows no badge. */
+  pushed: PushSummary | null
+}
+
+/** What `GET /api/browse` answers: one folder level, with its files marked. */
+export type FolderView = Omit<FolderListing, 'files'> & { files: FileView[] }
 
 /**
  * `GET /api/browse` as seen from the browser.
@@ -12,7 +22,7 @@ import type { FolderListing } from './transcripts'
  * `lib/transcripts.ts` — a type-only import, so the node-only scanner never
  * reaches the client bundle.
  */
-export async function fetchFolder(relPath: string): Promise<FolderListing> {
+export async function fetchFolder(relPath: string): Promise<FolderView> {
   let response: Response
   try {
     response = await fetch(`/api/browse?path=${encodeURIComponent(relPath)}`, {
@@ -38,7 +48,7 @@ function errorMessage(body: unknown): string {
   return 'No se pudo leer la carpeta.'
 }
 
-function isListing(body: unknown): body is FolderListing {
+function isListing(body: unknown): body is FolderView {
   if (typeof body !== 'object' || body === null) return false
   const { folders, files } = body as { folders?: unknown; files?: unknown }
   return Array.isArray(folders) && Array.isArray(files)

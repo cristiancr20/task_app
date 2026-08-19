@@ -5,12 +5,14 @@ import { useCallback, useEffect, useState } from 'react'
 import { FileList } from './file-list'
 import { FolderTree } from './folder-tree'
 import { PushPanel } from './push-panel'
+import { PushedHistory } from './pushed-history'
 import { TaskTable } from './task-table'
 import { TranscriptPreview } from './transcript-preview'
 import { useFolderListings } from './use-folder-listings'
 import { usePushOptions } from './use-push-options'
 import { createdIssuesOf, parentIssueOf, usePushRun } from './use-push-run'
 import { usePushTarget } from './use-push-target'
+import { useSplit } from './use-split'
 import { useTaskDrafts } from './use-task-drafts'
 import { useTranscript } from './use-transcript'
 
@@ -39,10 +41,15 @@ type Props = {
  * back shows the edits again.
  */
 export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props) {
-  const { states, open, reload } = useFolderListings()
+  const { states, open, reload, refresh: refreshFolder } = useFolderListings()
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set(['']))
   const [selected, setSelected] = useState('')
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
+  // Session-only: which folder you are in already persists through `selected`,
+  // and a remembered-but-invisible panel is a worse first impression than one
+  // that simply starts open every time.
+  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const split = useSplit(50)
   const {
     state: transcript,
     reload: reloadTranscript,
@@ -57,18 +64,24 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
   // The route writes the created issues to the history, so the already-processed
   // notice of the note is out of date the moment a run ends — but only for the
   // note that ran: a push finishing after the user moved on must not re-read
-  // somebody else's file.
+  // somebody else's file. Its badge in the list is out of date either way, and
+  // that one belongs to the note's own folder, not to the folder on screen.
   const onPushed = useCallback(
     (path: string) => {
       if (path === selectedFile) refreshTranscript()
+      refreshFolder(folderOf(path))
     },
-    [refreshTranscript, selectedFile],
+    [refreshFolder, refreshTranscript, selectedFile],
   )
   const run = usePushRun(selectedFile, onPushed)
 
   // The parent issue stands for the meeting, so its title starts as the note's
   // own — and only until the user types, which is what the null means.
   const meetingTitle = transcript?.status === 'ready' ? transcript.transcript.meta.title : ''
+  // The push history travels with the note, and is reported in the Linear
+  // column: what this file already produced belongs next to what it is about
+  // to produce, not on top of the text it came from.
+  const history = transcript?.status === 'ready' ? transcript.transcript.history : []
   const parentTitle = pushOptions.options.parentTitle ?? meetingTitle
 
   const rows = drafts.state?.rows ?? []
@@ -128,12 +141,22 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
   const rootLabel = folderName(contextRoot)
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex min-h-0 flex-1">
-        <aside className="flex w-72 shrink-0 flex-col border-r border-line bg-surface-2">
-          <h2 className="border-b border-line px-4 py-3 text-sm font-medium text-content">
-            Carpetas
-          </h2>
+    // One row of panels, all of them full height, floating on the ground with a
+    // gap between them. Nothing stacks vertically any more: the transcript used
+    // to lose more than half its height to the table below it, and reading is
+    // the step that needs the room.
+    <div className="flex min-h-0 flex-1 gap-2 px-3 pb-3">
+      {/* Collapsed, the tree becomes a 10-rem-narrower page. On a laptop that
+          is the difference between four cramped columns and three comfortable
+          ones, so it is a layout control, not a decoration. */}
+      {sidebarOpen ? (
+        // The one panel that is recessed rather than white: navigation is
+        // chrome, and the columns to its right are the content it leads to.
+        <aside className="panel w-60 shrink-0 bg-surface-2">
+          <div className="panel-head justify-between">
+            <h2 className="panel-title">Carpetas</h2>
+            <SidebarToggle open onClick={() => setSidebarOpen(false)} />
+          </div>
           <nav aria-label="Carpetas" className="min-h-0 flex-1 overflow-y-auto p-2">
             <FolderTree
               rootName={rootLabel}
@@ -148,54 +171,64 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
             />
           </nav>
         </aside>
+      ) : (
+        <div className="panel shrink-0 items-center bg-surface-2 px-1.5 py-2">
+          <SidebarToggle open={false} onClick={() => setSidebarOpen(true)} />
+        </div>
+      )}
 
-        <section className="flex w-96 shrink-0 min-h-0 flex-col border-r border-line bg-surface">
-          <FileList
-            state={states[selected]}
-            breadcrumb={breadcrumb(rootLabel, selected)}
-            selectedFile={selectedFile}
-            onSelectFile={setSelectedFile}
-            onRetry={() => reload(selected)}
-          />
-        </section>
+      <section className="panel w-80 shrink-0 bg-surface">
+        <FileList
+          state={states[selected]}
+          breadcrumb={breadcrumb(rootLabel, selected)}
+          selectedFile={selectedFile}
+          onSelectFile={setSelectedFile}
+          onRetry={() => reload(selected)}
+        />
+      </section>
 
+      {/* Transcript and tasks share the rest of the row. With no file open the
+          transcript takes all of it; once tasks appear they split it evenly and
+          the divider between them is draggable, because how much room each
+          needs depends on the meeting, not on a number picked here. */}
+      <div ref={split.containerRef} className="flex min-h-0 min-w-0 flex-1 gap-2">
         <section
           aria-label="Transcripción"
-          className="flex min-h-0 min-w-0 flex-1 flex-col bg-surface"
+          className="panel min-w-0 bg-surface"
+          style={
+            selectedFile
+              ? { flex: `0 0 ${split.percent}%`, maxWidth: `${split.percent}%` }
+              : { flex: '1 1 auto' }
+          }
         >
           <TranscriptPreview state={transcript} onRetry={reloadTranscript} />
         </section>
-      </div>
 
-      {/* The table is the widest thing on the page, so it gets the full width
-          under the three panels — and only exists once there is a file to
-          extract from. `h-[38dvh]` keeps the height definite, which is what
-          lets both halves scroll on their own. */}
-      {selectedFile ? (
-        <>
-          <section
-            aria-label="Tareas"
-            className="flex h-[38dvh] shrink-0 border-t border-line bg-surface"
+        {selectedFile ? (
+          <div
+            {...split.handleProps}
+            className="group relative -mx-1 flex w-2 shrink-0 cursor-col-resize items-center justify-center rounded-full focus-visible:outline-none"
           >
-            <TaskTable
-              state={drafts.state}
-              results={results}
-              busy={run.state.status === 'running'}
-              onGenerate={drafts.generate}
-              onConfirmGenerate={drafts.confirmGenerate}
-              onCancelGenerate={drafts.cancelGenerate}
-              onUpdateRow={drafts.updateRow}
-              onRemoveRow={drafts.removeRow}
-              onAddRow={drafts.addRow}
+            {/* Nothing is drawn until the divider is aimed at: the gap between
+                the two panels already separates them, so the grip only has to
+                appear when it is about to be used. */}
+            <span
+              className={`h-8 w-1 rounded-full transition-colors ${
+                split.dragging
+                  ? 'bg-accent'
+                  : 'bg-transparent group-hover:bg-line-strong group-focus-visible:bg-accent'
+              }`}
             />
-          </section>
+          </div>
+        ) : null}
 
-          {/* The destination sits under the table it applies to: what is
-              checked above is what the button below creates. */}
-          <section
-            aria-label="Envío a Linear"
-            className="shrink-0 border-t border-line bg-surface-2"
-          >
+        {/* Tasks sit beside the transcript they came from, so you can check a
+            row against the sentence that produced it without scrolling between
+            them. The Linear controls ride on top as this column's header: the
+            destination belongs with the thing being sent, and putting it in a
+            full-width bar would separate the two. */}
+        {selectedFile ? (
+          <section aria-label="Tareas y envío a Linear" className="panel min-w-0 flex-1 bg-surface">
             <PushPanel
               target={target}
               parent={{
@@ -216,11 +249,62 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
                 onPush: startPush,
               }}
             />
+
+            {history.length > 0 ? <PushedHistory history={history} /> : null}
+
+            <div className="flex min-h-0 flex-1">
+              <TaskTable
+                state={drafts.state}
+                results={results}
+                busy={run.state.status === 'running'}
+                onGenerate={drafts.generate}
+                onConfirmGenerate={drafts.confirmGenerate}
+                onCancelGenerate={drafts.cancelGenerate}
+                onUpdateRow={drafts.updateRow}
+                onRemoveRow={drafts.removeRow}
+                onAddRow={drafts.addRow}
+              />
+            </div>
           </section>
-        </>
-      ) : null}
+        ) : null}
+      </div>
     </div>
   )
+}
+
+/** Show/hide control for the folder tree. Icon-only when the tree is closed. */
+function SidebarToggle({ open, onClick }: { open: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-expanded={open}
+      title={open ? 'Ocultar carpetas' : 'Mostrar carpetas'}
+      className="rounded-md p-1 text-muted transition-colors hover:bg-line hover:text-content"
+    >
+      <span className="sr-only">{open ? 'Ocultar carpetas' : 'Mostrar carpetas'}</span>
+      <svg
+        viewBox="0 0 16 16"
+        aria-hidden="true"
+        className="h-4 w-4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="1.5" />
+        <line x1="6" y1="2.75" x2="6" y2="13.25" />
+        {open ? <polyline points="10.5,6 8.75,8 10.5,10" /> : <polyline points="9,6 10.75,8 9,10" />}
+      </svg>
+    </button>
+  )
+}
+
+/** The folder a root-relative file path lives in — `''` for a file at the root. */
+function folderOf(relPath: string): string {
+  const cut = relPath.lastIndexOf('/')
+  return cut === -1 ? '' : relPath.slice(0, cut)
 }
 
 /** The last segment of an absolute path — the context folder's own name. */

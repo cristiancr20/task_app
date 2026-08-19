@@ -1,15 +1,15 @@
 {
-  "id": "dbd2d121-904b-41be-9284-fd8f1c38d421",
+  "id": "ef655f0f-1b97-413f-847d-7c6b69e1f31b",
   "status": "running",
-  "startedAt": "2026-08-10T04:30:47.104Z",
-  "updatedAt": "2026-08-10T04:53:20.390Z",
+  "startedAt": "2026-08-19T20:44:14.116Z",
+  "updatedAt": "2026-08-19T20:44:14.117Z",
   "agentPlugin": "claude",
   "trackerPlugin": "json",
   "executionScopes": [],
-  "prdPath": "./tasks/prd.json",
-  "currentIteration": 3,
+  "prdPath": "./tasks/prd-hardening.json",
+  "currentIteration": 0,
   "maxIterations": 0,
   "totalTasks": 0,
-  "tasksCompleted": 3,
+  "tasksCompleted": 0,
   "cwd": "/Users/cristian/dev/tasks-app"
 }

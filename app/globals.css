@@ -54,9 +54,14 @@
      steers them. It also picks the side of every `light-dark()` below. */
   color-scheme: light dark;
 
-  --bg:          light-dark(#f7f8fa, #0b0c0e);
+  /* Three depths, and the layout leans on all three: the ground is the frame
+     the panels float on, the surface is a panel, and surface-2 is a recess
+     *inside* a panel (its header, an input, a hovered row). Before, everything
+     from the folder tree to the transcript was `--surface`, so four columns of
+     white met at hairlines and the eye had nothing to separate them. */
+  --bg:          light-dark(#e3e6ed, #0a0b0d);
   --surface:     light-dark(#ffffff, #16181d);
-  --surface-2:   light-dark(#f1f2f4, #1e2127);
+  --surface-2:   light-dark(#eef0f5, #1e2127);
   --line:        light-dark(rgba(22, 24, 29, 0.10), rgba(255, 255, 255, 0.08));
   --line-strong: light-dark(rgba(22, 24, 29, 0.18), rgba(255, 255, 255, 0.16));
   --content:     light-dark(#16181d, #e6e7e9);
@@ -78,6 +83,17 @@
      themes — `--content` inverts with the theme and would turn the light veil
      white, which stops reading as «the page behind is out of reach». */
   --scrim:       light-dark(rgba(22, 24, 29, 0.40), rgba(0, 0, 0, 0.60));
+
+  /* Elevation. A shadow is a light-theme device: on a dark ground a drop
+     shadow is invisible, so the dark side spends its budget on a hairline of
+     light along the top edge instead — the same message (this sits above the
+     page) in the only currency each theme has. */
+  --panel-shadow: light-dark(
+    0 1px 2px rgba(16, 20, 28, 0.05), 0 4px 12px -6px rgba(16, 20, 28, 0.12)
+  );
+  --pop-shadow: light-dark(
+    0 12px 32px -12px rgba(16, 20, 28, 0.28), 0 24px 48px -24px rgba(0, 0, 0, 0.7)
+  );
 }
 
 /* The user's choice, overriding the OS for both the native widgets and
@@ -115,8 +131,69 @@
   --color-info-wash:   var(--info-wash);
   --color-scrim:       var(--scrim);
 
+  --shadow-panel: var(--panel-shadow);
+  --shadow-pop:   var(--pop-shadow);
+
   --font-sans: var(--font-geist-sans), system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+/* ─── Panels ────────────────────────────────────────────────────────────────
+   Every column of the explorer is one of these: a card on the ground rather
+   than a region fenced off by a hairline. The gap between two cards is what
+   separates them, so the separation survives both themes — a 10%-opacity
+   border between two whites does not.
+
+   The fill is deliberately NOT set here: each panel says whether it is content
+   (`bg-surface`) or chrome (`bg-surface-2`), and baking a default in would make
+   that a fight over which utility comes last in the stylesheet. */
+@utility panel {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 0.75rem;
+  border: 1px solid var(--line);
+  box-shadow: var(--panel-shadow);
+}
+
+/* The strip at the top of a panel that names it. Recessed rather than raised,
+   so the panel's content — the list, the text, the table — stays the lightest
+   thing on screen. */
+@utility panel-head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  border-bottom: 1px solid var(--line);
+  background-color: var(--surface-2);
+  padding: 0 0.75rem;
+  min-height: 2.5rem;
+}
+
+/* The small-caps label of a panel head. */
+@utility panel-title {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* A count, a date, a filename: one fact, in a pill, next to a title. It carries
+   its own outline and the lightest fill, so it reads both on a panel head
+   (recessed) and in a panel body (white) without a second variant. */
+@utility chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  border-radius: 9999px;
+  border: 1px solid var(--line);
+  background-color: var(--surface);
+  padding: 0.0625rem 0.5rem;
+  font-size: 0.6875rem;
+  line-height: 1.125rem;
+  color: var(--muted);
+  white-space: nowrap;
 }
 
 body {
@@ -136,4 +213,22 @@ body {
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+/* ─── Motion ────────────────────────────────────────────────────────────────
+   The sliding bar for operations with no denominator (see app/progress.tsx).
+   It travels past both edges so the track never looks stalled at an end. */
+@keyframes indeterminate {
+  0%   { transform: translateX(-110%); }
+  100% { transform: translateX(410%); }
+}
+
+/* Someone who asked the system for less motion gets a static bar instead of a
+   loop; the elapsed counter next to it still shows the work is alive. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-\[indeterminate_1\.4s_ease-in-out_infinite\] {
+    animation: none;
+    width: 100%;
+    opacity: 0.4;
+  }
 }

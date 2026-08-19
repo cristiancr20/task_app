@@ -1,0 +1,160 @@
+{
+  "name": "Fechas de vencimiento y detección de duplicados contra Linear",
+  "branchName": "ralph/linear-dedupe-duedate",
+  "description": "Añade el campo dueDate de punta a punta (modelo, tabla editable y Linear) y una comprobación determinista de duplicados que consulta los issues existentes del proyecto de destino y marca las filas que ya existen antes de crear nada.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "El modelo extrae la fecha de vencimiento",
+      "description": "Como usuario, quiero que la extracción capture la fecha límite que la reunión menciona, para no tener que ponerla a mano en cada issue.",
+      "acceptanceCriteria": [
+        "TASKS_JSON_SCHEMA en lib/extractors/task.ts incluye dueDate de tipo ['string','null'], requerido como el resto de campos y dentro del subconjunto que aceptan tanto Ollama como Anthropic",
+        "La descripción del campo en el schema pide una fecha absoluta en formato YYYY-MM-DD, o null cuando la transcripción no fija ninguna",
+        "SYSTEM_PROMPT instruye explícitamente resolver las fechas relativas («el viernes», «en dos semanas», «antes de fin de mes») contra la fecha de la reunión, y devolver null en vez de inventar una fecha cuando no se menciona ninguna",
+        "buildUserPrompt deja clara cuál es la fecha de la reunión para que sirva de ancla; cuando la nota no tiene fecha, el prompt indica que las fechas relativas no se pueden resolver y deben quedar en null",
+        "ExtractedTask incorpora `dueDate: string | null`",
+        "normalizeTasks valida el formato: solo se conserva YYYY-MM-DD con mes y día en rango; texto libre, fechas imposibles como 2026-02-31 y números pasan a null",
+        "Un timestamp ISO completo (2026-08-19T00:00:00Z) se recorta a 2026-08-19 en vez de descartarse",
+        "Tests en lib/extractors/task.test.ts cubriendo formato válido, formato inválido, fecha imposible, timestamp completo y ausencia del campo",
+        "pnpm typecheck passes",
+        "pnpm test passes"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": "",
+      "dependsOn": []
+    },
+    {
+      "id": "US-002",
+      "title": "Columna de vencimiento editable en la tabla",
+      "description": "Como usuario, quiero ver y corregir la fecha de vencimiento de cada tarea antes de enviarla, para arreglar lo que el modelo interpretó mal.",
+      "acceptanceCriteria": [
+        "TaskDraft en app/use-task-drafts.ts incorpora `dueDate: string | null`",
+        "Las filas creadas por extracción toman el dueDate del modelo; las añadidas a mano empiezan con null",
+        "app/task-table.tsx muestra una columna «Vence» con un `input type=date` por fila, con los mismos estilos de token que el resto de campos (FIELD)",
+        "Un campo vacío guarda null, no cadena vacía",
+        "La columna se deshabilita durante un push en curso, igual que el resto de campos editables",
+        "Editar la fecha cuenta como cambio manual en countManualChanges: una fila con la fecha cambiada aparece como editada",
+        "sameDraft compara también dueDate",
+        "Si la persistencia de borradores ya existe en el repo, el estado guardado incluye dueDate y lo restaura al recargar",
+        "Tests de countManualChanges verificando que un cambio solo de fecha se cuenta como edición",
+        "pnpm typecheck passes",
+        "pnpm test passes"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": "",
+      "dependsOn": ["US-001"]
+    },
+    {
+      "id": "US-003",
+      "title": "La fecha viaja hasta Linear",
+      "description": "Como usuario, quiero que el issue creado en Linear lleve la fecha de vencimiento, para poder ordenar y filtrar por ella allí.",
+      "acceptanceCriteria": [
+        "CreateIssueInput en lib/linear.ts acepta `dueDate?: string | null`",
+        "createIssue incluye dueDate en el IssueCreateInput de la mutación solo cuando trae valor, con el mismo patrón de omisión condicional que projectId y parentId",
+        "PushTaskInput en lib/push-events.ts incorpora `dueDate: string | null`",
+        "La ruta POST /api/linear/push lee y valida dueDate de cada tarea del cuerpo: un formato inválido se descarta a null en vez de rechazar toda la petición",
+        "lib/linear-push.ts pasa el dueDate de cada tarea a createIssue",
+        "El issue padre nunca lleva dueDate: representa la reunión, no un compromiso",
+        "Tests en lib/linear.test.ts con fetch stubeado: la mutación incluye dueDate cuando hay fecha y omite la clave por completo cuando es null",
+        "Verificado contra un stub local de Linear vía LINEAR_API_URL, siguiendo el patrón documentado en .ralph-tui/progress.md, sin tocar el workspace real",
+        "pnpm typecheck passes",
+        "pnpm test passes"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": "",
+      "dependsOn": ["US-002"]
+    },
+    {
+      "id": "US-004",
+      "title": "Cliente de Linear: listar los issues que ya existen",
+      "description": "Como desarrollador, quiero poder traer los issues existentes del proyecto de destino, para poder compararlos con las tareas que están a punto de crearse.",
+      "acceptanceCriteria": [
+        "Nueva función listIssuesForDuplicateCheck(apiKey, { teamId, projectId }) en lib/linear.ts",
+        "Consulta los issues del proyecto cuando hay projectId; cuando no lo hay, los del equipo",
+        "Devuelve por issue: id, identifier, title, url, el nombre del estado y si ese estado es de tipo completado o cancelado",
+        "La conexión se pagina con el mismo patrón que listTeamsAndProjects: tamaño de página conservador, tope de MAX_PAGES y corte cuando el cursor no avanza",
+        "Los tamaños de página se eligen sin disparar el «Query too complex» de Linear, y la elección queda comentada como en las consultas existentes",
+        "Nodos con campos faltantes se descartan en vez de romper el listado, igual que readTeam y readProject",
+        "Nueva ruta GET /api/linear/issues con teamId y projectId que devuelve `{ issues }`, leyendo la API key del store en el servidor y usando errorResponse de lib/api.ts",
+        "La ruta responde 400 cuando falta teamId, con mensaje en español",
+        "Wrapper de cliente en lib/linear-client.ts con su guarda de forma, siguiendo el patrón del resto de lib/*-client.ts",
+        "Tests con fetch stubeado: paginación completa, respuesta parcial y traducción de errores de Linear",
+        "pnpm typecheck passes",
+        "pnpm test passes"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": "",
+      "dependsOn": []
+    },
+    {
+      "id": "US-005",
+      "title": "Módulo de similitud de texto",
+      "description": "Como desarrollador, quiero una función pura que puntúe cuánto se parecen dos tareas, para poder decidir si una ya existe sin llamar a ningún modelo.",
+      "acceptanceCriteria": [
+        "Nuevo módulo lib/similarity.ts, sin dependencias externas y sin importar nada de servidor ni de node:",
+        "Exporta normalizeForMatch(text): minúsculas, sin acentos ni diacríticos, sin puntuación, espacios colapsados",
+        "La normalización descarta palabras vacías frecuentes en español y en inglés y los verbos de encabezado que aportan poco (hacer, revisar, do, check) solo cuando sobra contenido, para que un título corto no quede vacío",
+        "Exporta similarity(a, b) con resultado entre 0 y 1: 1 para textos idénticos tras normalizar, 0 cuando no comparten nada",
+        "La medida combina solapamiento de tokens y de bigramas de caracteres, de modo que «Migrar endpoint de pagos» y «Migración del endpoint de pagos» puntúan alto pese a no compartir la forma exacta de las palabras",
+        "Exporta bestMatch(candidate, existing) que devuelve el elemento más parecido y su puntuación, o null cuando la lista está vacía",
+        "Exporta un umbral con nombre (DUPLICATE_THRESHOLD) comentado con el criterio con el que se eligió",
+        "Tests en lib/similarity.test.ts: idénticos dan 1; diferencias solo de mayúsculas, acentos o puntuación dan 1; misma tarea reformulada queda por encima del umbral; tareas claramente distintas por debajo; cadena vacía contra cualquier cosa da 0; textos largos no degradan a puntuaciones altas por casualidad",
+        "pnpm typecheck passes",
+        "pnpm test passes"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": "",
+      "dependsOn": []
+    },
+    {
+      "id": "US-006",
+      "title": "Comprobación de duplicados por transcripción",
+      "description": "Como usuario, quiero que la app compare mis tareas con lo que ya hay en el proyecto, para enterarme antes de crear un issue repetido.",
+      "acceptanceCriteria": [
+        "Nuevo hook app/use-duplicate-check.ts, con el estado keyed por ruta de transcripción como el resto de hooks del explorador",
+        "Los issues existentes se piden una vez por proyecto seleccionado y se reutilizan para todas las notas mientras no cambie el destino",
+        "La comprobación se ejecuta al terminar una extracción, al cambiar el proyecto de destino y a petición desde un botón «Buscar duplicados»",
+        "Cada fila obtiene: ninguna coincidencia, o la mejor coincidencia con su puntuación, su identifier, su title, su url y si el issue está ya completado o cancelado",
+        "Solo se marca como duplicado la coincidencia que supera DUPLICATE_THRESHOLD",
+        "Un issue en estado completado o cancelado se marca aparte: sigue siendo información útil, pero no bloquea el envío por sí solo",
+        "Editar el título de una fila invalida su resultado y vuelve a comprobarla, con debounce",
+        "Sin API key, sin proyecto elegido o con la consulta fallando, la comprobación queda en un estado no concluyente y nunca bloquea el envío; el error se muestra sin ser modal",
+        "Una respuesta que llega tarde no escribe sobre otra nota ni sobre otro proyecto",
+        "Las filas ya creadas en este push (estado 'created') no se comprueban",
+        "pnpm typecheck passes",
+        "pnpm test passes"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": "",
+      "dependsOn": ["US-004", "US-005"]
+    },
+    {
+      "id": "US-007",
+      "title": "La tabla marca los duplicados y los excluye del envío",
+      "description": "Como usuario, quiero ver qué fila ya existe en Linear y decidir yo si la envío igual, para no crear ruido pero tampoco perder una tarea legítima.",
+      "acceptanceCriteria": [
+        "Una fila con duplicado detectado muestra un distintivo «Ya existe» con el identifier del issue y enlace a su URL, que abre en una pestaña nueva",
+        "El distintivo indica el grado de coincidencia de forma legible para una persona, no como decimal crudo",
+        "Un duplicado cuyo issue está completado o cancelado se distingue visualmente del que está abierto, y su texto lo dice",
+        "Al detectarse, la fila se desmarca automáticamente de «incluir» una sola vez; si el usuario vuelve a marcarla, la app no la desmarca otra vez",
+        "Una fila remarcada a mano se envía con normalidad y muestra que se está forzando",
+        "El resumen del panel de envío refleja las filas excluidas por duplicado, de forma que la cuenta del botón coincide con lo que realmente se va a crear",
+        "Mientras la comprobación está en curso, la tabla lo indica y el botón de envío no se bloquea por ello",
+        "Los colores usan los tokens existentes (warn para el aviso, muted para el issue ya cerrado); no se introduce ninguna variante dark: ni ningún color literal",
+        "Sin API key o sin proyecto, la columna no aparece en vez de mostrar un estado de error permanente",
+        "pnpm typecheck passes",
+        "pnpm test passes"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": "",
+      "dependsOn": ["US-002", "US-006"]
+    }
+  ]
+}
