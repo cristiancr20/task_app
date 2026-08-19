@@ -36,6 +36,25 @@ after each iteration and it's included in prompts for context.
 
 ---
 
+### Parsing/frontmatter fixtures (US-003)
+- The `yaml` package parses on the **core schema**: `date: 2026-08-09` comes back
+  a **string**, not a `Date`. The only spelling that yields a real `Date` is the
+  explicit tag `date: !!timestamp 2026-08-09`. Any test for the `instanceof Date`
+  branch of a date normalizer has to use the tag, or it silently tests the string
+  branch instead.
+- Write a real BOM into the fixture as the JS escape `'\ufeff'` — pasting the
+  invisible character into the source works but is unreviewable in a diff.
+- `fs.readdirSync(dir, { withFileTypes: true })` uses **lstat** semantics: a
+  symlink entry answers `isSymbolicLink()`, and `isFile()` is `false`. Code
+  gated on `entry.isFile()` therefore skips symlinked `.md` files entirely.
+- To exercise an "unreadable file" branch, `fs.chmodSync(file, 0o000)` is the
+  only reliable trick — a dangling symlink never reaches the read. It is a no-op
+  for root, so gate the test with `it.skipIf(process.getuid?.() === 0)` and
+  `chmod 0o600` back in `afterAll` before `rmSync`. Assert inside the test that
+  `readFileSync` really throws, so it cannot pass vacuously.
+
+---
+
 
 ## 2026-08-19 - US-001 - Montar Vitest y el script test
 
@@ -144,5 +163,68 @@ temp directory.
 - `pnpm typecheck` -> passes.
 - Mutation check: both guards disabled -> 3 failures; realpath guard disabled
   -> 1 failure. `lib/transcripts.ts` restored to a clean diff afterwards.
+
+---
+
+## 2026-08-19 - US-003 - Tests del scanner de transcripciones
+
+Covered `readTranscript` and `listFolder` — the parsing layer that decides what
+metadata the model ever sees — with 14 tests (33 total in the suite now) against
+a temp directory whose fixtures the test writes itself.
+
+**What was implemented**
+- `describe('readTranscript')` in `lib/transcripts.test.ts`, over a fixture
+  folder written in `beforeAll`:
+  - valid frontmatter: `title`, `date` (winning over the filename date) and a
+    YAML list of `attendees` are read, `hasFrontmatter` is true, and the body
+    comes back with the `---` block gone;
+  - `words`/`approxTokens` are counted over the body only, not the frontmatter;
+  - `attendees: Ana, Beto , Carla` on one line yields the same array as the list;
+  - malformed YAML (`title: [sin cerrar`) does not throw: `hasFrontmatter` is
+    false, metadata falls back to the filename, and the block stays in the body;
+  - a scalar frontmatter and a sequence frontmatter both give
+    `hasFrontmatter: false`;
+  - no frontmatter at all: `2026-08-09 Weekly sync.md` gives title `Weekly sync`
+    and date `2026-08-09`;
+  - `date: !!timestamp 2026-03-04` (a real `Date` after parsing) normalizes to
+    `2026-03-04`, and a string ISO timestamp keeps only its date part;
+  - a leading BOM does not hide the frontmatter, and is stripped from the body.
+- `describe('listFolder')`, over a second fixture folder:
+  - only `.md` files are listed; `.oculto.md`, `notas.txt`, `README`,
+    `node_modules/` and `.git/` are all left out;
+  - no recursion: `sub` is offered as a folder, `sub/profundo.md` is not in the
+    parent listing but is reachable one level down;
+  - `relPath` is prefixed with the listed folder;
+  - ordering is date descending, then title, with undated files last;
+  - a `chmod 000` file is skipped without breaking the rest of the folder;
+  - the empty path lists the root itself.
+
+**Files changed**
+- `lib/transcripts.test.ts` (imports + two new suites). No production code was
+  touched: `readTranscript` and `listFolder` were already exported.
+
+**Learnings**
+- **`yaml` parses on the core schema, so `date: 2026-08-09` is a string.** The
+  `input instanceof Date` branch of `toIsoDate` is only reachable through the
+  explicit `!!timestamp` tag. The first draft of that test used a bare date and
+  passed — through the string branch, proving nothing about the Date branch.
+  Confirmed by mutation: disabling the `instanceof Date` branch now fails.
+- `readdirSync(..., { withFileTypes: true })` is lstat-based, so the
+  `entry.isFile()` gate in `listFolder` silently drops symlinked `.md` files.
+  Worth knowing before writing a fixture that leans on symlinks.
+- `chmod 000` is the only way to reach the `try/catch` around `readFileSync` —
+  a dangling symlink is filtered out by `isFile()` first. It does nothing for
+  root, hence `it.skipIf`, and it has to be chmodded back before `rmSync`.
+- **Mutation-checked all ten guards this suite exists to pin** (dotfile/
+  `node_modules` skip, `isRecord`, BOM strip, the unreadable-file `catch`, the
+  Date branch, the comma split, `isMarkdown`, the sort, the undated-last rule,
+  and the malformed-YAML `catch`). Every one produces at least one red test;
+  no assertion in the suite is decorative.
+
+**Verification**
+- `pnpm test` -> 2 files, 33 tests passed, exit code 0.
+- `pnpm typecheck` -> passes.
+- Ten mutations run against `lib/transcripts.ts`, each caught (1-3 failures);
+  file restored to a clean diff afterwards (`git status` clean for it).
 
 ---

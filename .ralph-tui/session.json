@@ -3,10 +3,10 @@
   "sessionId": "ef655f0f-1b97-413f-847d-7c6b69e1f31b",
   "status": "running",
   "startedAt": "2026-08-19T20:44:14.216Z",
-  "updatedAt": "2026-08-19T20:49:16.478Z",
-  "currentIteration": 1,
+  "updatedAt": "2026-08-19T20:52:44.608Z",
+  "currentIteration": 2,
   "maxIterations": 0,
-  "tasksCompleted": 1,
+  "tasksCompleted": 2,
   "isPaused": false,
   "agentPlugin": "claude",
   "trackerState": {
@@ -24,8 +24,8 @@
       {
         "id": "US-002",
         "title": "Tests de la guarda de path traversal",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-003",
@@ -93,6 +93,16 @@
       "durationMs": 143800,
       "startedAt": "2026-08-19T20:44:15.841Z",
       "endedAt": "2026-08-19T20:46:39.641Z"
+    },
+    {
+      "iteration": 2,
+      "status": "completed",
+      "taskId": "US-002",
+      "taskTitle": "Tests de la guarda de path traversal",
+      "taskCompleted": true,
+      "durationMs": 155654,
+      "startedAt": "2026-08-19T20:46:40.823Z",
+      "endedAt": "2026-08-19T20:49:16.477Z"
     }
   ],
   "skippedTaskIds": [],
