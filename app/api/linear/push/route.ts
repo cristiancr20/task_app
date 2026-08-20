@@ -1,8 +1,8 @@
 import { errorResponse, HttpError, jsonBody, pathOf, requireContextRoot } from '@/lib/api'
 import { PRIORITIES, normalizeDueDate, type Priority } from '@/lib/extractors/task'
 import { runPush, type PushPlan } from '@/lib/linear-push'
-import type { PushEvent, PushTaskInput, PushedIssue } from '@/lib/push-events'
-import { addHistoryEntry, getConfig } from '@/lib/store'
+import type { PushEvent, PushTaskInput } from '@/lib/push-events'
+import { addHistoryEntry, getConfig, type HistoryIssue } from '@/lib/store'
 import { readTranscript } from '@/lib/transcripts'
 
 /**
@@ -143,17 +143,27 @@ function priority(input: unknown): Priority {
  * The destination comes from the validated `plan` and not from the body again:
  * it is the team and project the issues were actually created under, which is
  * what makes «¿qué queda pendiente de este proyecto?» answerable later.
+ *
+ * Who was named for each task comes from the same place, matched by the row id
+ * every `created` event echoes back. It is not on the wire event because it is
+ * not news to the browser — the row it belongs to is on screen and already says
+ * it — but it is the only record of it once the note has moved on, and the
+ * pending-commitments panel is where it is read again. The parent issue is a
+ * step of the run with no row, so it is named for nobody.
  */
 async function* recordingHistory(
   events: AsyncGenerator<PushEvent>,
   relPath: string,
   plan: PushPlan,
 ): AsyncGenerator<PushEvent> {
-  const issues: PushedIssue[] = []
+  const mentionedByRow = new Map(plan.tasks.map((task) => [task.id, task.mentioned]))
+  const issues: HistoryIssue[] = []
 
   try {
     for await (const event of events) {
-      if (event.type === 'created') issues.push(event.issue)
+      if (event.type === 'created') {
+        issues.push({ ...event.issue, mentioned: mentionedByRow.get(event.id) ?? null })
+      }
       yield event
     }
   } finally {

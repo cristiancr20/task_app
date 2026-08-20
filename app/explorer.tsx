@@ -4,14 +4,18 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import type { FileView } from '@/lib/browse-client'
 import { decideDuplicates, exclusionKey, scopeKeyOf } from '@/lib/duplicate-check'
+import { issueStatesById } from '@/lib/issue-state-summary'
+import { pendingCommitments } from '@/lib/pending-commitments'
 
 import { FileList } from './file-list'
 import { FolderTree } from './folder-tree'
+import { PendingCommitments } from './pending-commitments'
 import { PushPanel } from './push-panel'
 import { PushedHistory } from './pushed-history'
 import { TaskTable } from './task-table'
 import { TranscriptPreview } from './transcript-preview'
 import { useDuplicateCheck } from './use-duplicate-check'
+import { useFolderHistory } from './use-folder-history'
 import { useFolderIssueStates } from './use-folder-issue-states'
 import { useFolderListings } from './use-folder-listings'
 import { useIssueStates } from './use-issue-states'
@@ -117,6 +121,40 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
     files: folderFiles,
     hasLinearApiKey,
   })
+  // The same folder's push history, which is where the *other* meetings are:
+  // their project, their issues and their dates. It is a local read, so it
+  // costs nothing beyond the listing that is already being fetched.
+  const folderHistory = useFolderHistory({ folder: selected, files: folderFiles })
+
+  // What previous meetings of the selected project left open. Both halves of it
+  // are already on the page — the history above and the states the badges were
+  // drawn from — so the panel adds no query of its own: opening a note asks
+  // Linear nothing it has not already been asked in this session. Without a key
+  // there are no states, and without a project the rule answers nothing, so the
+  // panel simply does not appear in either case.
+  const knownStates = useMemo(
+    () => issueStatesById(Object.values(folderIssueStates).flat()),
+    [folderIssueStates],
+  )
+  // The listing already carries every title of the folder; the pure module
+  // falls back to the file name for a note that is not in it.
+  const folderTitles = useMemo(
+    () => Object.fromEntries(folderFiles.map((file) => [file.relPath, file.title])),
+    [folderFiles],
+  )
+  const previousCommitments = useMemo(
+    () =>
+      selectedFile
+        ? pendingCommitments({
+            history: folderHistory,
+            states: knownStates,
+            notePath: selectedFile,
+            projectId: target.projectId || null,
+            titles: folderTitles,
+          })
+        : [],
+    [folderHistory, folderTitles, knownStates, selectedFile, target.projectId],
+  )
 
   const rows = drafts.state?.rows ?? []
   const results = run.state.rows
@@ -355,6 +393,11 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
             {history.length > 0 ? (
               <PushedHistory history={history} states={issueStates} />
             ) : null}
+
+            {/* What the *other* meetings of this project left open, under what
+                this one already produced: the note's own record first, then
+                what it should be asked about. */}
+            <PendingCommitments commitments={previousCommitments} onOpenNote={setSelectedFile} />
 
             <div className="flex min-h-0 flex-1">
               <TaskTable

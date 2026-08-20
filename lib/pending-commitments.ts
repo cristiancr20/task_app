@@ -22,6 +22,13 @@ import type { HistoryEntry } from './store'
 export type PendingCommitment = {
   /** The issue as Linear reports it today — identifier, title, url and state. */
   issue: IssueState
+  /**
+   * Who the transcript put in charge of it, from the row that created it, or
+   * `null` when nobody was named — or when the issue predates the history
+   * recording it. The panel shows it only when there is one: see
+   * `HistoryIssue.mentioned` in `lib/store.ts`.
+   */
+  mentioned: string | null
   /** Root-relative path of the note that created it, so the panel can open it. */
   notePath: string
   /** The note's title, or its file name when nothing better is known. */
@@ -107,7 +114,16 @@ export function pendingCommitments({
         const group = groupOfStateType(state.stateType)
         if (group === 'completed' || group === 'canceled') continue
 
-        found.push({ issue: state, notePath: path, noteTitle, pushedAt: entry.pushedAt })
+        // The state is Linear's, live; the name is the note's, frozen — Linear
+        // was never told who was named, and the transcript is the only place
+        // that ever knew.
+        found.push({
+          issue: state,
+          mentioned: issue.mentioned,
+          notePath: path,
+          noteTitle,
+          pushedAt: entry.pushedAt,
+        })
       }
     }
   }

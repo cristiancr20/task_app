@@ -1,10 +1,4 @@
-import {
-  errorResponse,
-  HttpError,
-  jsonBody,
-  requireContextRoot,
-  requireMarkdownPath,
-} from '@/lib/api'
+import { errorResponse, HttpError, jsonBody, requireContextRoot, requirePaths } from '@/lib/api'
 import { fetchIssueStates, type IssueState } from '@/lib/linear'
 import { getConfig } from '@/lib/store'
 
@@ -71,29 +65,4 @@ export async function POST(request: Request): Promise<Response> {
   } catch (err) {
     return errorResponse(err, '')
   }
-}
-
-/**
- * The `paths` field of an already-parsed body: the notes of one folder, each of
- * them a `.md` file, deduplicated. An empty list is a bad request rather than an
- * empty answer — the browser only asks about notes it has already listed.
- */
-function requirePaths(payload: unknown): string[] {
-  const paths =
-    typeof payload === 'object' && payload !== null
-      ? (payload as { paths?: unknown }).paths
-      : undefined
-
-  if (!Array.isArray(paths) || paths.length === 0) {
-    throw new HttpError(400, 'Falta el campo «paths» con las rutas de los archivos.')
-  }
-
-  const clean = paths.map((path) => {
-    if (typeof path !== 'string' || !path.trim()) {
-      throw new HttpError(400, 'El campo «paths» solo puede contener rutas de archivos.')
-    }
-    return requireMarkdownPath(path.trim())
-  })
-
-  return [...new Set(clean)]
 }

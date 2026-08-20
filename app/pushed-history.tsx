@@ -7,6 +7,7 @@ import {
 } from '@/lib/issue-state-summary'
 import type { HistoryEntry } from '@/lib/store'
 
+import { StateDot } from './issue-state-dot'
 import type { IssueStatesApi } from './use-issue-states'
 
 type Props = {
@@ -26,18 +27,6 @@ const GROUP_LABELS: Record<IssueStateGroup, string> = {
   started: 'en curso',
   unstarted: 'sin empezar',
   canceled: 'canceladas',
-}
-
-/**
- * The colour of each group, on the dot next to a count and next to an issue.
- * Cancelled is muted rather than red: the work was dropped on purpose, which
- * is news but not a problem to fix.
- */
-const GROUP_DOT: Record<IssueStateGroup, string> = {
-  completed: 'bg-ok',
-  started: 'bg-info',
-  unstarted: 'bg-muted',
-  canceled: 'bg-muted',
 }
 
 /**
@@ -110,7 +99,7 @@ export function PushedHistory({ history, states }: Props) {
                           more to whoever runs the meeting than «en curso». */}
                       {state ? (
                         <span className="ml-auto flex shrink-0 items-center gap-1 text-[0.6875rem] text-muted">
-                          <Dot group={groupOfStateType(state.stateType)} />
+                          <StateDot group={groupOfStateType(state.stateType)} />
                           {state.stateName}
                         </span>
                       ) : null}
@@ -184,7 +173,7 @@ function StateReport({ states }: { states: IssueStatesApi }) {
       <p aria-live="polite" className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
         {ISSUE_STATE_GROUPS.filter((group) => summary[group] > 0).map((group) => (
           <span key={group} className="flex items-center gap-1 text-[0.6875rem] text-muted">
-            <Dot group={group} />
+            <StateDot group={group} />
             <span className="font-medium text-content tabular-nums">{summary[group]}</span>
             {GROUP_LABELS[group]}
           </span>
@@ -205,10 +194,6 @@ function StateReport({ states }: { states: IssueStatesApi }) {
       </button>
     </div>
   )
-}
-
-function Dot({ group }: { group: IssueStateGroup }) {
-  return <span aria-hidden="true" className={`size-1.5 shrink-0 rounded-full ${GROUP_DOT[group]}`} />
 }
 
 function Tick() {

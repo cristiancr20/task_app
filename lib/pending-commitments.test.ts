@@ -6,12 +6,14 @@ import type { HistoryEntry, HistoryIssue } from '@/lib/store'
 
 const PROJECT = 'project-acme'
 
-function issue(id: string): HistoryIssue {
+/** A created issue, named for nobody unless a test says otherwise. */
+function issue(id: string, mentioned: string | null = null): HistoryIssue {
   return {
     id,
     identifier: `ENG-${id}`,
     url: `https://linear.app/acme/issue/ENG-${id}`,
     title: `Tarea ${id}`,
+    mentioned,
   }
 }
 
@@ -81,6 +83,7 @@ describe('pendingCommitments', () => {
     expect(pendingCommitments(input({ history, states: statesOf(state('1')) }))).toEqual([
       {
         issue: state('1'),
+        mentioned: null,
         notePath: 'notas/2026-08-01-cierre-con-acme.md',
         noteTitle: 'cierre con acme',
         pushedAt: '2026-08-01T09:30:00.000Z',
@@ -211,6 +214,7 @@ describe('pendingCommitments', () => {
       expect(result).toEqual([
         {
           issue: state('1'),
+          mentioned: null,
           notePath: 'notas/a.md',
           noteTitle: 'a',
           pushedAt: '2026-07-20T10:00:00.000Z',
@@ -266,6 +270,50 @@ describe('pendingCommitments', () => {
       )
 
       expect(result[0].noteTitle).toBe('kickoff')
+    })
+  })
+
+  describe('who the transcript put in charge', () => {
+    it('carries the name the note recorded with the issue', () => {
+      const history = { 'notas/antes.md': [entry({ issues: [issue('1', 'Ana')] })] }
+      const result = pendingCommitments(input({ history, states: statesOf(state('1')) }))
+
+      expect(result[0].mentioned).toBe('Ana')
+    })
+
+    // Linear was never told who was named — the push does not assign anybody —
+    // so the name can only come from the history, never from the live state.
+    it('reads the name from the history and not from the reported state', () => {
+      const history = { 'notas/antes.md': [entry({ issues: [issue('1', 'Ana')] })] }
+      const result = pendingCommitments(
+        input({ history, states: statesOf({ ...state('1'), title: 'Otro título' }) }),
+      )
+
+      expect(result[0]).toMatchObject({ mentioned: 'Ana', issue: { title: 'Otro título' } })
+    })
+
+    it('reads an issue nobody was named for as unknown', () => {
+      const history = { 'notas/antes.md': [entry({ issues: [issue('1')] })] }
+      const result = pendingCommitments(input({ history, states: statesOf(state('1')) }))
+
+      expect(result[0].mentioned).toBeNull()
+    })
+
+    // The row that survives the dedup is the oldest push, so the name shown is
+    // the one that push recorded — not whatever a later note said about it.
+    it('keeps the name of the push it is listed under', () => {
+      const history = {
+        'notas/b.md': [
+          entry({ pushedAt: '2026-08-05T10:00:00.000Z', issues: [issue('1', 'Beatriz')] }),
+        ],
+        'notas/a.md': [
+          entry({ pushedAt: '2026-07-20T10:00:00.000Z', issues: [issue('1', 'Ana')] }),
+        ],
+      }
+      const result = pendingCommitments(input({ history, states: statesOf(state('1')) }))
+
+      expect(result).toHaveLength(1)
+      expect(result[0]).toMatchObject({ notePath: 'notas/a.md', mentioned: 'Ana' })
     })
   })
 

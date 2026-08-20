@@ -12,6 +12,17 @@ export type HistoryIssue = {
   identifier: string
   url: string
   title: string
+  /**
+   * Who the transcript put in charge of the task, verbatim from the note, as
+   * the row that created the issue said it. Linear is not asked for an
+   * assignee: nobody is assigned by the push, and this is the only record of
+   * whose name was said out loud in the meeting.
+   *
+   * `null` is «no consta» and never «nadie» — an issue created before this was
+   * recorded and a task nobody was named for are indistinguishable, so anything
+   * showing it has to leave it out rather than claim the task is unowned.
+   */
+  mentioned: string | null
 }
 
 /** One push of a transcript to Linear. */
@@ -98,13 +109,18 @@ export function updateConfig(partial: Partial<Config>): Config {
 }
 
 /**
- * What a caller has to hand over to record a push. The destination is optional
- * because it is a later addition: a caller that does not track it writes the
- * same call it always wrote and `normalizeEntry` stores `null`, exactly as it
- * does for an entry saved before the fields existed.
+ * What a caller has to hand over to record a push. The destination — and, on
+ * each issue, who was named for it — is optional because all three are later
+ * additions: a caller that does not track them writes the same call it always
+ * wrote and `normalizeEntry` stores `null`, exactly as it does for an entry
+ * saved before the fields existed.
  */
-export type HistoryEntryInput = Omit<HistoryEntry, 'teamId' | 'projectId'> &
-  Partial<Pick<HistoryEntry, 'teamId' | 'projectId'>>
+export type HistoryEntryInput = Omit<HistoryEntry, 'teamId' | 'projectId' | 'issues'> &
+  Partial<Pick<HistoryEntry, 'teamId' | 'projectId'>> & { issues: HistoryIssueInput[] }
+
+/** An issue as a caller that does not track who was named hands it over. */
+export type HistoryIssueInput = Omit<HistoryIssue, 'mentioned'> &
+  Partial<Pick<HistoryIssue, 'mentioned'>>
 
 /** Append one push entry to the history of `relPath`, most recent last. */
 export function addHistoryEntry(relPath: string, entry: HistoryEntryInput): Config {
@@ -210,6 +226,12 @@ function normalizeEntry(input: unknown): HistoryEntry | null {
   }
 }
 
+/**
+ * The four fields are what makes an issue linkable — without any of them there
+ * is nothing to show and nothing to open, so the issue is dropped. `mentioned`
+ * is not one of them: it is a later addition, and an issue written before it
+ * existed keeps its place in the history and reads as «no consta».
+ */
 function normalizeIssue(input: unknown): HistoryIssue | null {
   if (!isRecord(input)) return null
   const { id, identifier, url, title } = input
@@ -221,7 +243,7 @@ function normalizeIssue(input: unknown): HistoryIssue | null {
   ) {
     return null
   }
-  return { id, identifier, url, title }
+  return { id, identifier, url, title, mentioned: nullableString(input.mentioned) }
 }
 
 function stringArray(input: unknown): string[] {

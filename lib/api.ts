@@ -76,6 +76,36 @@ export function pathOf(payload: unknown): string {
   return relPath.trim()
 }
 
+/**
+ * The `paths` field of an already-parsed body: the notes of one folder, each of
+ * them a `.md` file, deduplicated. An empty list is a bad request rather than an
+ * empty answer — the browser only asks about notes it has already listed.
+ *
+ * Shared by the two routes that answer about a whole folder at once
+ * (`/api/linear/folder-issue-states`, `/api/history`): they draw the same panel
+ * from the same listing, and a folder one of them accepted and the other
+ * refused would show a badge with no report behind it.
+ */
+export function requirePaths(payload: unknown): string[] {
+  const paths =
+    typeof payload === 'object' && payload !== null
+      ? (payload as { paths?: unknown }).paths
+      : undefined
+
+  if (!Array.isArray(paths) || paths.length === 0) {
+    throw new HttpError(400, 'Falta el campo «paths» con las rutas de los archivos.')
+  }
+
+  const clean = paths.map((path) => {
+    if (typeof path !== 'string' || !path.trim()) {
+      throw new HttpError(400, 'El campo «paths» solo puede contener rutas de archivos.')
+    }
+    return requireMarkdownPath(path.trim())
+  })
+
+  return [...new Set(clean)]
+}
+
 /** The `path` field of a JSON request body, for the routes that take only that. */
 export async function pathFromBody(request: Request): Promise<string> {
   return pathOf(await jsonBody(request))

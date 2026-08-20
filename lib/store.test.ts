@@ -63,12 +63,14 @@ function readRaw(): unknown {
   return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'))
 }
 
+/** A created issue with nobody named for it — the shape saved before US-008. */
 function issue(overrides: Partial<HistoryIssue> = {}): HistoryIssue {
   return {
     id: 'issue-1',
     identifier: 'ENG-1',
     url: 'https://linear.app/acme/issue/ENG-1',
     title: 'Ship the thing',
+    mentioned: null,
     ...overrides,
   }
 }
@@ -236,6 +238,51 @@ describe('getConfig', () => {
     ])
   })
 
+  it('keeps an issue saved before the person was recorded, reading it as unknown', () => {
+    writeConfig({
+      history: {
+        'notes/a.md': [
+          {
+            ...entry(),
+            issues: [
+              {
+                id: 'issue-1',
+                identifier: 'ENG-1',
+                url: 'https://linear.app/acme/issue/ENG-1',
+                title: 'Ship the thing',
+              },
+            ],
+          },
+        ],
+      },
+    })
+
+    expect(getConfig().history['notes/a.md']).toEqual([entry({ issues: [issue()] })])
+  })
+
+  it('reads back the person an issue was created for', () => {
+    writeConfig({ history: { 'notes/a.md': [entry({ issues: [issue({ mentioned: 'Ana' })] })] } })
+
+    expect(getConfig().history['notes/a.md']).toEqual([
+      entry({ issues: [issue({ mentioned: 'Ana' })] }),
+    ])
+  })
+
+  // The four linkable fields are what an issue *is*; the person is a later
+  // addition and a corrupt value must not cost the row its link to Linear.
+  it.each([
+    ['a number', 7],
+    ['an object', { name: 'Ana' }],
+    ['a list', ['Ana']],
+    ['a boolean', true],
+  ])('reads a person stored as %s as unknown, keeping the issue', (_label, mentioned) => {
+    writeConfig({
+      history: { 'notes/a.md': [{ ...entry(), issues: [{ ...issue(), mentioned }] }] },
+    })
+
+    expect(getConfig().history['notes/a.md']).toEqual([entry({ issues: [issue()] })])
+  })
+
   it('reads back the destination of an entry that has one', () => {
     writeConfig({
       history: {
@@ -358,6 +405,31 @@ describe('addHistoryEntry', () => {
 
   it('still accepts a caller that names no destination, storing it as unknown', () => {
     addHistoryEntry('notes/a.md', { pushedAt: '2026-01-01T00:00:00.000Z', issues: [issue()] })
+
+    expect(getHistory('notes/a.md')).toEqual([entry()])
+  })
+
+  it('remembers who each issue was created for', () => {
+    addHistoryEntry('notes/a.md', entry({ issues: [issue({ mentioned: 'Ana' }), issue({ id: 'issue-2' })] }))
+
+    expect(getHistory('notes/a.md')[0].issues).toEqual([
+      issue({ mentioned: 'Ana' }),
+      issue({ id: 'issue-2' }),
+    ])
+  })
+
+  it('still accepts a caller that names nobody, storing it as unknown', () => {
+    addHistoryEntry('notes/a.md', {
+      pushedAt: '2026-01-01T00:00:00.000Z',
+      issues: [
+        {
+          id: 'issue-1',
+          identifier: 'ENG-1',
+          url: 'https://linear.app/acme/issue/ENG-1',
+          title: 'Ship the thing',
+        },
+      ],
+    })
 
     expect(getHistory('notes/a.md')).toEqual([entry()])
   })

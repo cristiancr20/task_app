@@ -129,6 +129,28 @@ after each iteration and it's included in prompts for context.
   «Actualizando…») goes *outside* the `aria-live` region — otherwise a screen
   reader announces the polling rather than the news.
 
+### A panel about the *other* notes of the folder (`app/pending-commitments.tsx`)
+- The browser only ever holds the history of the note it opened
+  (`GET /api/transcript`); anything about the notes *around* it needs
+  `POST /api/history`, the folder-wide read that mirrors
+  `/api/linear/folder-issue-states` — same `requirePaths` (now shared, in
+  `lib/api.ts`), same «a note with no history answers `[]`», one `getConfig()`
+  for the whole folder.
+- It is a separate route on purpose: the history is a local file read that works
+  with no Linear key, and folding it into the query that does need one would
+  make the panel's data depend on another question's key check.
+- A panel that decorates a meeting is *removed*, never emptied: no key → no
+  states → no rows → no panel. That is what makes «sin API key no aparece» true
+  by construction instead of by a third status.
+- The early return on «nothing to show» goes *after* the hooks: the panel comes
+  and goes as the project changes, and a conditional hook would take the fold
+  state with it.
+- One `Date.now()` per render, passed down to every row, so two commitments
+  pushed together cannot read as «hace 1 semana» and «hace 2 semanas».
+- A control whose list can grow («Ver todas») caps the list and stays *outside*
+  the scroll area — otherwise the tasks below lose the column and the fold
+  control scrolls away with the rows.
+
 ### Selecting across the whole history (`lib/pending-commitments.ts`)
 - A rule about «what other notes still owe us» is a pure function over
   `Config['history']` + a `Record<issueId, IssueState>` (what `issueStatesById`
@@ -457,4 +479,90 @@ after each iteration and it's included in prompts for context.
     honest — the caller passes the listing it already has — instead of making the
     pure module read from disk or the panel re-derive titles the file list
     already computed.
+---
+
+## 2026-08-19 - US-008
+- `app/pending-commitments.tsx` (new): «Pendiente de reuniones anteriores» — one
+  row per open commitment of a previous meeting of the selected project, with
+  the `identifier` linked to Linear, the title, who the transcript put at the
+  helm, «abierta hace 3 semanas» (exact date on hover) and Linear's own wording
+  for the state next to the shared dot. The meeting it came from is a *button* —
+  opening a note changes what this page shows, it does not navigate away — while
+  the issue is a link: two questions, two destinations. It folds from its header,
+  shows the five oldest with «Ver todas (N)», caps the expanded list at
+  `max-h-56`, and renders nothing at all when there is nothing pending.
+- `lib/store.ts`: `HistoryIssue` gains `mentioned: string | null`, read through
+  `nullableString` in `normalizeIssue` — the four linkable fields still decide
+  whether an issue survives, so an issue written before this keeps its place and
+  reads as «no consta». `HistoryIssueInput` (and `HistoryEntryInput` carrying it)
+  keeps every existing caller compiling.
+- `app/api/linear/push/route.ts`: `recordingHistory` matches each `created` event
+  back to the validated plan by row id and stores that row's `mentioned`. It is
+  deliberately *not* added to the wire event: the browser already has the row on
+  screen, and since the push assigns nobody in Linear, the history is the only
+  place the name survives.
+- `lib/pending-commitments.ts`: `PendingCommitment.mentioned`, taken from the
+  stored issue while the rest of the row comes from the live state.
+- `lib/elapsed.ts` (new): `formatElapsed(since, now)` — «hoy», «ayer», days,
+  weeks, months (stopping at eleven so «hace 12 meses» never precedes «hace 1
+  año») and years; `null` for a stamp that is not a date, «hoy» for one in the
+  future.
+- `app/api/history/route.ts` (new): `POST { paths }` → `{ history }`, the push
+  history of a whole folder, one config read, no key required. `requirePaths`
+  moved to `lib/api.ts` and is now shared with `/api/linear/folder-issue-states`.
+- `lib/history-client.ts` (new): `fetchFolderHistory(paths)`, the usual five-step
+  wrapper, validating each entry and each issue including the nullable
+  destination and the nullable name.
+- `app/use-folder-history.ts` (new): the same cache shape as
+  `useFolderIssueStates` — keyed by folder, invalidated by «which notes and how
+  much each has pushed», read without a key comparison, silent on failure.
+- `app/issue-state-dot.tsx` (new): `StateDot` and the group→token map, extracted
+  from `pushed-history.tsx` so the two panels that now show states side by side
+  cannot drift apart. Colours are `bg-ok`/`bg-info`/`bg-muted` plus
+  `bg-info-wash`/`text-info` for the panel — tokens only, no hex anywhere.
+- `app/explorer.tsx`: feeds the pure module with the folder's history, the states
+  the badges were already drawn from (`issueStatesById` over the folder cache),
+  the open note, `target.projectId` and the titles from the listing — so the
+  panel adds **no Linear query at all**. `onOpenNote` is `setSelectedFile`.
+- Files changed: `lib/store.ts`, `lib/store.test.ts` (+8),
+  `lib/pending-commitments.ts`, `lib/pending-commitments.test.ts` (+4),
+  `lib/elapsed.ts` + `lib/elapsed.test.ts` (new, 24), `lib/history-client.ts` +
+  `lib/history-client.test.ts` (new, 23), `lib/api.ts`,
+  `app/api/history/route.ts` (new),
+  `app/api/linear/folder-issue-states/route.ts`, `app/api/linear/push/route.ts`,
+  `app/use-folder-history.ts` (new), `app/pending-commitments.tsx` (new),
+  `app/issue-state-dot.tsx` (new), `app/pushed-history.tsx`, `app/explorer.tsx`.
+- `pnpm typecheck`, `pnpm test` (640 tests, +59) and `pnpm build` pass, with
+  `ƒ /api/history` in the route table. The route was exercised live against the
+  real config: both real notes come back with their issues (`mentioned: null`,
+  the pre-US-008 shape), a note with no history answers `[]`, and the shared
+  guard answers «Falta el campo «paths»…» and «Solo se pueden leer archivos .md»
+  from *both* folder routes. The panel itself was rendered to static markup with
+  a throwaway harness (since deleted): an empty list produces no markup at all,
+  one commitment produces every field the story asks for, and seven produce five
+  rows plus «Ver todas (7)». It could not be checked in the browser: the real
+  history predates US-006, so every entry carries `projectId: null` and the
+  panel is correctly invisible, and fabricating a second pushed note would have
+  meant writing into the user's context repo.
+- **Learnings:**
+  - «La persona que la transcripción puso al mando» was not answerable from
+    anything stored: `mentioned` reached Linear inside the issue's *description*
+    and was never kept. Widening `HistoryIssue` is the US-006 move again, and the
+    same reading applies — `null` is «no consta», so a row drops the name rather
+    than claiming the task is unowned.
+  - Deriving it in the route from the validated plan, instead of adding it to the
+    `created` event, left the wire contract and the whole client untouched: the
+    browser has no use for a field whose row is already on its screen.
+  - The states could be reused from the session cache but the *history* could
+    not — it had never been sent for any note but the one open. That asymmetry is
+    what the new route is for, and it is why that route needs no key: it answers
+    from the config, not from Linear.
+  - Scoping the panel to the selected folder is what makes «no vuelve a
+    consultar» true: the list is a selection over exactly the states the badges
+    already asked for, so opening a note costs one local file read and zero
+    Linear queries. A pending commitment from a folder nobody has opened is a
+    smaller loss than a burst of queries per note.
+  - Extracting `StateDot` was not tidiness: two panels now report Linear states
+    within a few pixels of each other, and a dot that meant `info` in one and
+    something else in the other would be read as a difference in the data.
 ---

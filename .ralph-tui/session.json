@@ -3,10 +3,10 @@
   "sessionId": "46fd4f4c-ffce-482b-acbb-d8f2ab1265b5",
   "status": "running",
   "startedAt": "2026-08-19T23:52:19.741Z",
-  "updatedAt": "2026-08-20T00:24:23.800Z",
-  "currentIteration": 6,
+  "updatedAt": "2026-08-20T00:37:00.466Z",
+  "currentIteration": 7,
   "maxIterations": 0,
-  "tasksCompleted": 6,
+  "tasksCompleted": 7,
   "isPaused": false,
   "agentPlugin": "claude",
   "trackerState": {
@@ -54,8 +54,8 @@
       {
         "id": "US-007",
         "title": "Selector de compromisos pendientes",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-008",
@@ -137,6 +137,16 @@
       "durationMs": 164837,
       "startedAt": "2026-08-20T00:17:49.059Z",
       "endedAt": "2026-08-20T00:20:33.896Z"
+    },
+    {
+      "iteration": 7,
+      "status": "completed",
+      "taskId": "US-007",
+      "taskTitle": "Selector de compromisos pendientes",
+      "taskCompleted": true,
+      "durationMs": 228793,
+      "startedAt": "2026-08-20T00:20:35.005Z",
+      "endedAt": "2026-08-20T00:24:23.798Z"
     }
   ],
   "skippedTaskIds": [],
