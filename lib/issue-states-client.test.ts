@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { fetchIssueStates } from '@/lib/issue-states-client'
+import { fetchFolderIssueStates, fetchIssueStates } from '@/lib/issue-states-client'
 import type { IssueState } from '@/lib/linear'
 
 /** One reported state, with only the fields a test cares about overridden. */
@@ -143,6 +143,123 @@ describe('fetchIssueStates', () => {
     stubFetch(new TypeError('Failed to fetch'))
 
     await expect(fetchIssueStates('nota.md')).rejects.toThrow(
+      'No se pudo contactar con el servidor de la aplicación.',
+    )
+  })
+})
+
+describe('fetchFolderIssueStates', () => {
+  it('answers the states of every note the folder asked about', async () => {
+    stubFetch(
+      json({
+        states: {
+          'reuniones/lunes.md': [state()],
+          'reuniones/martes.md': [state({ id: 'iss_2', stateType: 'completed' })],
+        },
+      }),
+    )
+
+    await expect(
+      fetchFolderIssueStates(['reuniones/lunes.md', 'reuniones/martes.md']),
+    ).resolves.toEqual({
+      'reuniones/lunes.md': [state()],
+      'reuniones/martes.md': [state({ id: 'iss_2', stateType: 'completed' })],
+    })
+  })
+
+  // One request for the whole folder is the point of this route: the list draws
+  // a badge per row, and a request per row would be a burst of round trips.
+  it('posts every path in a single request', async () => {
+    const calls = stubFetch(json({ states: {} }))
+
+    await fetchFolderIssueStates(['a.md', 'b.md', 'c.md'])
+
+    expect(calls).toHaveLength(1)
+    expect(calls[0].url).toBe('/api/linear/folder-issue-states')
+    expect(calls[0].init?.method).toBe('POST')
+    expect(calls[0].init?.headers).toEqual({ 'content-type': 'application/json' })
+    expect(JSON.parse(String(calls[0].init?.body))).toEqual({ paths: ['a.md', 'b.md', 'c.md'] })
+  })
+
+  it('never reads from the cache', async () => {
+    const calls = stubFetch(json({ states: {} }))
+
+    await fetchFolderIssueStates(['a.md'])
+
+    expect(calls[0].init?.cache).toBe('no-store')
+  })
+
+  // A folder where nobody pushed anything is an empty report, not a failure.
+  it('accepts a report about no note at all', async () => {
+    stubFetch(json({ states: {} }))
+
+    await expect(fetchFolderIssueStates(['a.md'])).resolves.toEqual({})
+  })
+
+  // A note Linear knows nothing about keeps its key with an empty list, which
+  // is «no hay nada que contar» rather than «no lo pregunté».
+  it('accepts a note reported with no states', async () => {
+    stubFetch(json({ states: { 'a.md': [] } }))
+
+    await expect(fetchFolderIssueStates(['a.md'])).resolves.toEqual({ 'a.md': [] })
+  })
+
+  it('passes the route’s own message through', async () => {
+    stubFetch(json({ error: 'No hay ninguna API key de Linear guardada.' }, 400))
+
+    await expect(fetchFolderIssueStates(['a.md'])).rejects.toThrow(
+      'No hay ninguna API key de Linear guardada.',
+    )
+  })
+
+  it('falls back when the failure carries no message', async () => {
+    stubFetch(json({}, 500))
+
+    await expect(fetchFolderIssueStates(['a.md'])).rejects.toThrow(
+      'No se pudo consultar el estado de los issues en Linear.',
+    )
+  })
+
+  it('falls back when the failure is not even JSON', async () => {
+    stubFetch(html(502))
+
+    await expect(fetchFolderIssueStates(['a.md'])).rejects.toThrow(
+      'No se pudo consultar el estado de los issues en Linear.',
+    )
+  })
+
+  it.each([
+    ['states missing', { reports: {} }],
+    ['states as a list', { states: [] }],
+    ['states as null', { states: null }],
+    ['a list instead of a report', []],
+    ['null', null],
+    ['a note whose states are not a list', { states: { 'a.md': state() } }],
+    ['a note with an incomplete state', { states: { 'a.md': [{ id: 'iss_1' }] } }],
+    [
+      'a note with a state outside the union',
+      { states: { 'a.md': [{ ...state(), stateType: 'done' }] } },
+    ],
+  ])('refuses an answer with %s', async (_label, body) => {
+    stubFetch(json(body))
+
+    await expect(fetchFolderIssueStates(['a.md'])).rejects.toThrow(
+      'El servidor devolvió una respuesta inesperada.',
+    )
+  })
+
+  it('refuses an answer that is not JSON', async () => {
+    stubFetch(html(200))
+
+    await expect(fetchFolderIssueStates(['a.md'])).rejects.toThrow(
+      'El servidor devolvió una respuesta inesperada.',
+    )
+  })
+
+  it('reports a server it could not reach', async () => {
+    stubFetch(new TypeError('Failed to fetch'))
+
+    await expect(fetchFolderIssueStates(['a.md'])).rejects.toThrow(
       'No se pudo contactar con el servidor de la aplicación.',
     )
   })

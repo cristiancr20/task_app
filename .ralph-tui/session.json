@@ -3,10 +3,10 @@
   "sessionId": "46fd4f4c-ffce-482b-acbb-d8f2ab1265b5",
   "status": "running",
   "startedAt": "2026-08-19T23:52:19.741Z",
-  "updatedAt": "2026-08-20T00:08:10.666Z",
-  "currentIteration": 3,
+  "updatedAt": "2026-08-20T00:17:47.955Z",
+  "currentIteration": 4,
   "maxIterations": 0,
-  "tasksCompleted": 3,
+  "tasksCompleted": 4,
   "isPaused": false,
   "agentPlugin": "claude",
   "trackerState": {
@@ -36,8 +36,8 @@
       {
         "id": "US-004",
         "title": "El estado se refresca solo en segundo plano",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-005",
@@ -107,6 +107,16 @@
       "durationMs": 279939,
       "startedAt": "2026-08-19T23:57:17.171Z",
       "endedAt": "2026-08-20T00:01:57.110Z"
+    },
+    {
+      "iteration": 4,
+      "status": "completed",
+      "taskId": "US-004",
+      "taskTitle": "El estado se refresca solo en segundo plano",
+      "taskCompleted": true,
+      "durationMs": 372447,
+      "startedAt": "2026-08-20T00:01:58.218Z",
+      "endedAt": "2026-08-20T00:08:10.665Z"
     }
   ],
   "skippedTaskIds": [],

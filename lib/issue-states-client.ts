@@ -47,6 +47,43 @@ export async function fetchIssueStates(relPath: string): Promise<IssueState[]> {
   return body.states
 }
 
+/**
+ * `POST /api/linear/folder-issue-states` as seen from the browser: the same
+ * answer as `fetchIssueStates`, for every note of one folder at once.
+ *
+ * The file list draws a badge per row, and a request per row would be a burst of
+ * round trips every time the user picks another folder — so the panel asks once,
+ * for the notes it is about to draw, and reads each row out of the answer. The
+ * paths are all that travels, exactly as above.
+ *
+ * A note the folder listed but Linear knows nothing about comes back as an empty
+ * list, not as a missing key: «no hay nada que contar» is an answer.
+ */
+export async function fetchFolderIssueStates(
+  relPaths: readonly string[],
+): Promise<Record<string, IssueState[]>> {
+  let response: Response
+  try {
+    response = await fetch('/api/linear/folder-issue-states', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ paths: relPaths }),
+      cache: 'no-store',
+    })
+  } catch {
+    throw new Error('No se pudo contactar con el servidor de la aplicación.')
+  }
+
+  const body: unknown = await response.json().catch(() => null)
+
+  if (!response.ok) throw new Error(errorMessage(body))
+  if (!isFolderIssueStates(body)) {
+    throw new Error('El servidor devolvió una respuesta inesperada.')
+  }
+
+  return body.states
+}
+
 function errorMessage(body: unknown): string {
   if (typeof body === 'object' && body !== null) {
     const { error } = body as { error?: unknown }
@@ -79,4 +116,16 @@ function isIssueState(state: unknown): state is IssueState {
     typeof stateName === 'string' &&
     ISSUE_STATE_TYPES.some((type) => type === stateType)
   )
+}
+
+/**
+ * The folder-wide answer: one list of states per note path. The lists are
+ * checked item by item, like the single-note report — the badge groups them by
+ * `stateType`, and a value outside the union would be counted as nothing.
+ */
+function isFolderIssueStates(body: unknown): body is { states: Record<string, IssueState[]> } {
+  if (typeof body !== 'object' || body === null) return false
+  const { states } = body as { states?: unknown }
+  if (typeof states !== 'object' || states === null || Array.isArray(states)) return false
+  return Object.values(states).every((list) => Array.isArray(list) && list.every(isIssueState))
 }

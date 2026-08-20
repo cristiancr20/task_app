@@ -67,6 +67,25 @@ after each iteration and it's included in prompts for context.
   in `node`), so the arithmetic they display lives in `lib/` — see
   `lib/duplicate-check.ts`, `lib/issue-state-summary.ts` — and is tested there.
 
+### A report about a whole folder (`useFolderIssueStates`)
+
+- A panel that draws one badge per row asks *once* for the folder, never once
+  per row: the route takes `{ paths }`, reads the config a single time, pools
+  every id and lets `fetchIssueStates` batch them — see
+  `app/api/linear/folder-issue-states/route.ts`.
+- The cache is keyed by folder and its key carries what the answer was computed
+  from (each note and how many issues it created), so a push in the folder on
+  screen invalidates it by itself, as the ids do in `useIssueStates`.
+- It is *read* without comparing the key, unlike the per-note hooks: the entry
+  can only be a stale answer about these very notes, and dropping it while the
+  next one travels would blink every badge in the list.
+- A badge has no room for «Reintentar», so a failure here is silent by design:
+  no key, no pushed note and a failed query all leave every row saying exactly
+  what it said before the feature existed. That is the whole «sin hueco ni
+  error» requirement, and it is why the decoration must never replace the fact
+  it decorates — the count comes from the history and only *gains* the progress
+  (`5 tareas` → `3/5 tareas`), so nothing ever renders a placeholder.
+
 ### Polling a per-note report (`useIssueStates`)
 
 - A hook that re-reads its data on a timer splits the round key in two:
@@ -252,4 +271,57 @@ after each iteration and it's included in prompts for context.
   - `enabled === false` returning before anything is created is what makes «una
     nota sin historial no programa ningún refresco» true by construction rather
     than by a guard inside the tick.
+---
+
+## 2026-08-19 - US-005
+- `app/api/linear/folder-issue-states/route.ts` (new): `POST { paths }` →
+  `{ states: { [path]: IssueState[] } }`. Validates the list (`.md` only,
+  deduplicated, empty is a 400), checks the key before the history exactly like
+  the single-note route, reads the config **once** for the whole folder, pools
+  every id of every note into one `fetchIssueStates` call and maps the answer
+  back per path. Only paths travel; the ids and the key stay on the server.
+- `lib/issue-states-client.ts`: `fetchFolderIssueStates(paths)`, the same five
+  steps as every other wrapper, with `isFolderIssueStates()` checking each
+  note's list item by item through the existing `isIssueState`.
+- `lib/pushed-progress.ts` (new): `pushedProgress(issues, states)` — closed
+  (done or cancelled, a repeated id counted once, capped at the total) out of
+  the note's *own history*, and `done`. `null` means «nothing to say yet», which
+  is what keeps the badge in its old form without a placeholder.
+- `app/use-folder-issue-states.ts` (new): one query per folder, keyed by folder
+  path, invalidated by the notes and their issue counts, read without a key
+  comparison so the badges do not blink, and silent on failure.
+- `app/file-list.tsx`: the badge now reads `3/5 tareas` once the states are in
+  (`5 tareas` until then), wears `ok` instead of `warn` when everything is
+  closed, and says the progress first in its `title` and to a screen reader.
+- `app/explorer.tsx`: feeds the hook with the selected folder's files and passes
+  `issueStates` to `FileList`. A push already refreshes that folder's listing,
+  which changes the key and re-asks.
+- Files changed: `app/api/linear/folder-issue-states/route.ts` (new),
+  `lib/issue-states-client.ts`, `lib/issue-states-client.test.ts` (+18),
+  `lib/pushed-progress.ts` (new), `lib/pushed-progress.test.ts` (new, 13),
+  `app/use-folder-issue-states.ts` (new), `app/file-list.tsx`,
+  `app/explorer.tsx`.
+- `pnpm typecheck`, `pnpm test` (545 tests, +31) and `pnpm build` pass. The
+  route was also exercised against the real config: notes with no history answer
+  `{ states: { ...: [] } }` with no request to Linear, and two real notes came
+  back in one query. The two badges were checked in the browser — amber
+  «✓ 0/3 tareas» and, with the answer mocked as all-completed, green
+  «✓ 3/3 tareas».
+- **Learnings:**
+  - The denominator has to be the note's history and not the size of the
+    report: it is the number the row already showed, so a late answer *completes*
+    the badge instead of rewriting it. It also errs the right way — an issue
+    Linear has forgotten cannot be counted as closed, so the note reads as
+    pending rather than as finished.
+  - Cancelled counts as closed here although the note's own panel keeps it in
+    its own bucket: the list answers «¿queda algo por volver?», and a task
+    dropped on purpose is not something to come back to.
+  - This is the first hook that reads its cached entry *without* comparing the
+    request key. The per-note hooks must not render one note's answer under
+    another's name; here the entry is already keyed by the folder it is about,
+    so the only thing a key comparison would add is a blink.
+  - A folder-wide route has to read `getConfig()` once: `getHistory` re-reads
+    and re-parses `config.json` per call, which would be one file read per row.
+  - `pnpm build` is worth running for a new route — it is what proves the route
+    was registered (`ƒ /api/linear/folder-issue-states` in the route table).
 ---

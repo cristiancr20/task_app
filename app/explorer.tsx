@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
+import type { FileView } from '@/lib/browse-client'
 import { decideDuplicates, exclusionKey, scopeKeyOf } from '@/lib/duplicate-check'
 
 import { FileList } from './file-list'
@@ -11,6 +12,7 @@ import { PushedHistory } from './pushed-history'
 import { TaskTable } from './task-table'
 import { TranscriptPreview } from './transcript-preview'
 import { useDuplicateCheck } from './use-duplicate-check'
+import { useFolderIssueStates } from './use-folder-issue-states'
 import { useFolderListings } from './use-folder-listings'
 import { useIssueStates } from './use-issue-states'
 import { usePushOptions } from './use-push-options'
@@ -19,6 +21,9 @@ import { usePushTarget } from './use-push-target'
 import { useSplit } from './use-split'
 import { useTaskDrafts } from './use-task-drafts'
 import { useTranscript } from './use-transcript'
+
+/** A folder that has not been listed yet, as one array rather than a new one per render. */
+const NO_FILES: FileView[] = []
 
 type Props = {
   /** Absolute path of the configured context folder, for the tree's root row. */
@@ -98,6 +103,18 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
   const issueStates = useIssueStates({
     relPath: selectedFile,
     issueIds: historyIssueIds,
+    hasLinearApiKey,
+  })
+
+  // The badges of the list read from one query for the whole folder on screen,
+  // not one per row — see `useFolderIssueStates`. It is about the *selected*
+  // folder, which is the one `FileList` draws, and not about the note open in
+  // the column to its right.
+  const folder = states[selected]
+  const folderFiles = folder?.status === 'ready' ? folder.listing.files : NO_FILES
+  const folderIssueStates = useFolderIssueStates({
+    folder: selected,
+    files: folderFiles,
     hasLinearApiKey,
   })
 
@@ -258,6 +275,7 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
         <FileList
           state={states[selected]}
           breadcrumb={breadcrumb(rootLabel, selected)}
+          issueStates={folderIssueStates}
           selectedFile={selectedFile}
           onSelectFile={setSelectedFile}
           onRetry={() => reload(selected)}
