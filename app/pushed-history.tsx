@@ -134,6 +134,12 @@ export function PushedHistory({ history, states }: Props) {
  * notes out of five where nothing was cancelled. A failure is a notice with a
  * «Reintentar» rather than an alert: the history under it is intact and still
  * useful, and the states are the part that is missing.
+ *
+ * The counters bring their own «Actualizar» because the cycle behind them is
+ * deliberately unhurried and stops with the tab: somebody who has just moved a
+ * card in Linear and switched back should not have to guess how long the wait
+ * is. When a refresh fails, the counters stay and say so in three words — they
+ * are still true, they are just no longer known to be current.
  */
 function StateReport({ states }: { states: IssueStatesApi }) {
   if (states.status === 'unavailable') return null
@@ -146,7 +152,7 @@ function StateReport({ states }: { states: IssueStatesApi }) {
         </span>
         <button
           type="button"
-          onClick={states.retry}
+          onClick={states.refresh}
           className="shrink-0 underline underline-offset-2 hover:text-content"
         >
           Reintentar
@@ -171,15 +177,33 @@ function StateReport({ states }: { states: IssueStatesApi }) {
   if (summary.total === 0) return null
 
   return (
-    <p aria-live="polite" className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1">
-      {ISSUE_STATE_GROUPS.filter((group) => summary[group] > 0).map((group) => (
-        <span key={group} className="flex items-center gap-1 text-[0.6875rem] text-muted">
-          <Dot group={group} />
-          <span className="font-medium text-content tabular-nums">{summary[group]}</span>
-          {GROUP_LABELS[group]}
-        </span>
-      ))}
-    </p>
+    <div className="mt-1.5 flex items-center gap-x-2.5">
+      {/* The counters are the live region and the button is deliberately
+          outside it: its label flips to «Actualizando…» on every background
+          round, and a screen reader should hear the news, not the polling. */}
+      <p aria-live="polite" className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
+        {ISSUE_STATE_GROUPS.filter((group) => summary[group] > 0).map((group) => (
+          <span key={group} className="flex items-center gap-1 text-[0.6875rem] text-muted">
+            <Dot group={group} />
+            <span className="font-medium text-content tabular-nums">{summary[group]}</span>
+            {GROUP_LABELS[group]}
+          </span>
+        ))}
+        {states.refreshError ? (
+          <span title={states.refreshError} className="text-[0.6875rem] text-muted">
+            · sin actualizar
+          </span>
+        ) : null}
+      </p>
+      <button
+        type="button"
+        onClick={states.refresh}
+        disabled={states.refreshing}
+        className="ml-auto shrink-0 text-[0.6875rem] text-muted underline underline-offset-2 transition-colors hover:text-content disabled:no-underline disabled:opacity-60"
+      >
+        {states.refreshing ? 'Actualizando…' : 'Actualizar'}
+      </button>
+    </div>
   )
 }
 

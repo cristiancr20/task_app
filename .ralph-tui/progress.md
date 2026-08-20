@@ -54,7 +54,8 @@ after each iteration and it's included in prompts for context.
   A `requested` ref of keys stops an effect re-run from re-asking; a `write`
   helper drops an answer whose key has since been replaced; and the entry is
   *read* only when `entry.key === requestKey`, so a superseded-but-valid answer
-  is not rendered either.
+  is not rendered either. (`useDuplicateCheck` is exactly this; a hook that
+  polls needs the two-key variant below.)
 - Putting the inputs in the key is the invalidation: when what the request was
   computed from changes (a push adds issues to the history), the key stops
   matching and the effect asks again — no callback threaded through the tree.
@@ -65,6 +66,32 @@ after each iteration and it's included in prompts for context.
 - These hooks are not covered by the suite (it only collects `lib/**` and runs
   in `node`), so the arithmetic they display lives in `lib/` — see
   `lib/duplicate-check.ts`, `lib/issue-state-summary.ts` — and is tested there.
+
+### Polling a per-note report (`useIssueStates`)
+
+- A hook that re-reads its data on a timer splits the round key in two:
+  `dataKey` (`${path}:${inputs}`) is what the entry is *about* and is what the
+  render is allowed to read, `key` (`${round}:${dataKey}`) is which round asked
+  and only decides whose answer may land. Reading by the round key — the
+  US-003 shape — makes every tick blink the panel back to its loading text.
+- The scheduling decision is pure and lives in `lib/` (`shouldRefresh` in
+  `lib/issue-states-refresh.ts`), so the interval, the hidden tab and the
+  «no overlap» rule are covered by the suite even though the hook is not.
+- The cycle is one `setInterval` inside an effect keyed on
+  `[enabled, relPath, tick]`: `enabled === false` means no timer and no
+  listener exist at all, and changing note or unmounting tears it down. A
+  `visibilitychange` listener stops it while hidden and, on return, ticks once
+  before restarting so a stale report catches up.
+- Overlap is prevented with a `useRef<Set<string>>` of paths with a request in
+  flight, added synchronously as the request effect fires and deleted as it
+  settles; freshness is stamped from when a request *started*
+  (`useRef<Map<path, number>>`), never from when it answered.
+- An error never replaces an answer already on screen: a failure over a `ready`
+  report keeps the states and sets a separate `refreshError` footnote; only a
+  report with nothing to show reads the failure as its `status`.
+- A control whose label changes on every background round («Actualizar» ↔
+  «Actualizando…») goes *outside* the `aria-live` region — otherwise a screen
+  reader announces the polling rather than the news.
 
 ---
 
@@ -180,4 +207,49 @@ after each iteration and it's included in prompts for context.
   `requested` ref of round keys so an effect re-run does not re-ask, a `write`
   helper that drops an answer whose key was replaced, and a `status` that folds
   «nothing to ask» into `unavailable` rather than into an error.
+---
+
+## 2026-08-19 - US-004
+- `lib/issue-states-refresh.ts`: the commented interval constant
+  (`ISSUE_STATES_REFRESH_INTERVAL_MS = 60_000`, justified against what the
+  report is for and against Linear's quota) and `shouldRefresh()`, the pure
+  predicate every tick goes through — enabled (a note, a key, a history),
+  visible, not already in flight, and one interval past the last *request*.
+  A clock that has moved backwards reads as due rather than as fresh.
+- `app/use-issue-states.ts`: the report now carries `dataKey` (note + ids, what
+  the entry is about and what the render reads) apart from `key` (the round,
+  what the write guard checks), so a background round no longer blinks the
+  counters back to «Consultando el estado en Linear…». One `setInterval` per
+  open note, started only when `enabled`, stopped on `visibilitychange` away
+  and ticked-then-restarted on the way back, cleared on note change and on
+  unmount. `inFlight` (a ref of paths) makes a tick skip rather than overlap;
+  `askedAt` (a ref of path → ms) is stamped when a request leaves.
+- A refresh that fails keeps the last good states and adds `refreshError`; only
+  a report with nothing to show yet becomes `status: 'error'`. `retry` became
+  `refresh`, since it is now both «Reintentar» and «Actualizar».
+- `app/pushed-history.tsx`: «Actualizar» next to the counters (disabled and
+  «Actualizando…» while a round runs), outside the `aria-live` region, plus a
+  «· sin actualizar» footnote (the real message in its `title`) when the last
+  refresh failed under a report that is still shown.
+- Files changed: `lib/issue-states-refresh.ts` (new),
+  `lib/issue-states-refresh.test.ts` (new, 12 tests), `app/use-issue-states.ts`,
+  `app/pushed-history.tsx`.
+- `pnpm typecheck`, `pnpm test` (514 tests, +12) and `pnpm build` pass.
+- **Learnings:**
+  - The single round key of US-003 could not survive polling: it is both «what
+    this entry is about» and «who asked», and a refresh changes only the
+    second. Splitting it is what lets the last good state stay on screen while
+    the next round runs — which is also the whole of the «un fallo no borra el
+    estado ya conocido» criterion.
+  - «No overlap» has to be a ref, not state: the tick reads it inside a
+    `setInterval` callback that closes over an old render otherwise, and it has
+    to be written synchronously as the request fires, before any re-render.
+  - Stamping freshness at request *start* rather than at answer is what stops a
+    slow query from being followed immediately by another one.
+  - The visibility listener is per note rather than global because it lives in
+    the same effect as the interval — one subscription, one teardown, and no
+    way to leave a listener pointing at a note that is no longer open.
+  - `enabled === false` returning before anything is created is what makes «una
+    nota sin historial no programa ningún refresco» true by construction rather
+    than by a guard inside the tick.
 ---
