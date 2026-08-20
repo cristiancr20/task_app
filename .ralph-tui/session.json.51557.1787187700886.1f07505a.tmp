@@ -3,7 +3,7 @@
   "sessionId": "332e2c1b-5e5e-471e-87fa-dd969e070cab",
   "status": "running",
   "startedAt": "2026-08-20T00:54:54.824Z",
-  "updatedAt": "2026-08-20T00:58:25.722Z",
+  "updatedAt": "2026-08-20T01:01:40.884Z",
   "currentIteration": 1,
   "maxIterations": 0,
   "tasksCompleted": 1,
@@ -85,8 +85,6 @@
   ],
   "skippedTaskIds": [],
   "cwd": "/Users/cristian/dev/tasks-app",
-  "activeTaskIds": [
-    "US-002"
-  ],
+  "activeTaskIds": [],
   "subagentPanelVisible": false
 }
