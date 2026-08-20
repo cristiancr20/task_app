@@ -3,10 +3,10 @@
   "sessionId": "332e2c1b-5e5e-471e-87fa-dd969e070cab",
   "status": "running",
   "startedAt": "2026-08-20T00:54:54.824Z",
-  "updatedAt": "2026-08-20T00:58:25.722Z",
-  "currentIteration": 1,
+  "updatedAt": "2026-08-20T01:09:11.920Z",
+  "currentIteration": 2,
   "maxIterations": 0,
-  "tasksCompleted": 1,
+  "tasksCompleted": 2,
   "isPaused": false,
   "agentPlugin": "claude",
   "trackerState": {
@@ -24,8 +24,8 @@
       {
         "id": "US-002",
         "title": "Índice en memoria con invalidación",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-003",
@@ -81,12 +81,20 @@
       "durationMs": 208480,
       "startedAt": "2026-08-20T00:54:56.128Z",
       "endedAt": "2026-08-20T00:58:24.608Z"
+    },
+    {
+      "iteration": 2,
+      "status": "completed",
+      "taskId": "US-002",
+      "taskTitle": "Índice en memoria con invalidación",
+      "taskCompleted": true,
+      "durationMs": 195170,
+      "startedAt": "2026-08-20T00:58:25.713Z",
+      "endedAt": "2026-08-20T01:01:40.883Z"
     }
   ],
   "skippedTaskIds": [],
   "cwd": "/Users/cristian/dev/tasks-app",
-  "activeTaskIds": [
-    "US-002"
-  ],
+  "activeTaskIds": [],
   "subagentPanelVisible": false
 }

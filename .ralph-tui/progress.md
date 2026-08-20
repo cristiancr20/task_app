@@ -17,6 +17,15 @@ after each iteration and it's included in prompts for context.
   takes its clock and its expensive call as options, and the module exports one
   instance (`getTranscriptIndex` / `refreshTranscriptIndex`) for the app — so
   the lifecycle is testable without global state or fake timers.
+- **Text is matched on a folded copy, and positions are mapped back.**
+  `lib/search.ts` folds a text character by character (lowercase, diacritics
+  stripped, whitespace runs collapsed) while recording, for every unit of the
+  result, the index it came from — plus a sentinel entry holding the original
+  length. A hit over `[i, j)` of the folded text is therefore an exact
+  `[offsets[i], offsets[j])` of the original, which is what lets a match be
+  found accent-blind and still be highlighted on the text the user wrote. Any
+  new accent-insensitive matching should reuse that shape rather than
+  normalising the whole string and reusing the offset.
 - **Filesystem tests build a real temp tree.** `fs.mkdtempSync` under
   `os.tmpdir()`, fixtures written in `beforeAll`, `fs.rmSync` in `afterAll`, and
   a `chmod 000` case guarded by `it.skipIf(isRoot)` plus an assertion that the
@@ -98,4 +107,47 @@ after each iteration and it's included in prompts for context.
     free of timer setup/teardown.
   - In a test harness type, `Omit<Options, 'now'> & { walk?: ... }` intersects
     the two `walk` signatures instead of replacing one — omit `'walk'` too.
+---
+
+## 2026-08-19 - US-003
+- New `lib/search.ts`, pure logic with no `node:` imports: `prepareQuery`
+  (normalises and refuses a query shorter than `MIN_QUERY_LENGTH`),
+  `findMatches` (every occurrence in one field, with an excerpt for the first
+  few), `searchNote` (title then body, one result or null) and `sortResults`.
+- A match is located in a *folded* copy of the text — lowercase, without
+  diacritics, whitespace runs collapsed — but the excerpt is cut from what the
+  user wrote and the highlight travels as `{ text, start, end }`. No HTML is
+  built anywhere, so nothing a note contains can reach the page as markup.
+- New exported constants: `MIN_QUERY_LENGTH` (2), `MAX_MATCHES_PER_FILE` (5),
+  `SNIPPET_CONTEXT_CHARS` (80), `MAX_SEARCH_FILES` (500), `MAX_SEARCH_RESULTS`
+  (50), all overridable per call where a caller could need it.
+- New `GET /api/search?q=`: metadata from `getTranscriptIndex`, bodies read one
+  at a time through `readTranscript` (which keeps the root guard and the single
+  frontmatter parser), answering `{ results, truncated }`.
+- New `lib/search-client.ts` with `fetchSearch` and a shape guard that checks
+  `date` as «string or null» and both highlight offsets as numbers — the UI
+  slices `text` with them, so a wrong shape would mis-highlight rather than fail.
+- Files changed: `lib/search.ts`, `lib/search.test.ts` (32 tests),
+  `lib/search-client.ts`, `app/api/search/route.ts`.
+- `pnpm typecheck` and `pnpm test` (24 files / 802 tests) pass.
+- **Learnings:**
+  - Normalising a whole string for search and then reusing the position is a
+    bug waiting to happen: `normalize('NFD')` and `toLowerCase()` both change
+    the length, so an offset found in the normalised text means nothing in the
+    original. Folding character by character while recording where each
+    resulting unit came from — plus a sentinel `offsets[length] = input.length`
+    — is what makes «highlight the exact characters» possible at all.
+  - Order matters in the fold: NFD, *then* strip the combining marks, *then*
+    lowercase. Lowercasing first turns `İ` into `i` plus a detached mark, and
+    «istanbul» stops matching «İstanbul». There is a test for it.
+  - Collapsing whitespace inside the fold is what makes a phrase match across a
+    line wrap («endpoint\nde pagos»), and it costs nothing extra because the
+    offset map already handles a run of characters becoming one.
+  - The excerpt is built as three collapsed pieces — before, matched, after —
+    and the offsets are the lengths of the first two. Collapsing the whole
+    excerpt in one pass and then looking for the match again would be a second
+    source of truth.
+  - `MAX_MATCHES_PER_FILE` caps the excerpts, never the count: the count is
+    what the sort ranks on, so capping it would make a note that says the phrase
+    forty times tie with one that says it five.
 ---
