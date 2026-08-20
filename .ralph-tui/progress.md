@@ -5,6 +5,34 @@ after each iteration and it's included in prompts for context.
 
 ## Codebase Patterns (Study These First)
 
+### Widening what the model answers (`lib/extractors/task.ts`)
+
+- A new list in the structured-output contract is a new property of the wrapper
+  object the schema already has — never a second call, and never a second
+  schema. The wrapper exists because Anthropic rejects a bare array at the root,
+  and it is what lets one extraction answer four lists without either provider
+  module changing beyond its return type.
+- Stay inside the subset both providers accept: object at the root, every
+  property in `required`, `additionalProperties: false`, and nullability as
+  `type: ['string', 'null']` rather than `anyOf`.
+- Normalising a new list mirrors the task rules instead of inventing its own:
+  one field decides whether the entry survives (`text`, as `title` does), every
+  string goes through `text()` so a model's numbers and booleans become strings,
+  and an optional field is `text(v) || null` exactly like `mentioned`. That is
+  what keeps «ambos extractores lo producen sin divergir» true for free.
+- An absent list is empty, never an error: it is exactly what every answer from
+  the previous prompt looks like, so «ausente = vacía» is what keeps an older
+  model's answer a valid result.
+- The bare-array-at-the-root fallback belongs to the tasks list *only* — that
+  shape is what a model answers when it read the request as «give me the
+  tasks», so reading it as anything else invents a list nobody sent.
+- Route-side the lists are spread at the top level (`Response.json(result)`) so
+  `tasks` never moves: a client that only reads `tasks` needs no change at all.
+- A prompt rule for a new concept is stated as bluntly as the no-inventing rule
+  for tasks, and says what the concept is *not* («a decision is not a task»,
+  with the one sentence that carries both). A fabricated decision is worse than
+  a fabricated task: nothing downstream reviews it before the user believes it.
+
 ### Linear GraphQL client (`lib/linear.ts`)
 
 - Every list-shaped call follows the same shape: build the query with the page
@@ -565,4 +593,54 @@ after each iteration and it's included in prompts for context.
   - Extracting `StateDot` was not tidiness: two panels now report Linear states
     within a few pixels of each other, and a dot that meant `info` in one and
     something else in the other would be read as a difference in the data.
+---
+
+## 2026-08-19 - US-009
+- The extraction now reads four things out of a transcript instead of one:
+  tasks, decisions, risks and open questions, in a single model call.
+- `lib/extractors/task.ts`: three new element types (`ExtractedDecision` with
+  `decidedBy`, `ExtractedRisk` with `affects`, `ExtractedQuestion`), the
+  `ExtractionResult` that carries the four lists, `emptyExtraction()`, three new
+  arrays in `TASKS_JSON_SCHEMA` (all four now `required`), a second half of
+  `SYSTEM_PROMPT` defining the three concepts, and `normalizeExtraction()` over
+  a shared `normalizeList(payload, key, normalize)`.
+- `lib/extractors/ollama.ts`, `lib/extractors/claude.ts`: both now return
+  `Promise<ExtractionResult>` via `normalizeExtraction` — the only diff between
+  them is still the HTTP.
+- `app/api/extract/route.ts`: answers the result object spread at the top level
+  (`Response.json(await extract(...))`), so `tasks` stays exactly where it was
+  and `lib/extract-client.ts` — which only reads `tasks` — is untouched.
+- `lib/extractors/task.test.ts`: +43 tests (702 total). Three suites, one per new
+  list, plus a suite for the result as a whole: missing lists, lists present but
+  not arrays, a payload with none of the four keys, a bare array at the root,
+  and the extra keys a model adds beyond the contract.
+- `pnpm typecheck`, `pnpm test` (702) and `pnpm build` pass. Exercised live
+  against the real local provider (`qwen3:8b` on Ollama) with a synthetic
+  transcript carrying one of each: constrained decoding accepted the widened
+  schema and all four lists came back populated, `decidedBy: 'Ana'` and
+  `affects: 'launch date'` included. The Anthropic side could not be run — the
+  stored config has no `claudeApiKey` — so it rests on the schema staying in the
+  same subset the tasks list already used.
+- **Learnings:**
+  - The wrapper object the schema already had (added because Anthropic rejects a
+    bare array at the root) is what made this a one-call change: four lists are
+    four more properties of the same object, so no provider code moved.
+  - `normalizeTasks` was kept exported and unchanged rather than folded into the
+    new function. It is the only list with a bare-array fallback — a root-level
+    array is what a model answers when it read the request as «give me the
+    tasks», so reading it as decisions would invent a list nobody sent — and
+    keeping it separate left ~40 existing tests untouched.
+  - Each new list drops an entry with no `text` the way a task with no `title` is
+    dropped, and its second field (`decidedBy`, `affects`) is nullable through
+    the same `text(v) || null` as `mentioned`. Reusing the task rules verbatim is
+    what keeps «ambos extractores lo producen sin divergir» true for free.
+  - The three new lists are missing from every answer a pre-US-009 prompt
+    produced, so «ausente = vacía» is not defensive coding: it is what makes an
+    older model's answer still a valid extraction.
+  - Gotcha in the tests: a factory with `...overrides` cannot express «the key is
+    missing» — `factory({})` still supplies it. That case needs its own test with
+    destructuring (`const { text: _text, ...textless } = decision()`), which is
+    exactly what the existing untitled-row test already did.
+  - The closing line of `buildUserPrompt` is asserted with `endsWith` in the
+    suite, so widening what the prompt asks for is a test change too.
 ---

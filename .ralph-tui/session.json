@@ -3,10 +3,10 @@
   "sessionId": "46fd4f4c-ffce-482b-acbb-d8f2ab1265b5",
   "status": "running",
   "startedAt": "2026-08-19T23:52:19.741Z",
-  "updatedAt": "2026-08-20T00:37:00.466Z",
-  "currentIteration": 7,
+  "updatedAt": "2026-08-20T00:44:10.705Z",
+  "currentIteration": 8,
   "maxIterations": 0,
-  "tasksCompleted": 7,
+  "tasksCompleted": 8,
   "isPaused": false,
   "agentPlugin": "claude",
   "trackerState": {
@@ -60,8 +60,8 @@
       {
         "id": "US-008",
         "title": "Panel «Pendiente de reuniones anteriores»",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-009",
@@ -147,6 +147,16 @@
       "durationMs": 228793,
       "startedAt": "2026-08-20T00:20:35.005Z",
       "endedAt": "2026-08-20T00:24:23.798Z"
+    },
+    {
+      "iteration": 8,
+      "status": "completed",
+      "taskId": "US-008",
+      "taskTitle": "Panel «Pendiente de reuniones anteriores»",
+      "taskCompleted": true,
+      "durationMs": 755564,
+      "startedAt": "2026-08-20T00:24:24.900Z",
+      "endedAt": "2026-08-20T00:37:00.464Z"
     }
   ],
   "skippedTaskIds": [],

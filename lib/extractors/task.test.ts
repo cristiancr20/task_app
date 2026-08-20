@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
-import { buildUserPrompt, normalizeTasks, PRIORITIES } from '@/lib/extractors/task'
+import {
+  buildUserPrompt,
+  emptyExtraction,
+  normalizeExtraction,
+  normalizeTasks,
+  PRIORITIES,
+} from '@/lib/extractors/task'
 import type { TranscriptMeta } from '@/lib/transcripts'
 
 /** A well-formed row, so each test can vary only the field it is about. */
@@ -269,6 +275,318 @@ describe('normalizeTasks: non-string scalars become strings', () => {
   })
 })
 
+/** A well-formed decision, so each test varies only the field it is about. */
+function decision(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    text: 'The team ships with Postgres instead of MySQL.',
+    decidedBy: 'Ana',
+    evidence: 'Ana: nos quedamos con Postgres, cerrado.',
+    ...overrides,
+  }
+}
+
+function risk(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    text: 'The migration may not fit before the launch date.',
+    affects: 'the October launch',
+    evidence: 'Beto: si la migración se alarga no llegamos a octubre.',
+    ...overrides,
+  }
+}
+
+function question(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    text: 'Who pays for the extra database instance?',
+    evidence: 'Beto: ¿y quién paga la instancia extra?',
+    ...overrides,
+  }
+}
+
+describe('normalizeExtraction: the four lists travel together', () => {
+  it('returns each list from the payload the schema asks for', () => {
+    expect(
+      normalizeExtraction({
+        tasks: [row()],
+        decisions: [decision()],
+        risks: [risk()],
+        openQuestions: [question()],
+      }),
+    ).toEqual({
+      tasks: [
+        {
+          title: 'Send the Q3 budget to Marta',
+          description: 'Cristian owes Marta the Q3 budget before Friday.',
+          priority: 'high',
+          mentioned: 'Cristian',
+          dueDate: '2026-03-06',
+          evidence: 'Cristian: yo te paso el presupuesto del Q3 antes del viernes.',
+        },
+      ],
+      decisions: [
+        {
+          text: 'The team ships with Postgres instead of MySQL.',
+          decidedBy: 'Ana',
+          evidence: 'Ana: nos quedamos con Postgres, cerrado.',
+        },
+      ],
+      risks: [
+        {
+          text: 'The migration may not fit before the launch date.',
+          affects: 'the October launch',
+          evidence: 'Beto: si la migración se alarga no llegamos a octubre.',
+        },
+      ],
+      openQuestions: [
+        { text: 'Who pays for the extra database instance?', evidence: 'Beto: ¿y quién paga la instancia extra?' },
+      ],
+    })
+  })
+
+  // The three lists are new: a model that only answers `tasks` is the payload
+  // every older prompt produced, and it must still be a valid extraction.
+  it('treats the three new lists as empty when the payload has none of them', () => {
+    expect(normalizeExtraction({ tasks: [row()] })).toEqual({
+      tasks: [expect.objectContaining({ title: 'Send the Q3 budget to Marta' })],
+      decisions: [],
+      risks: [],
+      openQuestions: [],
+    })
+  })
+
+  it('still reads the tasks from a bare array, with the other three empty', () => {
+    expect(normalizeExtraction([row({ title: 'Bare' })])).toEqual({
+      tasks: [expect.objectContaining({ title: 'Bare' })],
+      decisions: [],
+      risks: [],
+      openQuestions: [],
+    })
+  })
+
+  it.each([
+    ['null', null],
+    ['undefined', undefined],
+    ['a string', 'nothing happened'],
+    ['a number', 42],
+    ['a boolean', true],
+    ['an empty object', {}],
+    ['an empty array', []],
+    ['an object with none of the four keys', { items: [row()] }],
+  ])('returns four empty lists for %s, without throwing', (_label, payload) => {
+    expect(() => normalizeExtraction(payload)).not.toThrow()
+    expect(normalizeExtraction(payload)).toEqual(emptyExtraction())
+  })
+
+  it.each([
+    ['an object', { text: 'Algo' }],
+    ['a string', 'ninguna'],
+    ['null', null],
+    ['a number', 3],
+  ])('ignores a list that is present but is %s', (_label, value) => {
+    expect(
+      normalizeExtraction({ decisions: value, risks: value, openQuestions: value }),
+    ).toEqual(emptyExtraction())
+  })
+
+  it('leaves the other lists alone when one of them is unusable', () => {
+    const result = normalizeExtraction({
+      tasks: 'ninguna',
+      decisions: [decision()],
+      risks: null,
+      openQuestions: [question()],
+    })
+    expect(result.tasks).toEqual([])
+    expect(result.risks).toEqual([])
+    expect(result.decisions).toHaveLength(1)
+    expect(result.openQuestions).toHaveLength(1)
+  })
+
+  it('hands back a fresh empty result each time, so callers cannot share one', () => {
+    const first = emptyExtraction()
+    first.decisions.push({ text: 'x', decidedBy: null, evidence: '' })
+    expect(emptyExtraction().decisions).toEqual([])
+  })
+})
+
+describe('normalizeExtraction: decisions', () => {
+  it.each([
+    ['it is empty', { text: '' }],
+    ['it is only spaces', { text: '   ' }],
+    ['it is only whitespace of other kinds', { text: '\t\n ' }],
+    ['it is null', { text: null }],
+    ['it is an object', { text: { value: 'Algo' } }],
+    ['it is an array', { text: ['Algo'] }],
+  ])('discards a decision whose text %s', (_label, overrides) => {
+    expect(normalizeExtraction({ decisions: [decision(overrides)] }).decisions).toEqual([])
+  })
+
+  it('discards a decision with no text key at all', () => {
+    const { text: _text, ...textless } = decision()
+    expect(normalizeExtraction({ decisions: [textless] }).decisions).toEqual([])
+  })
+
+  it('drops entries that are not objects but keeps the ones around them', () => {
+    const { decisions } = normalizeExtraction({
+      decisions: [null, 'texto', 7, decision({ text: 'La buena' }), [], undefined],
+    })
+    expect(decisions).toHaveLength(1)
+    expect(decisions[0].text).toBe('La buena')
+  })
+
+  it('trims the text and the evidence', () => {
+    const [entry] = normalizeExtraction({
+      decisions: [decision({ text: '  Se usa Postgres.  ', evidence: '\n Ana: cerrado. \n' })],
+    }).decisions
+    expect(entry.text).toBe('Se usa Postgres.')
+    expect(entry.evidence).toBe('Ana: cerrado.')
+  })
+
+  it.each([
+    ['is missing', undefined],
+    ['is null', null],
+    ['is empty', ''],
+    ['is only spaces', '    '],
+    ['is an object', { name: 'Ana' }],
+    ['is an array', ['Ana']],
+  ])('reads decidedBy as null when it %s', (_label, decidedBy) => {
+    expect(
+      normalizeExtraction({ decisions: [decision({ decidedBy })] }).decisions[0].decidedBy,
+    ).toBeNull()
+  })
+
+  it('keeps decidedBy, trimmed', () => {
+    expect(
+      normalizeExtraction({ decisions: [decision({ decidedBy: '  Ana Rodríguez \n' })] })
+        .decisions[0].decidedBy,
+    ).toBe('Ana Rodríguez')
+  })
+
+  it('empties an evidence that is neither string nor scalar', () => {
+    expect(
+      normalizeExtraction({ decisions: [decision({ evidence: { line: 'algo' } })] }).decisions[0]
+        .evidence,
+    ).toBe('')
+  })
+
+  it('stringifies the scalars a model answers with instead of dropping the entry', () => {
+    const [entry] = normalizeExtraction({
+      decisions: [decision({ text: 2026, decidedBy: 7, evidence: false })],
+    }).decisions
+    expect(entry).toEqual({ text: '2026', decidedBy: '7', evidence: 'false' })
+  })
+
+  it('drops the extra keys a model adds beyond the contract', () => {
+    const [entry] = normalizeExtraction({
+      decisions: [decision({ priority: 'high', dueDate: '2026-03-06' })],
+    }).decisions
+    expect(Object.keys(entry).sort()).toEqual(['decidedBy', 'evidence', 'text'])
+  })
+})
+
+describe('normalizeExtraction: risks', () => {
+  it.each([
+    ['it is empty', { text: '' }],
+    ['it is only spaces', { text: '   ' }],
+    ['it is null', { text: null }],
+    ['it is an object', { text: { value: 'Algo' } }],
+    ['it is an array', { text: ['Algo'] }],
+  ])('discards a risk whose text %s', (_label, overrides) => {
+    expect(normalizeExtraction({ risks: [risk(overrides)] }).risks).toEqual([])
+  })
+
+  it('discards a risk with no text key at all', () => {
+    const { text: _text, ...textless } = risk()
+    expect(normalizeExtraction({ risks: [textless] }).risks).toEqual([])
+  })
+
+  it('drops entries that are not objects but keeps the ones around them', () => {
+    const { risks } = normalizeExtraction({
+      risks: [null, 'texto', 7, risk({ text: 'El bueno' }), [], undefined],
+    })
+    expect(risks).toHaveLength(1)
+    expect(risks[0].text).toBe('El bueno')
+  })
+
+  it('trims the text and the evidence', () => {
+    const [entry] = normalizeExtraction({
+      risks: [risk({ text: '  No llegamos.  ', evidence: '  Beto: no llegamos a octubre.  ' })],
+    }).risks
+    expect(entry.text).toBe('No llegamos.')
+    expect(entry.evidence).toBe('Beto: no llegamos a octubre.')
+  })
+
+  it.each([
+    ['is missing', undefined],
+    ['is null', null],
+    ['is empty', ''],
+    ['is only spaces', '    '],
+    ['is an object', { scope: 'launch' }],
+    ['is an array', ['launch']],
+  ])('reads affects as null when it %s', (_label, affects) => {
+    expect(normalizeExtraction({ risks: [risk({ affects })] }).risks[0].affects).toBeNull()
+  })
+
+  it('keeps affects, trimmed', () => {
+    expect(
+      normalizeExtraction({ risks: [risk({ affects: '  el lanzamiento de octubre  ' })] }).risks[0]
+        .affects,
+    ).toBe('el lanzamiento de octubre')
+  })
+
+  it('drops the extra keys a model adds beyond the contract', () => {
+    const [entry] = normalizeExtraction({ risks: [risk({ decidedBy: 'Ana', severity: 3 })] }).risks
+    expect(Object.keys(entry).sort()).toEqual(['affects', 'evidence', 'text'])
+  })
+})
+
+describe('normalizeExtraction: open questions', () => {
+  it.each([
+    ['it is empty', { text: '' }],
+    ['it is only spaces', { text: '   ' }],
+    ['it is null', { text: null }],
+    ['it is an object', { text: { value: 'Algo' } }],
+    ['it is an array', { text: ['Algo'] }],
+  ])('discards a question whose text %s', (_label, overrides) => {
+    expect(normalizeExtraction({ openQuestions: [question(overrides)] }).openQuestions).toEqual([])
+  })
+
+  it('discards a question with no text key at all', () => {
+    const { text: _text, ...textless } = question()
+    expect(normalizeExtraction({ openQuestions: [textless] }).openQuestions).toEqual([])
+  })
+
+  it('drops entries that are not objects but keeps the ones around them', () => {
+    const { openQuestions } = normalizeExtraction({
+      openQuestions: [null, 'texto', 7, question({ text: 'La buena' }), [], undefined],
+    })
+    expect(openQuestions).toHaveLength(1)
+    expect(openQuestions[0].text).toBe('La buena')
+  })
+
+  it('trims the text and the evidence', () => {
+    const [entry] = normalizeExtraction({
+      openQuestions: [question({ text: '  ¿Quién paga?  ', evidence: '  Beto: ¿quién paga?  ' })],
+    }).openQuestions
+    expect(entry.text).toBe('¿Quién paga?')
+    expect(entry.evidence).toBe('Beto: ¿quién paga?')
+  })
+
+  it('empties an evidence that is neither string nor scalar', () => {
+    expect(
+      normalizeExtraction({ openQuestions: [question({ evidence: null })] }).openQuestions[0]
+        .evidence,
+    ).toBe('')
+  })
+
+  // A question is the one list with no second field; anything the model adds —
+  // an answer, an owner — must not travel as if the contract had it.
+  it('drops the extra keys a model adds beyond the contract', () => {
+    const [entry] = normalizeExtraction({
+      openQuestions: [question({ answer: 'Nadie', decidedBy: 'Ana' })],
+    }).openQuestions
+    expect(Object.keys(entry).sort()).toEqual(['evidence', 'text'])
+  })
+})
+
 describe('buildUserPrompt', () => {
   it('includes the date and the attendees when the transcript has them', () => {
     const prompt = buildUserPrompt('Ana: yo lo mando.', meta())
@@ -308,6 +626,8 @@ describe('buildUserPrompt', () => {
   it('trims the transcript and closes with the instruction', () => {
     const prompt = buildUserPrompt('\n\n  Ana: yo lo mando.  \n\n', meta())
     expect(prompt).toContain('Transcript:\nAna: yo lo mando.\n')
-    expect(prompt.endsWith('Extract the action items as JSON.')).toBe(true)
+    expect(
+      prompt.endsWith('Extract the action items, decisions, risks and open questions as JSON.'),
+    ).toBe(true)
   })
 })

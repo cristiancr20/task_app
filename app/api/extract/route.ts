@@ -7,13 +7,17 @@ import {
 } from '@/lib/api'
 import { extractWithClaude } from '@/lib/extractors/claude'
 import { extractWithOllama } from '@/lib/extractors/ollama'
-import type { ExtractedTask } from '@/lib/extractors/task'
+import type { ExtractionResult } from '@/lib/extractors/task'
 import { getConfig } from '@/lib/store'
 import { readTranscript, type TranscriptMeta } from '@/lib/transcripts'
 
 /**
  * `POST /api/extract` with `{ path: string }` — runs the configured extractor
- * over one transcript and answers `{ tasks }`.
+ * over one transcript and answers `{ tasks, decisions, risks, openQuestions }`.
+ *
+ * The four lists are spread at the top level rather than nested under a new
+ * key, so `tasks` stays exactly where it was: a client that only reads the
+ * tasks — `lib/extract-client.ts` does — is unaffected by the other three.
  *
  * The provider is read from the config store here rather than being sent by the
  * browser: which model runs, and with which key, is server state. The two
@@ -34,7 +38,7 @@ export async function POST(request: Request): Promise<Response> {
     // not as YAML the model has to parse.
     const { meta, body } = readTranscript(requireContextRoot(), relPath)
 
-    return Response.json({ tasks: await extract(body, meta) })
+    return Response.json(await extract(body, meta))
   } catch (err) {
     return errorResponse(err, relPath)
   }
@@ -48,7 +52,7 @@ export async function POST(request: Request): Promise<Response> {
  * the provider itself refuses arrives as an `ExtractionError`, which
  * `describeError` already maps to 502 with the provider's own wording.
  */
-async function extract(body: string, meta: TranscriptMeta): Promise<ExtractedTask[]> {
+async function extract(body: string, meta: TranscriptMeta): Promise<ExtractionResult> {
   const config = getConfig()
 
   if (config.provider === 'claude') {

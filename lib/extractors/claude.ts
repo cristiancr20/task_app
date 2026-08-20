@@ -12,8 +12,8 @@ import {
   SYSTEM_PROMPT,
   TASKS_JSON_SCHEMA,
   buildUserPrompt,
-  normalizeTasks,
-  type ExtractedTask,
+  normalizeExtraction,
+  type ExtractionResult,
 } from './task'
 
 /** Overridable so the app can be pointed at a stub, like `LINEAR_API_URL`. */
@@ -37,11 +37,12 @@ const MAX_TOKENS = 16000
 const EXTRACTION_TIMEOUT_MS = 5 * 60_000
 
 /**
- * Run Claude over `transcript` and return the action items it found.
+ * Run Claude over `transcript` and return everything it found: the tasks, the
+ * decisions, the risks and the open questions.
  *
  * Same contract as `extractWithOllama`: `transcript` is the body with the
- * frontmatter stripped, `meta` supplies the title, date and attendees, and an
- * empty array means the model found no commitments — a valid answer.
+ * frontmatter stripped, `meta` supplies the title, date and attendees, and four
+ * empty lists mean the model found nothing — a valid answer.
  *
  * Throws `ExtractionError` when the key is missing or rejected, when Anthropic
  * refuses the request, or when the answer is not the JSON it was asked for.
@@ -50,7 +51,7 @@ export async function extractWithClaude(
   transcript: string,
   meta: TranscriptMeta,
   apiKey: string,
-): Promise<ExtractedTask[]> {
+): Promise<ExtractionResult> {
   const key = apiKey.trim()
   if (!key) {
     throw new ExtractionError(
@@ -148,7 +149,7 @@ export async function extractWithClaude(
     )
   }
 
-  return normalizeTasks(payload)
+  return normalizeExtraction(payload)
 }
 
 /**

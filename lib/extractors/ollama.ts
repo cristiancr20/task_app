@@ -2,9 +2,9 @@
  * Extraction through a local Ollama model.
  *
  * `lib/ollama.ts` owns where the server lives and which models it has; this
- * module owns the one call that turns a transcript into tasks. The shape of
- * the answer, the prompts and the cleanup are shared with the Claude
- * extractor in `./task`.
+ * module owns the one call that turns a transcript into an `ExtractionResult`.
+ * The shape of the answer, the prompts and the cleanup are shared with the
+ * Claude extractor in `./task`.
  */
 
 import { OLLAMA_URL } from '../ollama'
@@ -14,8 +14,8 @@ import {
   SYSTEM_PROMPT,
   TASKS_JSON_SCHEMA,
   buildUserPrompt,
-  normalizeTasks,
-  type ExtractedTask,
+  normalizeExtraction,
+  type ExtractionResult,
 } from './task'
 
 /**
@@ -40,12 +40,13 @@ const OVERHEAD_TOKENS = 4096
 const EXTRACTION_TIMEOUT_MS = 10 * 60_000
 
 /**
- * Run `model` over `transcript` and return the action items it found.
+ * Run `model` over `transcript` and return everything it found: the tasks, the
+ * decisions, the risks and the open questions.
  *
  * `transcript` is the body with the frontmatter already stripped (what
  * `readTranscript` returns); `meta` supplies the title, date and attendees the
- * model needs to read it. An empty array means the model found no commitments,
- * which is a valid answer for a transcript that contains none.
+ * model needs to read it. Four empty lists mean the model found nothing, which
+ * is a valid answer for a transcript that contains nothing.
  *
  * Throws `ExtractionError` when Ollama refuses the request or answers with
  * something that is not the JSON it was asked for.
@@ -54,7 +55,7 @@ export async function extractWithOllama(
   transcript: string,
   meta: TranscriptMeta,
   model: string,
-): Promise<ExtractedTask[]> {
+): Promise<ExtractionResult> {
   const name = model.trim()
   if (!name) {
     throw new ExtractionError('No hay ningún modelo de Ollama seleccionado. Elige uno en /settings.')
@@ -133,7 +134,7 @@ export async function extractWithOllama(
     )
   }
 
-  return normalizeTasks(payload)
+  return normalizeExtraction(payload)
 }
 
 /**
