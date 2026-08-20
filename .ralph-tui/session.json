@@ -3,10 +3,10 @@
   "sessionId": "46fd4f4c-ffce-482b-acbb-d8f2ab1265b5",
   "status": "running",
   "startedAt": "2026-08-19T23:52:19.741Z",
-  "updatedAt": "2026-08-20T00:20:33.898Z",
-  "currentIteration": 5,
+  "updatedAt": "2026-08-20T00:24:23.800Z",
+  "currentIteration": 6,
   "maxIterations": 0,
-  "tasksCompleted": 5,
+  "tasksCompleted": 6,
   "isPaused": false,
   "agentPlugin": "claude",
   "trackerState": {
@@ -48,8 +48,8 @@
       {
         "id": "US-006",
         "title": "El historial recuerda a qué proyecto se envió",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-007",
@@ -127,6 +127,16 @@
       "durationMs": 576177,
       "startedAt": "2026-08-20T00:08:11.772Z",
       "endedAt": "2026-08-20T00:17:47.949Z"
+    },
+    {
+      "iteration": 6,
+      "status": "completed",
+      "taskId": "US-006",
+      "taskTitle": "El historial recuerda a qué proyecto se envió",
+      "taskCompleted": true,
+      "durationMs": 164837,
+      "startedAt": "2026-08-20T00:17:49.059Z",
+      "endedAt": "2026-08-20T00:20:33.896Z"
     }
   ],
   "skippedTaskIds": [],

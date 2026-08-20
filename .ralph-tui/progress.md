@@ -129,6 +129,27 @@ after each iteration and it's included in prompts for context.
   «Actualizando…») goes *outside* the `aria-live` region — otherwise a screen
   reader announces the polling rather than the news.
 
+### Selecting across the whole history (`lib/pending-commitments.ts`)
+- A rule about «what other notes still owe us» is a pure function over
+  `Config['history']` + a `Record<issueId, IssueState>` (what `issueStatesById`
+  already returns), never a query of its own: the states are already in the
+  session cache, so the panel selects from what is known instead of asking again.
+- `projectId: null` in a stored entry is «no consta» and not «ningún proyecto»
+  (US-006), so anything filtering by project must drop the null bucket rather
+  than adopt it — mixing two clients' commitments is the one mistake that is not
+  recoverable by waiting.
+- An issue with no known state is left out, not shown stateless: a row that
+  cannot say what it is or how long it has been open is worse than no row. Note
+  this is deliberately the opposite of `pushedProgress`, which counts an unknown
+  issue as *not closed* — each module errs towards its own safe side.
+- Dedup after the sort, never during collection: `Object.entries(history)` is
+  insertion order, so an id reached twice must be pinned to the *oldest* push,
+  which only the sorted list knows.
+- A helper that lives in a server module (`titleFromFileName` in
+  `lib/transcripts.ts`) is mirrored locally with a comment, not imported: these
+  modules run in the browser, and `import type` is the only thing that may cross
+  from `lib/store.ts` or `lib/linear.ts`.
+
 ---
 
 ## 2026-08-19 - US-001
@@ -383,4 +404,57 @@ after each iteration and it's included in prompts for context.
   - The test helper's defaults decide how much churn a new field causes — making
     `entry()` default to `null` left every test that is about something else
     (malformed issues, summaries, permissions) untouched.
+---
+
+## 2026-08-19 - US-007
+- `lib/pending-commitments.ts` (new): `pendingCommitments({ history, states,
+  notePath, projectId, titles })` → the open commitments of *other* notes pushed
+  to the selected project, oldest first. Four rules, each documented against what
+  it protects: no project selected → `[]` (never «todo lo abierto»); only entries
+  whose `projectId` equals the selected one, so an old entry with `projectId:
+  null` («no consta») stays out rather than mixing two clients; only issues whose
+  `groupOfStateType` is neither `completed` nor `canceled`; and never the open
+  note's own issues, which already have their own block.
+- `states` is keyed by issue id — exactly what `issueStatesById()` already
+  returns, so US-008 can feed it from the session cache (`Object.values(folder
+  states).flat()`) without a new query. An id the map does not name is left out:
+  either Linear forgot the issue or the answer has not landed yet, and a row that
+  cannot say «cuánto lleva abierta / en qué estado» is worse than no row.
+- Each item carries `issue` (the *live* `IssueState`, not the title frozen in the
+  history), `notePath`, `noteTitle` and `pushedAt`. `titles` is an optional map
+  the panel fills from the folder listing it already has; a note that is not in
+  it falls back to its file name, undressed of extension and leading date by a
+  local mirror of `titleFromFileName` (that helper lives in `lib/transcripts.ts`,
+  which reads the filesystem and cannot be imported from the browser).
+- Both `lib/store.ts` and `lib/linear.ts` cross as `import type` only, so the
+  module stays browser-safe.
+- `lib/pending-commitments.test.ts` (new, 27 tests): each rule on its own, the
+  mixed history (old entry without project + another client's project + this
+  project's), the four open state types and the two closed ones as `it.each`,
+  ordering across notes, ties keeping the history's order, an id pushed twice
+  listed once under the oldest push, a corrupt `pushedAt` sorting last, and the
+  title fallbacks.
+- Files changed: `lib/pending-commitments.ts` (new),
+  `lib/pending-commitments.test.ts` (new).
+- `pnpm typecheck` and `pnpm test` (581 tests, +27) pass. (`pnpm lint` is not a
+  script in this repo — the name resolves to an unrelated binary on PATH.)
+- **Learnings:**
+  - Dedup has to happen *after* the sort, not during collection: `Object.entries`
+    gives insertion order, so deduping while collecting would pin a repeated
+    issue to whichever note happens to be stored first rather than to the oldest
+    push — and «cuánto lleva abierta» is the whole point of the row.
+  - The US-006 `null` = «no consta» reading is what decides the old-entries rule:
+    since an old entry and a push to a team with no project are
+    indistinguishable, the only safe move is to leave both out while a project is
+    selected. Silence is recoverable; a commitment from another client shown to
+    this one is not.
+  - Excluding an issue with no known state is the opposite call to
+    `pushedProgress` (which counts it as *not* closed) and both are right: there
+    the safe side is «queda trabajo», here it is «no reclames algo que no puedes
+    describir».
+  - The four inputs the story names do not include the note titles, and the
+    history only stores paths. An optional `titles` map keeps the signature
+    honest — the caller passes the listing it already has — instead of making the
+    pure module read from disk or the panel re-derive titles the file list
+    already computed.
 ---
