@@ -1,6 +1,9 @@
 'use client'
 
+import { useMemo, useRef, useState } from 'react'
+
 import type { FileView } from '@/lib/browse-client'
+import { filterFiles } from '@/lib/file-filter'
 import type { IssueState } from '@/lib/linear'
 import { type PushedProgress, pushedProgress } from '@/lib/pushed-progress'
 import type { PushSummary } from '@/lib/store'
@@ -10,6 +13,12 @@ import type { FolderState } from './use-folder-listings'
 type Props = {
   /** The listing of the selected folder, or undefined before it is asked for. */
   state: FolderState | undefined
+  /**
+   * Path of the selected folder, `''` for the root. It is not drawn anywhere —
+   * the breadcrumb is — but it is what tells the filter it is looking at
+   * another folder now and has to empty itself.
+   */
+  folder: string
   /** Human path of the selected folder, e.g. `notas / 2026 / agosto`. */
   breadcrumb: string
   /**
@@ -30,16 +39,36 @@ const TIME = new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digi
 /** How many attendees fit on a row before the rest collapse into a `+N`. */
 const MAX_ATTENDEES = 3
 
+/** No listing yet: one array, so the memo below is not re-run for each render. */
+const NO_FILES: FileView[] = []
+
 /** The `.md` files of the selected folder, one row each. */
 export function FileList({
   state,
+  folder,
   breadcrumb,
   issueStates,
   selectedFile,
   onSelectFile,
   onRetry,
 }: Props) {
-  const files = state?.status === 'ready' ? state.listing.files : []
+  const [filter, setFilter] = useState('')
+
+  // «El filtro se limpia al cambiar de carpeta», written as the state a render
+  // notices is stale rather than as an effect: adjusting it here means the row
+  // list below is already the one for the new folder, so the previous folder's
+  // filter never gets a frame of its own on screen.
+  const [filteredFolder, setFilteredFolder] = useState(folder)
+  if (folder !== filteredFolder) {
+    setFilteredFolder(folder)
+    setFilter('')
+  }
+
+  const all = state?.status === 'ready' ? state.listing.files : NO_FILES
+  // Filtering is arithmetic over the listing already in memory: no request is
+  // made for it, which is the whole difference with the header's search.
+  const filtered = useMemo(() => filterFiles(all, filter), [all, filter])
+  const { files, active, total } = filtered
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -49,10 +78,19 @@ export function FileList({
         </h2>
         {state?.status === 'ready' ? (
           <span className="chip shrink-0 tabular-nums">
-            {files.length === 1 ? '1 archivo' : `${NUMBER.format(files.length)} archivos`}
+            {active ? shownLabel(files.length, total) : countLabel(total)}
           </span>
         ) : null}
       </header>
+
+      {/* The field only appears once there is a listing to narrow: filtering
+          nothing, or filtering while the folder is still on its way, is a box
+          that cannot do anything yet. */}
+      {state?.status === 'ready' && total > 0 ? (
+        <div className="border-b border-line px-2 py-1.5">
+          <FilterField value={filter} onChange={setFilter} />
+        </div>
+      ) : null}
 
       <div className="min-h-0 flex-1 overflow-y-auto p-2">
         {!state || state.status === 'loading' ? (
@@ -70,8 +108,12 @@ export function FileList({
               Reintentar
             </button>
           </div>
-        ) : files.length === 0 ? (
+        ) : total === 0 ? (
           <EmptyFolder hasSubfolders={state.listing.folders.length > 0} />
+        ) : files.length === 0 ? (
+          // A list that empties itself without a word reads as a folder that
+          // lost its files: what happened is that *this* filter matched none.
+          <NoMatches filter={filter.trim()} total={total} onClear={() => setFilter('')} />
         ) : (
           // `listFolder` already sorts by date descending and then by title, so
           // the rows are rendered in the order they arrive.
@@ -89,6 +131,137 @@ export function FileList({
           </ul>
         )}
       </div>
+    </div>
+  )
+}
+
+/** `20 archivos`: what the folder holds, when nothing is being filtered out. */
+function countLabel(total: number): string {
+  return total === 1 ? '1 archivo' : `${NUMBER.format(total)} archivos`
+}
+
+/** `3 de 20 archivos`: the same count, with how much of it is being shown. */
+function shownLabel(shown: number, total: number): string {
+  return `${NUMBER.format(shown)} de ${NUMBER.format(total)} ${total === 1 ? 'archivo' : 'archivos'}`
+}
+
+/**
+ * The filter of this folder, in the strip under its name.
+ *
+ * Deliberately not the header's search field: this one never leaves the
+ * browser and never leaves the folder, so it has no spinner, no debounce and
+ * no minimum length — every keystroke is the answer. Escape empties it and only
+ * then gives the focus up, exactly as the search field does, so the two boxes
+ * are not two different habits.
+ */
+function FilterField({
+  value,
+  onChange,
+}: {
+  value: string
+  onChange: (value: string) => void
+}) {
+  const input = useRef<HTMLInputElement>(null)
+
+  function onKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    if (event.key !== 'Escape') return
+    // `type="search"` clears itself on Escape in some browsers without React
+    // hearing about it, which would leave the field and the filter disagreeing.
+    event.preventDefault()
+    if (value) {
+      onChange('')
+    } else {
+      input.current?.blur()
+    }
+  }
+
+  return (
+    <div className="relative">
+      <FilterIcon />
+      <input
+        ref={input}
+        type="search"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        onKeyDown={onKeyDown}
+        placeholder="Filtrar en esta carpeta…"
+        aria-label="Filtrar los archivos de esta carpeta"
+        spellCheck={false}
+        autoComplete="off"
+        className="w-full rounded-lg border border-line bg-surface py-1 pl-7 pr-7 text-sm text-content outline-none placeholder:text-muted focus:border-accent [&::-webkit-search-cancel-button]:appearance-none"
+      />
+      {value ? (
+        <button
+          type="button"
+          onClick={() => {
+            onChange('')
+            // Emptying the filter is a step inside it, not a way out: the
+            // cursor stays where the next one is typed.
+            input.current?.focus()
+          }}
+          title="Quitar el filtro (Esc)"
+          className="absolute right-1 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted transition-colors hover:bg-line hover:text-content"
+        >
+          <span className="sr-only">Quitar el filtro</span>
+          <svg
+            viewBox="0 0 16 16"
+            aria-hidden="true"
+            className="h-3 w-3"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.75"
+            strokeLinecap="round"
+          >
+            <path d="m4 4 8 8M12 4l-8 8" />
+          </svg>
+        </button>
+      ) : null}
+    </div>
+  )
+}
+
+/** A funnel, so the box is not mistaken for the search up in the header. */
+function FilterIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      aria-hidden="true"
+      className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M2.5 3.5h11l-4.25 5v4l-2.5 1.25v-5.25z" />
+    </svg>
+  )
+}
+
+/** The folder has files; this filter simply matches none of them. */
+function NoMatches({
+  filter,
+  total,
+  onClear,
+}: {
+  filter: string
+  total: number
+  onClear: () => void
+}) {
+  return (
+    <div className="px-2 py-10 text-center">
+      <p className="text-sm font-medium text-content">Ningún archivo coincide</p>
+      <p className="mt-1 text-sm text-muted">
+        {filter ? <>Nada en esta carpeta contiene «{filter}». </> : null}
+        Prueba con otras palabras o busca en todas las notas desde la cabecera.
+      </p>
+      <button
+        type="button"
+        onClick={onClear}
+        className="mt-3 rounded-lg border border-line-strong px-3 py-1.5 text-sm font-medium transition-colors hover:bg-surface-2"
+      >
+        Quitar el filtro y ver {total === 1 ? 'el archivo' : `los ${NUMBER.format(total)} archivos`}
+      </button>
     </div>
   )
 }

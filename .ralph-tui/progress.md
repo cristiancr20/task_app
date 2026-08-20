@@ -37,6 +37,19 @@ after each iteration and it's included in prompts for context.
   return the *same object*. «A late answer never overwrites a newer query» is
   therefore a unit test, not a story about the network — and the hook
   (`app/use-search.ts`) is left with nothing but the debounce and the fetch.
+- **Local narrowing of a loaded list is a pure module, not a search.**
+- `lib/file-filter.ts` filters the folder already in memory: it shares only
+- `foldText` with `lib/search.ts` (one definition of «sin mayúsculas ni
+- acentos») and owns nothing else — no debounce, no token, no minimum length,
+- no request. It answers `{ query, active, files, total }`, giving the header
+- both numbers for `3 de 20 archivos`, and returns the *input array itself*
+- when nothing is filtered so the no-filter case reconciles no new list.
+- **«Reset this state when that prop changed» goes in the render body.**
+- `app/file-list.tsx` compares the `folder` prop against a `filteredFolder`
+- state and clears the filter right there, so React re-runs the component
+- before committing and the previous folder's filter never reaches the screen —
+- cheaper and more explicit than an effect or a remounting `key`.
+
 - **Filesystem tests build a real temp tree.** `fs.mkdtempSync` under
   `os.tmpdir()`, fixtures written in `beforeAll`, `fs.rmSync` in `afterAll`, and
   a `chmod 000` case guarded by `it.skipIf(isRoot)` plus an assertion that the
@@ -215,4 +228,48 @@ after each iteration and it's included in prompts for context.
   - The offsets in a match are checked by `lib/search-client.ts` as numbers, not
     as a sensible pair, so the clamp in `highlightParts` is where a nonsense
     `[start, end)` stops being able to highlight the wrong characters.
+---
+
+## 2026-08-19 - US-005
+- Quick filter over the listing of the selected folder, next to — and clearly
+  distinct from — the header's global search.
+- New `lib/file-filter.ts` (pure): `prepareFilter` (folds and trims what was
+  typed; no minimum length, unlike `prepareQuery`), `fileMatchesFilter` (title
+  or file name, folded on both sides, empty needle matches everything) and
+  `filterFiles` → `{ query, active, files, total }` — the *same* array back
+  when nothing is filtered, and `total` so the header can say `3 de 20`.
+- `lib/search.ts` now exports `foldText(input)`, `fold(input).text` under a
+  name: one definition of «sin mayúsculas ni acentos» for the whole app, with
+  the offsets map left to the code that highlights.
+- `app/file-list.tsx`: a filter strip under the panel head (funnel icon,
+  ✕ button, Escape empties then blurs — the same habit as `SearchField`), the
+  head chip switching between `20 archivos` and `3 de 20 archivos`, and a
+  `NoMatches` panel («Ningún archivo coincide» + what was typed + a button that
+  removes the filter) instead of a silently empty list. The field only appears
+  once the folder is `ready` and has files.
+- The filter empties itself on folder change through the render-time
+  «adjust state when a prop changed» pattern (`filteredFolder` vs `folder`,
+  new `folder` prop passed from `app/explorer.tsx`), not an effect.
+- Files changed: `lib/file-filter.ts`, `lib/file-filter.test.ts` (26 tests),
+  `lib/search.ts`, `app/file-list.tsx`, `app/explorer.tsx`.
+- `pnpm typecheck`, `pnpm test` (27 files / 865 tests) and `pnpm build` pass.
+  (There is no `lint` script in `package.json`; `pnpm lint` runs an unrelated
+  binary from the PATH — typecheck is the check that matters here.)
+- **Learnings:**
+  - Filtering and searching look alike and are not: the filter needs no
+    debounce, no token, no minimum length and no request, because its input is
+    an array that is already in memory. Sharing the *fold* and nothing else is
+    what keeps them consistent without making the filter pay for the search's
+    machinery.
+  - Returning the input array unchanged when the filter is empty is not a
+    micro-optimisation but the thing that keeps `useMemo`'s output stable, so
+    the common case (no filter) reconciles no new list at all.
+  - «Reset this state when that prop changes» belongs in the render body
+    (`if (folder !== filteredFolder) { setFilteredFolder(folder); setFilter('') }`),
+    not in an effect: React re-runs the component before committing, so the old
+    folder's filter never reaches the screen. A `key` on `<FileList>` would
+    also work but would throw away the whole subtree on every folder click.
+  - Stripping diacritics folds `ñ` to `n` too, so «manana» matches «mañana» —
+    consistent with the search, and worth a test so it is a decision rather
+    than a side effect.
 ---

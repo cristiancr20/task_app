@@ -362,6 +362,7 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
         ) : (
           <FileList
             state={states[selected]}
+            folder={selected}
             breadcrumb={folderLabel(rootLabel, selected)}
             issueStates={folderIssueStates}
             selectedFile={selectedFile}

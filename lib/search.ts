@@ -291,6 +291,19 @@ function fold(input: string): Folded {
 }
 
 /**
+ * The folded form of a text, without the map back to it.
+ *
+ * The same rules a search matches on — lowercase, no diacritics, whitespace
+ * runs collapsed — for a caller that only needs to know *whether* a phrase is
+ * in a string. Filtering a list that is already on screen is exactly that: it
+ * never highlights, so it never needs the offsets, and reusing this keeps
+ * «sin distinguir mayúsculas ni acentos» meaning one single thing in the app.
+ */
+export function foldText(input: string): string {
+  return fold(input).text
+}
+
+/**
  * Cut the excerpt for one occurrence out of the original text.
  *
  * The window is grown to `contextChars` on each side and then pulled back to
