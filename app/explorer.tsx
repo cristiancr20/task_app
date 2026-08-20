@@ -12,6 +12,7 @@ import { TaskTable } from './task-table'
 import { TranscriptPreview } from './transcript-preview'
 import { useDuplicateCheck } from './use-duplicate-check'
 import { useFolderListings } from './use-folder-listings'
+import { useIssueStates } from './use-issue-states'
 import { usePushOptions } from './use-push-options'
 import { createdIssuesOf, parentIssueOf, usePushRun } from './use-push-run'
 import { usePushTarget } from './use-push-target'
@@ -86,6 +87,19 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
   // to produce, not on top of the text it came from.
   const history = transcript?.status === 'ready' ? transcript.transcript.history : []
   const parentTitle = pushOptions.options.parentTitle ?? meetingTitle
+
+  // What the state report is about. A note with no history has no ids, which is
+  // how the hook knows there is nothing to ask — the block is not rendered
+  // either way, and no request is made for it.
+  const historyIssueIds = useMemo(
+    () => history.flatMap((entry) => entry.issues.map((issue) => issue.id)),
+    [history],
+  )
+  const issueStates = useIssueStates({
+    relPath: selectedFile,
+    issueIds: historyIssueIds,
+    hasLinearApiKey,
+  })
 
   const rows = drafts.state?.rows ?? []
   const results = run.state.rows
@@ -320,7 +334,9 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
               }}
             />
 
-            {history.length > 0 ? <PushedHistory history={history} /> : null}
+            {history.length > 0 ? (
+              <PushedHistory history={history} states={issueStates} />
+            ) : null}
 
             <div className="flex min-h-0 flex-1">
               <TaskTable

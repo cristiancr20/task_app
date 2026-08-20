@@ -44,6 +44,28 @@ after each iteration and it's included in prompts for context.
   answer, the route message passed through, both fallbacks (no text, not even
   JSON), a table of malformed shapes via `it.each`, and a rejected `fetch`.
 
+### Per-note async state (`app/use-*.ts`)
+
+- Anything fetched *about the selected note* is kept as
+  `Record<path, { key, status, data, error }>` — the explorer never unmounts
+  these panels, so one meeting's answer must not be read as another's. See
+  `useDuplicateCheck`, `useIssueStates`.
+- `key` is the round the request was made in (`${attempt}:${path}:${inputs}`).
+  A `requested` ref of keys stops an effect re-run from re-asking; a `write`
+  helper drops an answer whose key has since been replaced; and the entry is
+  *read* only when `entry.key === requestKey`, so a superseded-but-valid answer
+  is not rendered either.
+- Putting the inputs in the key is the invalidation: when what the request was
+  computed from changes (a push adds issues to the history), the key stops
+  matching and the effect asks again — no callback threaded through the tree.
+- «Nothing to ask» — no API key, nothing to ask about — is a `status` of its
+  own (`unavailable`), never an error: the UI it decorates renders exactly as
+  it did before the feature existed. A failure is a discreet notice plus
+  «Reintentar» *next to* the data, never in place of it.
+- These hooks are not covered by the suite (it only collects `lib/**` and runs
+  in `node`), so the arithmetic they display lives in `lib/` — see
+  `lib/duplicate-check.ts`, `lib/issue-state-summary.ts` — and is tested there.
+
 ---
 
 ## 2026-08-19 - US-001
@@ -108,4 +130,54 @@ after each iteration and it's included in prompts for context.
   `isX()` shape guard whose failure is «El servidor devolvió una respuesta
   inesperada.», then return the payload. Types cross from server modules as
   `import type` only.
+---
+
+## 2026-08-19 - US-003
+- `lib/issue-state-summary.ts`: the grouping, pure and outside the component —
+  `groupOfStateType` (six Linear state types folded into four buckets, with
+  `triage`/`backlog` reading as `unstarted`), `summarizeIssueStates` (the four
+  counters plus `total`, a repeated id counted once) and `issueStatesById` (the
+  report keyed by id so the list does not scan it per line). `ISSUE_STATE_GROUPS`
+  fixes the reading order: hechas, en curso, sin empezar, canceladas.
+- `app/use-issue-states.ts`: the report keyed by transcript path, like the
+  drafts and the duplicate check. The round key is `${attempt}:${path}:${ids}`,
+  so (a) an answer is written only under the key it was asked for — a slow
+  response for another note lands on its own key and is ignored — and (b) a
+  push that adds issues to the history invalidates the report by itself,
+  because the ids it was computed from are no longer the note's. Nothing else
+  expires it: the cache is the session. `retry` is per path.
+- No key or no history ⇒ `status: 'unavailable'`, and no request is ever made.
+- `app/pushed-history.tsx`: `StateReport` under the header — counters with a
+  coloured dot, only for groups anybody is in; «Consultando el estado en
+  Linear…» while it loads; the route's own message plus «Reintentar» on
+  failure. Every one of those states leaves the history below untouched. Each
+  issue now carries Linear's own `stateName` at the end of its line and still
+  links to Linear.
+- `app/explorer.tsx`: `historyIssueIds` (memoised off the transcript's history)
+  feeds the hook; `PushedHistory` gets the api as `states`.
+- Files changed: `lib/issue-state-summary.ts` (new),
+  `lib/issue-state-summary.test.ts` (new, 19 tests), `app/use-issue-states.ts`
+  (new), `app/pushed-history.tsx`, `app/explorer.tsx`.
+- `pnpm typecheck`, `pnpm test` (502 tests, +19) and `pnpm build` pass.
+- **Learnings:**
+  - Putting the note's issue ids in the round key is what makes «cachear
+    durante la sesión» compatible with a push that happens *during* that
+    session: no invalidation callback, no `refresh()` threaded through the
+    explorer — the key stops matching and the effect asks again.
+  - Reading the report through `byPath[relPath]?.key === requestKey` rather
+    than `byPath[relPath]` is the second half of «no escribe sobre otra nota»:
+    the `write` guard stops a stale answer from landing, and this stops a
+    still-valid-but-superseded entry from being *rendered* for one paint.
+  - The counters group by `stateType` and the per-issue line shows `stateName`
+    verbatim on purpose: a workspace renames its columns, so only the type can
+    be counted across workspaces, but «Listo para QA» tells whoever ran the
+    meeting more than «en curso» does.
+  - «0 canceladas» is noise on most notes, and a report where Linear knows none
+    of the ids (`total === 0`) says nothing at all rather than four zeros —
+    printing zeros would be a claim about issues nobody can open.
+- **Reusable pattern:** a per-note async report is the same shape as
+  `useDuplicateCheck` — `Record<path, {key, status, data, error}>`, a
+  `requested` ref of round keys so an effect re-run does not re-ask, a `write`
+  helper that drops an answer whose key was replaced, and a `status` that folds
+  «nothing to ask» into `unavailable` rather than into an error.
 ---
