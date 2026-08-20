@@ -18,6 +18,13 @@ export type HistoryIssue = {
 export type HistoryEntry = {
   pushedAt: string
   issues: HistoryIssue[]
+  /**
+   * Where the push went. `null` is «no consta» and not «ninguno»: an entry
+   * written before this was recorded reads that way, so a filter by project
+   * has to treat it as unknown rather than as belonging to no project.
+   */
+  teamId: string | null
+  projectId: string | null
 }
 
 /**
@@ -90,8 +97,17 @@ export function updateConfig(partial: Partial<Config>): Config {
   return next
 }
 
+/**
+ * What a caller has to hand over to record a push. The destination is optional
+ * because it is a later addition: a caller that does not track it writes the
+ * same call it always wrote and `normalizeEntry` stores `null`, exactly as it
+ * does for an entry saved before the fields existed.
+ */
+export type HistoryEntryInput = Omit<HistoryEntry, 'teamId' | 'projectId'> &
+  Partial<Pick<HistoryEntry, 'teamId' | 'projectId'>>
+
 /** Append one push entry to the history of `relPath`, most recent last. */
-export function addHistoryEntry(relPath: string, entry: HistoryEntry): Config {
+export function addHistoryEntry(relPath: string, entry: HistoryEntryInput): Config {
   const config = getConfig()
   const entries = config.history[relPath] ?? []
   const normalized = normalizeEntry(entry)
@@ -173,6 +189,12 @@ function normalizeHistory(input: unknown): Record<string, HistoryEntry[]> {
   return history
 }
 
+/**
+ * `pushedAt` and `issues` are what an entry *is*, so a record missing either is
+ * dropped. The destination is not: an entry written before US-006 has neither
+ * field, and discarding it would throw away the history the user already has.
+ * A value of the wrong type reads the same as an absent one — `null`.
+ */
 function normalizeEntry(input: unknown): HistoryEntry | null {
   if (!isRecord(input)) return null
   if (typeof input.pushedAt !== 'string') return null
@@ -183,6 +205,8 @@ function normalizeEntry(input: unknown): HistoryEntry | null {
     issues: input.issues
       .map(normalizeIssue)
       .filter((issue): issue is HistoryIssue => issue !== null),
+    teamId: nullableString(input.teamId),
+    projectId: nullableString(input.projectId),
   }
 }
 

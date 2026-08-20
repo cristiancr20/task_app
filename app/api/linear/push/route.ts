@@ -47,7 +47,7 @@ export async function POST(request: Request): Promise<Response> {
     const { meta } = readTranscript(requireContextRoot(), relPath)
 
     const events = runPush(apiKey, plan, { meetingTitle: meta.title, date: meta.date })
-    return streamEvents(recordingHistory(events, relPath))
+    return streamEvents(recordingHistory(events, relPath, plan))
   } catch (err) {
     return errorResponse(err, relPath)
   }
@@ -139,10 +139,15 @@ function priority(input: unknown): Priority {
  * A failure to write the history does not break the run: the issues are already
  * in Linear, and losing the notice is worth less than losing the last events of
  * the stream.
+ *
+ * The destination comes from the validated `plan` and not from the body again:
+ * it is the team and project the issues were actually created under, which is
+ * what makes «¿qué queda pendiente de este proyecto?» answerable later.
  */
 async function* recordingHistory(
   events: AsyncGenerator<PushEvent>,
   relPath: string,
+  plan: PushPlan,
 ): AsyncGenerator<PushEvent> {
   const issues: PushedIssue[] = []
 
@@ -154,7 +159,12 @@ async function* recordingHistory(
   } finally {
     if (issues.length > 0) {
       try {
-        addHistoryEntry(relPath, { pushedAt: new Date().toISOString(), issues })
+        addHistoryEntry(relPath, {
+          pushedAt: new Date().toISOString(),
+          issues,
+          teamId: plan.teamId,
+          projectId: plan.projectId,
+        })
       } catch (err) {
         console.error('No se pudo guardar el historial de envíos:', err)
       }

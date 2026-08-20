@@ -24,6 +24,23 @@ after each iteration and it's included in prompts for context.
   never-advancing cursor and per-batch responses are exercised). `MAX_PAGES` and
   the batch size are not exported, so tests mirror them as local constants.
 
+### Widening a stored shape (`lib/store.ts`)
+
+- A new field on something already on disk is added to `normalize*`, never to
+  the discard guard: read it through `nullableString`, so an entry written
+  before the field existed and one with a corrupt value both keep the record and
+  read as `null`. Only the fields that make the record *be* what it is
+  (`pushedAt`, `issues`) may drop it.
+- `null` on such a field means «no consta», not «ninguno» — an old record and a
+  record that genuinely has no value are indistinguishable, so anything
+  filtering on it has to treat null as unknown.
+- The writer takes an input type with the new fields optional
+  (`HistoryEntryInput = Omit<T, 'new'> & Partial<Pick<T, 'new'>>`), so existing
+  call sites compile unchanged and get the same `null` the normaliser gives.
+- Test-side, the factory helper (`entry()`) defaults the new field to `null`:
+  that is the pre-existing shape, and it leaves every test that is about
+  something else untouched.
+
 ### Browser wrappers (`lib/*-client.ts`)
 
 - One function per route, all built the same way: `fetch` inside a `try` whose
@@ -324,4 +341,46 @@ after each iteration and it's included in prompts for context.
     and re-parses `config.json` per call, which would be one file read per row.
   - `pnpm build` is worth running for a new route — it is what proves the route
     was registered (`ƒ /api/linear/folder-issue-states` in the route table).
+---
+
+## 2026-08-19 - US-006
+- `lib/store.ts`: `HistoryEntry` gains `teamId: string | null` and
+  `projectId: string | null`. `normalizeEntry` reads both through the existing
+  `nullableString`, so an absent field and a field of the wrong type both land
+  as `null` and the entry survives — only a missing `pushedAt`/`issues` still
+  discards it.
+- `addHistoryEntry` now takes a `HistoryEntryInput` (`HistoryEntry` with the two
+  destination fields optional), so a caller that does not track the destination
+  compiles and behaves exactly as before, with `null` stored.
+- `app/api/linear/push/route.ts`: `recordingHistory` receives the validated
+  `PushPlan` and writes `plan.teamId` / `plan.projectId` with the entry — the
+  destination the issues were actually created under, not the raw body re-read.
+- `lib/store.test.ts`: the `entry()` helper defaults to a null destination (the
+  pre-US-006 shape). New tests: a push that names team and project, a push to a
+  team with no project, a caller that names no destination, an old entry read
+  back as unknown, an entry that has a destination, and an `it.each` table of
+  wrong-typed destinations normalised to `null` without dropping the entry.
+- Files changed: `lib/store.ts`, `lib/store.test.ts`,
+  `app/api/linear/push/route.ts`.
+- `pnpm typecheck`, `pnpm test` (554 tests, +9) and `pnpm build` pass. The real
+  `.data/config.json` holds two entries written before this story, both with
+  only `pushedAt`/`issues` — exactly the shape the new normalisation test pins.
+- **Learnings:**
+  - `null` here means «no consta», not «ningún proyecto». Both an old entry and
+    a push to a team without a project read as `projectId: null`, so a future
+    filter by project has to treat the null bucket as *unknown* rather than as
+    «sin proyecto» — the two are indistinguishable in the stored history and no
+    backfill can tell them apart.
+  - Widening a stored type is a normalisation change, not a versioning one: the
+    same `nullableString` that already tolerated a corrupt `contextRoot` is what
+    makes an old entry survive. Adding the field to the discard guard
+    (`typeof input.teamId !== 'string' → null` on the *entry*) would have
+    silently emptied the existing history instead.
+  - The optional-input type (`HistoryEntryInput`) is what keeps «sigue
+    funcionando igual» true at compile time too, not just at runtime: without it
+    every existing call site would have had to name a destination it does not
+    know.
+  - The test helper's defaults decide how much churn a new field causes — making
+    `entry()` default to `null` left every test that is about something else
+    (malformed issues, summaries, permissions) untouched.
 ---

@@ -73,8 +73,18 @@ function issue(overrides: Partial<HistoryIssue> = {}): HistoryIssue {
   }
 }
 
+/**
+ * A push with no destination recorded — the shape of every entry saved before
+ * US-006, and the baseline the tests that are about something else use.
+ */
 function entry(overrides: Partial<HistoryEntry> = {}): HistoryEntry {
-  return { pushedAt: '2026-01-01T00:00:00.000Z', issues: [issue()], ...overrides }
+  return {
+    pushedAt: '2026-01-01T00:00:00.000Z',
+    issues: [issue()],
+    teamId: null,
+    projectId: null,
+    ...overrides,
+  }
 }
 
 describe('defaultConfig', () => {
@@ -213,6 +223,45 @@ describe('getConfig', () => {
 
     expect(Object.keys(getConfig().history)).toEqual(['notes/b.md'])
   })
+
+  it('keeps an entry saved before the destination was recorded, reading it as unknown', () => {
+    writeConfig({
+      history: {
+        'notes/a.md': [{ pushedAt: '2026-01-01T00:00:00.000Z', issues: [issue()] }],
+      },
+    })
+
+    expect(getConfig().history['notes/a.md']).toEqual([
+      { pushedAt: '2026-01-01T00:00:00.000Z', issues: [issue()], teamId: null, projectId: null },
+    ])
+  })
+
+  it('reads back the destination of an entry that has one', () => {
+    writeConfig({
+      history: {
+        'notes/a.md': [{ ...entry(), teamId: 'team-1', projectId: 'project-7' }],
+      },
+    })
+
+    expect(getConfig().history['notes/a.md']).toEqual([
+      entry({ teamId: 'team-1', projectId: 'project-7' }),
+    ])
+  })
+
+  it.each([
+    ['a number', 7],
+    ['an object', { id: 'project-7' }],
+    ['an array', ['project-7']],
+    ['null', null],
+  ])('nulls a destination stored as %s instead of discarding the entry', (_label, value) => {
+    writeConfig({
+      history: {
+        'notes/a.md': [{ ...entry(), teamId: value, projectId: value }],
+      },
+    })
+
+    expect(getConfig().history['notes/a.md']).toEqual([entry()])
+  })
 })
 
 describe('updateConfig', () => {
@@ -291,6 +340,26 @@ describe('addHistoryEntry', () => {
     addHistoryEntry('notes/a.md', { issues: [issue()] } as unknown as HistoryEntry)
 
     expect(getHistory('notes/a.md')).toEqual([good])
+  })
+
+  it('remembers the team and the project the push went to', () => {
+    addHistoryEntry('notes/a.md', entry({ teamId: 'team-1', projectId: 'project-7' }))
+
+    expect(getHistory('notes/a.md')).toEqual([
+      entry({ teamId: 'team-1', projectId: 'project-7' }),
+    ])
+  })
+
+  it('records a push to no project at all as a team without one', () => {
+    addHistoryEntry('notes/a.md', entry({ teamId: 'team-1' }))
+
+    expect(getHistory('notes/a.md')[0]).toMatchObject({ teamId: 'team-1', projectId: null })
+  })
+
+  it('still accepts a caller that names no destination, storing it as unknown', () => {
+    addHistoryEntry('notes/a.md', { pushedAt: '2026-01-01T00:00:00.000Z', issues: [issue()] })
+
+    expect(getHistory('notes/a.md')).toEqual([entry()])
   })
 
   it('does not touch the rest of the config', () => {

@@ -3,10 +3,10 @@
   "sessionId": "46fd4f4c-ffce-482b-acbb-d8f2ab1265b5",
   "status": "running",
   "startedAt": "2026-08-19T23:52:19.741Z",
-  "updatedAt": "2026-08-20T00:17:47.955Z",
-  "currentIteration": 4,
+  "updatedAt": "2026-08-20T00:20:33.898Z",
+  "currentIteration": 5,
   "maxIterations": 0,
-  "tasksCompleted": 4,
+  "tasksCompleted": 5,
   "isPaused": false,
   "agentPlugin": "claude",
   "trackerState": {
@@ -42,8 +42,8 @@
       {
         "id": "US-005",
         "title": "El progreso también se ve en la lista de archivos",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-006",
@@ -117,6 +117,16 @@
       "durationMs": 372447,
       "startedAt": "2026-08-20T00:01:58.218Z",
       "endedAt": "2026-08-20T00:08:10.665Z"
+    },
+    {
+      "iteration": 5,
+      "status": "completed",
+      "taskId": "US-005",
+      "taskTitle": "El progreso también se ve en la lista de archivos",
+      "taskCompleted": true,
+      "durationMs": 576177,
+      "startedAt": "2026-08-20T00:08:11.772Z",
+      "endedAt": "2026-08-20T00:17:47.949Z"
     }
   ],
   "skippedTaskIds": [],
