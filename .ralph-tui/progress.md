@@ -26,6 +26,17 @@ after each iteration and it's included in prompts for context.
   found accent-blind and still be highlighted on the text the user wrote. Any
   new accent-insensitive matching should reuse that shape rather than
   normalising the whole string and reusing the offset.
+- **Shared client state that two parts of the page need is a provider, not
+  props.** The header is written in `app/page.tsx`, a Server Component, so the
+  search field there and the results inside `Explorer` share one hook through
+  `app/search-provider.tsx` — a `'use client'` provider wrapping server-rendered
+  children. Nothing else in the header had to become client code.
+- **An async request's answer is written only if it is still the one being
+  waited for.** `lib/search-state.ts` is a pure reducer whose state carries the
+  `token` of the request it is showing; `resolved`/`failed` for any other token
+  return the *same object*. «A late answer never overwrites a newer query» is
+  therefore a unit test, not a story about the network — and the hook
+  (`app/use-search.ts`) is left with nothing but the debounce and the fetch.
 - **Filesystem tests build a real temp tree.** `fs.mkdtempSync` under
   `os.tmpdir()`, fixtures written in `beforeAll`, `fs.rmSync` in `afterAll`, and
   a `chmod 000` case guarded by `it.skipIf(isRoot)` plus an assertion that the
@@ -150,4 +161,58 @@ after each iteration and it's included in prompts for context.
   - `MAX_MATCHES_PER_FILE` caps the excerpts, never the count: the count is
     what the sort ranks on, so capping it would make a note that says the phrase
     forty times tie with one that says it five.
+---
+
+## 2026-08-19 - US-004
+- Search UI, end to end: a field in the app header and a results panel in the
+  column the folder's files normally occupy.
+- New `lib/search-state.ts` (pure): `searchReducer` over
+  `idle | searching | ready | error`, each non-idle state carrying the `token`
+  of the request it shows; `highlightParts` (clamps the offsets that arrive
+  over the network before slicing the excerpt), `leadMatch`, and
+  `SEARCH_DEBOUNCE_MS` (250).
+- New `lib/note-paths.ts` (pure): `folderOfNote`, `ancestorFolders`,
+  `folderLabel`, `folderName` — the last two lifted out of `app/explorer.tsx`,
+  which had private copies.
+- New `app/use-search.ts`: query state, the debounce, the fetch and the
+  increasing token. «Reintentar» skips the debounce through a ref, because it
+  is a request the user just asked for by hand.
+- New `app/search-provider.tsx` (context), `app/search-field.tsx` (Escape
+  empties the field, then blurs; ✕ button; a spinner while searching) and
+  `app/search-results.tsx` (result = title, date, folder, one excerpt with the
+  hit in a `<mark>`, plus a `N coincidencias` chip; explicit `Buscando…`,
+  `Sin resultados`, truncated notice and error + «Reintentar»).
+- `app/explorer.tsx`: `openResult` lists and expands the whole ancestor chain of
+  the result's folder, selects that folder and opens the note — without closing
+  the search, so the next result is one click away and emptying the field lands
+  on the folder of the note still open on the right.
+- Files changed: `lib/search-state.ts`, `lib/search-state.test.ts` (26 tests),
+  `lib/note-paths.ts`, `lib/note-paths.test.ts` (11 tests), `app/use-search.ts`,
+  `app/search-provider.tsx`, `app/search-field.tsx`, `app/search-results.tsx`,
+  `app/explorer.tsx`, `app/page.tsx`.
+- `pnpm typecheck`, `pnpm test` (26 files / 839 tests) and `pnpm build` pass;
+  `GET /api/search?q=pagos` answers over the real context folder and the header
+  field is in the server-rendered HTML.
+- **Learnings:**
+  - The one testable part of a search box is not the box: the debounce belongs
+    to the hook, but «which answer is allowed to be shown» is arithmetic over a
+    token and moves into `lib/`, where the suite actually runs (only
+    `lib/**/*.test.ts` is collected — there is no DOM in the test environment).
+  - Returning the *identical* state object from the reducer when a stale answer
+    arrives is worth doing deliberately: React bails out of the re-render, so
+    dropping a late response costs nothing at all.
+  - `type="search"` clears itself on Escape in some browsers and React never
+    hears about it, which desynchronises the input from the query state.
+    Handling Escape and calling `preventDefault()` is what keeps the two equal;
+    the WebKit clear button is also hidden
+    (`[&::-webkit-search-cancel-button]:appearance-none`) so there is one ✕.
+  - Opening a result from a folder nobody has clicked needs the whole ancestor
+    chain listed *and* expanded — `open()` per ancestor and one `setExpanded`
+    — otherwise the tree ends up with a selection it cannot show.
+  - Search replaces one column, never the page: because `selectedFile` is never
+    touched when the field is emptied, «salir de la búsqueda sin perder la nota
+    abierta» costs no extra state.
+  - The offsets in a match are checked by `lib/search-client.ts` as numbers, not
+    as a sensible pair, so the clamp in `highlightParts` is where a nonsense
+    `[start, end)` stops being able to highlight the wrong characters.
 ---

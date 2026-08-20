@@ -3,10 +3,10 @@
   "sessionId": "332e2c1b-5e5e-471e-87fa-dd969e070cab",
   "status": "running",
   "startedAt": "2026-08-20T00:54:54.824Z",
-  "updatedAt": "2026-08-20T01:09:11.920Z",
-  "currentIteration": 2,
+  "updatedAt": "2026-08-20T01:17:47.500Z",
+  "currentIteration": 3,
   "maxIterations": 0,
-  "tasksCompleted": 2,
+  "tasksCompleted": 3,
   "isPaused": false,
   "agentPlugin": "claude",
   "trackerState": {
@@ -30,8 +30,8 @@
       {
         "id": "US-003",
         "title": "Búsqueda de texto completo",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-004",
@@ -91,6 +91,16 @@
       "durationMs": 195170,
       "startedAt": "2026-08-20T00:58:25.713Z",
       "endedAt": "2026-08-20T01:01:40.883Z"
+    },
+    {
+      "iteration": 3,
+      "status": "completed",
+      "taskId": "US-003",
+      "taskTitle": "Búsqueda de texto completo",
+      "taskCompleted": true,
+      "durationMs": 449955,
+      "startedAt": "2026-08-20T01:01:41.964Z",
+      "endedAt": "2026-08-20T01:09:11.919Z"
     }
   ],
   "skippedTaskIds": [],

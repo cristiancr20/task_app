@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FileView } from '@/lib/browse-client'
 import { decideDuplicates, exclusionKey, scopeKeyOf } from '@/lib/duplicate-check'
 import { issueStatesById } from '@/lib/issue-state-summary'
+import { ancestorFolders, folderLabel, folderName, folderOfNote } from '@/lib/note-paths'
 import { pendingCommitments } from '@/lib/pending-commitments'
 
 import { FileList } from './file-list'
@@ -13,6 +14,8 @@ import { MeetingInsights } from './meeting-insights'
 import { PendingCommitments } from './pending-commitments'
 import { PushPanel } from './push-panel'
 import { PushedHistory } from './pushed-history'
+import { useSearchApi } from './search-provider'
+import { SearchResults } from './search-results'
 import { TaskTable } from './task-table'
 import { TranscriptPreview } from './transcript-preview'
 import { useDuplicateCheck } from './use-duplicate-check'
@@ -53,6 +56,11 @@ type Props = {
  * The drafts live here rather than inside the table because they outlive the
  * selection: `useTaskDrafts` keys them by path, so browsing to another note and
  * back shows the edits again.
+ *
+ * While the header's search field has something in it the centre column shows
+ * the results instead of the folder. Only that column changes: the note being
+ * read stays on screen throughout, and opening a result moves the selection to
+ * its folder so that leaving the search lands somewhere that makes sense.
  */
 export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props) {
   const { states, open, reload, refresh: refreshFolder } = useFolderListings()
@@ -63,6 +71,9 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
   // and a remembered-but-invisible panel is a worse first impression than one
   // that simply starts open every time.
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  // The field is in the header, outside this component; what it is looking for
+  // is drawn here, in the column the folder's files occupy — see `SearchProvider`.
+  const search = useSearchApi()
   const split = useSplit(50)
   const {
     state: transcript,
@@ -83,7 +94,7 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
   const onPushed = useCallback(
     (path: string) => {
       if (path === selectedFile) refreshTranscript()
-      refreshFolder(folderOf(path))
+      refreshFolder(folderOfNote(path))
     },
     [refreshFolder, refreshTranscript, selectedFile],
   )
@@ -271,6 +282,31 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
     setExpanded((prev) => (prev.has(relPath) ? prev : new Set(prev).add(relPath)))
   }
 
+  /**
+   * Open a search result: the note in the transcript column, and the folder it
+   * came from selected and revealed in the tree behind the results.
+   *
+   * A result may name a note in a folder nobody has clicked in this session,
+   * so the whole chain of ancestors is listed and expanded rather than just the
+   * folder itself — otherwise leaving the search would land on a selection the
+   * tree cannot show. The search is *not* closed: the field still holds the
+   * query, so the next result is one click away, and emptying it later comes
+   * back to this folder with this note still open.
+   */
+  function openResult(relPath: string) {
+    const folder = folderOfNote(relPath)
+    const chain = ancestorFolders(folder)
+
+    for (const path of chain) open(path)
+    setSelected(folder)
+    setSelectedFile(relPath)
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      for (const path of chain) next.add(path)
+      return next
+    })
+  }
+
   const rootLabel = folderName(contextRoot)
 
   return (
@@ -310,15 +346,29 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
         </div>
       )}
 
+      {/* The same column, showing either the folder or what the header's field
+          is looking for. The search takes the place of the list rather than
+          covering the page, so the transcript to the right — and the note open
+          in it — survives both entering and leaving a search. */}
       <section className="panel w-80 shrink-0 bg-surface">
-        <FileList
-          state={states[selected]}
-          breadcrumb={breadcrumb(rootLabel, selected)}
-          issueStates={folderIssueStates}
-          selectedFile={selectedFile}
-          onSelectFile={setSelectedFile}
-          onRetry={() => reload(selected)}
-        />
+        {search.active ? (
+          <SearchResults
+            state={search.state}
+            rootLabel={rootLabel}
+            selectedFile={selectedFile}
+            onOpen={openResult}
+            onRetry={search.retry}
+          />
+        ) : (
+          <FileList
+            state={states[selected]}
+            breadcrumb={folderLabel(rootLabel, selected)}
+            issueStates={folderIssueStates}
+            selectedFile={selectedFile}
+            onSelectFile={setSelectedFile}
+            onRetry={() => reload(selected)}
+          />
+        )}
       </section>
 
       {/* Transcript and tasks share the rest of the row. With no file open the
@@ -460,18 +510,3 @@ function SidebarToggle({ open, onClick }: { open: boolean; onClick: () => void }
   )
 }
 
-/** The folder a root-relative file path lives in — `''` for a file at the root. */
-function folderOf(relPath: string): string {
-  const cut = relPath.lastIndexOf('/')
-  return cut === -1 ? '' : relPath.slice(0, cut)
-}
-
-/** The last segment of an absolute path — the context folder's own name. */
-function folderName(absPath: string): string {
-  const segments = absPath.replace(/[\\/]+$/, '').split(/[\\/]/)
-  return segments[segments.length - 1] || absPath
-}
-
-function breadcrumb(rootLabel: string, relPath: string): string {
-  return [rootLabel, ...(relPath ? relPath.split('/') : [])].join(' / ')
-}

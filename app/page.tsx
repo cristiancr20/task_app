@@ -6,6 +6,8 @@ import type { Theme } from '@/lib/theme'
 import { getTheme } from '@/lib/theme-server'
 
 import { Explorer } from './explorer'
+import { SearchField } from './search-field'
+import { SearchProvider } from './search-provider'
 import { ThemeToggle } from './theme-toggle'
 
 // The context folder is read from disk on every render and changes while the
@@ -27,39 +29,51 @@ export default async function Home() {
   // lets the tree and the file list scroll independently instead of growing the
   // page.
   return (
-    <div className="flex h-dvh flex-col bg-bg font-sans">
-      {/* The bar rides on the ground rather than on a white fill of its own:
-          the panels below are the raised things, and a second raised surface
-          above them would flatten the page again. */}
-      <header className="flex items-center justify-between gap-4 px-3 py-2.5">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <AppMark />
-          <div className="min-w-0">
-            <h1 className="text-sm font-semibold leading-tight text-content">Explorador</h1>
-            <p className="truncate font-mono text-xs text-muted" title={contextRoot}>
-              {contextRoot}
-            </p>
+    // The search is shared by the field in the header and the results drawn
+    // inside the explorer, so the provider has to wrap both of them. Everything
+    // under it — this page included — stays a Server Component: only the two
+    // pieces that read the search are client code.
+    <SearchProvider>
+      <div className="flex h-dvh flex-col bg-bg font-sans">
+        {/* The bar rides on the ground rather than on a white fill of its own:
+            the panels below are the raised things, and a second raised surface
+            above them would flatten the page again. */}
+        <header className="flex items-center justify-between gap-4 px-3 py-2.5">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <AppMark />
+            <div className="min-w-0">
+              <h1 className="text-sm font-semibold leading-tight text-content">Explorador</h1>
+              <p className="truncate font-mono text-xs text-muted" title={contextRoot}>
+                {contextRoot}
+              </p>
+            </div>
           </div>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <ThemeToggle current={theme} />
-          <Link
-            href="/settings"
-            className="shrink-0 rounded-lg border border-line bg-surface px-3 py-1.5 text-sm font-medium shadow-panel transition-colors hover:bg-surface-2"
-          >
-            Ajustes
-          </Link>
-        </div>
-      </header>
+          {/* In the middle of the header, and in the header rather than in a
+              panel, because it is about every note under the root and not about
+              the folder that happens to be open. */}
+          <div className="flex min-w-0 flex-1 justify-center">
+            <SearchField />
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <ThemeToggle current={theme} />
+            <Link
+              href="/settings"
+              className="shrink-0 rounded-lg border border-line bg-surface px-3 py-1.5 text-sm font-medium shadow-panel transition-colors hover:bg-surface-2"
+            >
+              Ajustes
+            </Link>
+          </div>
+        </header>
 
-      {/* The stored Linear key stays on the server: the push panel only learns
-          whether there is one, so it can say why it cannot create anything. */}
-      <Explorer
-        contextRoot={contextRoot}
-        hasLinearApiKey={linearApiKey.trim() !== ''}
-        lastProjectId={lastProjectId}
-      />
-    </div>
+        {/* The stored Linear key stays on the server: the push panel only learns
+            whether there is one, so it can say why it cannot create anything. */}
+        <Explorer
+          contextRoot={contextRoot}
+          hasLinearApiKey={linearApiKey.trim() !== ''}
+          lastProjectId={lastProjectId}
+        />
+      </div>
+    </SearchProvider>
   )
 }
 
