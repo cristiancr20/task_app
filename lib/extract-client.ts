@@ -1,4 +1,10 @@
-import type { ExtractedTask } from './extractors/task'
+import type {
+  ExtractedDecision,
+  ExtractedQuestion,
+  ExtractedRisk,
+  ExtractedTask,
+  ExtractionResult,
+} from './extractors/task'
 
 /**
  * `POST /api/extract` as seen from the browser.
@@ -10,8 +16,13 @@ import type { ExtractedTask } from './extractors/task'
  * without a second mapping.
  *
  * Which provider runs is server state — the body carries only the path.
+ *
+ * The four lists arrive at the top level of the answer. Only `tasks` decides
+ * whether the answer is usable at all: it is the list that becomes issues, and
+ * a meeting that decided nothing is an ordinary meeting, so the other three
+ * are read as empty when they are absent rather than as a broken response.
  */
-export async function extractTasks(relPath: string): Promise<ExtractedTask[]> {
+export async function runExtraction(relPath: string): Promise<ExtractionResult> {
   let response: Response
   try {
     response = await fetch('/api/extract', {
@@ -31,7 +42,14 @@ export async function extractTasks(relPath: string): Promise<ExtractedTask[]> {
   const tasks = taskList(body)
   if (!tasks) throw new Error('El servidor devolvió una respuesta inesperada.')
 
-  return tasks
+  const answer = body as Record<string, unknown>
+
+  return {
+    tasks,
+    decisions: list<ExtractedDecision>(answer.decisions),
+    risks: list<ExtractedRisk>(answer.risks),
+    openQuestions: list<ExtractedQuestion>(answer.openQuestions),
+  }
 }
 
 function errorMessage(body: unknown): string {
@@ -47,4 +65,9 @@ function taskList(body: unknown): ExtractedTask[] | null {
   if (typeof body !== 'object' || body === null) return null
   const { tasks } = body as { tasks?: unknown }
   return Array.isArray(tasks) ? (tasks as ExtractedTask[]) : null
+}
+
+/** One of the three lists that never reach Linear. Absent means empty. */
+function list<T>(value: unknown): T[] {
+  return Array.isArray(value) ? (value as T[]) : []
 }

@@ -17,7 +17,14 @@ import fs from 'node:fs'
 
 import { writeJsonFile } from './atomic-write'
 import { dataFile } from './data-dir'
-import { PRIORITIES, type ExtractedTask, type Priority } from './extractors/task'
+import {
+  emptyInsights,
+  normalizeInsights,
+  PRIORITIES,
+  type ExtractedTask,
+  type MeetingInsights,
+  type Priority,
+} from './extractors/task'
 
 /**
  * One row of the table as it is stored: the extracted task plus the two things
@@ -30,7 +37,12 @@ export type DraftRow = ExtractedTask & {
 }
 
 /**
- * The drafts of one note. Deliberately *not* the whole `TaskDraftState`: the
+ * The drafts of one note: the rows of the table, and the three lists the same
+ * extraction produced alongside them. Those never become issues, but they were
+ * read out of the transcript by a call that costs minutes and money, so they
+ * are stored and restored exactly like the rows and replaced with them.
+ *
+ * Deliberately *not* the whole `TaskDraftState`: the
  * transient fields of that state (`generating`, `error`, `confirming`) describe
  * a request in flight or a dialog on screen, and restoring them from disk would
  * resurrect a spinner for an extraction that is long over.
@@ -41,13 +53,13 @@ export type DraftsState = {
   baseline: DraftRow[]
   /** An extraction finished, so «ninguna tarea» means the model found none. */
   extracted: boolean
-}
+} & MeetingInsights
 
 const DRAFTS_FILE = 'drafts.json'
 
 /** What a note with nothing stored looks like. A fresh object every call. */
 export function emptyDrafts(): DraftsState {
-  return { rows: [], baseline: [], extracted: false }
+  return { rows: [], baseline: [], extracted: false, ...emptyInsights() }
 }
 
 /**
@@ -99,12 +111,30 @@ export function normalizeState(input: unknown): DraftsState {
     rows: normalizeRows(input.rows),
     baseline: normalizeRows(input.baseline),
     extracted: input.extracted === true,
+    // The very sieve the extraction goes through, so a list restored from disk
+    // and a list just answered by a model cannot differ — and so a file
+    // written before these lists existed simply reads as three empty ones.
+    ...normalizeInsights(input),
   }
 }
 
-/** Nothing worth restoring: no rows, no baseline, and no extraction behind them. */
+/**
+ * Nothing worth restoring: no rows, no baseline, nothing the meeting decided,
+ * risked or left open, and no extraction behind any of it.
+ *
+ * The three lists are part of the test because they can outlive the rows: a
+ * meeting that settled things and committed to none of them has an empty
+ * table and a panel full of decisions, and dropping the key would lose them.
+ */
 function isEmpty(state: DraftsState): boolean {
-  return state.rows.length === 0 && state.baseline.length === 0 && !state.extracted
+  return (
+    state.rows.length === 0 &&
+    state.baseline.length === 0 &&
+    !state.extracted &&
+    state.decisions.length === 0 &&
+    state.risks.length === 0 &&
+    state.openQuestions.length === 0
+  )
 }
 
 /**

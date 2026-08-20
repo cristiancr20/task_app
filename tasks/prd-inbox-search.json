@@ -1,7 +1,7 @@
 {
   "name": "Bandeja de entrada, proceso por lotes y busqueda",
-  "branchName": "ralph/inbox-search",
   "description": "Anade un recorrido recursivo e indexado de la carpeta de contexto y, sobre el, una bandeja de entrada con lo que falta por procesar, una cola de extraccion secuencial por lotes y busqueda de texto completo en todas las transcripciones.",
+  "branchName": "ralph/inbox-search",
   "userStories": [
     {
       "id": "US-001",
@@ -20,9 +20,10 @@
         "pnpm test passes"
       ],
       "priority": 1,
-      "passes": false,
+      "passes": true,
       "notes": "",
-      "dependsOn": []
+      "dependsOn": [],
+      "completionNotes": "Completed by agent"
     },
     {
       "id": "US-002",
@@ -204,5 +205,8 @@
         "US-008"
       ]
     }
-  ]
+  ],
+  "metadata": {
+    "updatedAt": "2026-08-20T00:58:24.609Z"
+  }
 }

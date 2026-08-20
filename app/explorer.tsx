@@ -9,6 +9,7 @@ import { pendingCommitments } from '@/lib/pending-commitments'
 
 import { FileList } from './file-list'
 import { FolderTree } from './folder-tree'
+import { MeetingInsights } from './meeting-insights'
 import { PendingCommitments } from './pending-commitments'
 import { PushPanel } from './push-panel'
 import { PushedHistory } from './pushed-history'
@@ -417,6 +418,12 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
                 onRetryLoad={drafts.retryLoad}
               />
             </div>
+
+            {/* What the same extraction found that is not work: below the
+                table, outside it, and explicitly not going anywhere. It draws
+                nothing at all until a meeting has decided, risked or asked
+                something. */}
+            {drafts.state ? <MeetingInsights insights={drafts.state} /> : null}
           </section>
         ) : null}
       </div>

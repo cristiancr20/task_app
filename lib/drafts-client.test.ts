@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { fetchDrafts, saveDrafts } from '@/lib/drafts-client'
 import type { DraftRow, DraftsState } from '@/lib/drafts-store'
+import { emptyInsights } from '@/lib/extractors/task'
 
 /** One stored row, with only the fields a test cares about overridden. */
 function row(overrides: Partial<DraftRow> = {}): DraftRow {
@@ -19,7 +20,7 @@ function row(overrides: Partial<DraftRow> = {}): DraftRow {
 }
 
 function state(overrides: Partial<DraftsState> = {}): DraftsState {
-  return { rows: [row()], baseline: [row()], extracted: true, ...overrides }
+  return { rows: [row()], baseline: [row()], extracted: true, ...emptyInsights(), ...overrides }
 }
 
 type FetchCall = { url: string; init: RequestInit | undefined }
@@ -91,10 +92,29 @@ describe('fetchDrafts', () => {
   })
 
   it('answers an empty state for a note that has none', async () => {
-    const empty = { rows: [], baseline: [], extracted: false }
-    stubFetch(json(empty))
+    stubFetch(json({ rows: [], baseline: [], extracted: false, ...emptyInsights() }))
 
-    await expect(fetchDrafts('nota.md')).resolves.toEqual(empty)
+    await expect(fetchDrafts('nota.md')).resolves.toEqual({
+      rows: [],
+      baseline: [],
+      extracted: false,
+      ...emptyInsights(),
+    })
+  })
+
+  it('answers the three lists the extraction found beside the rows', async () => {
+    const decision = { text: 'Ship in September', decidedBy: 'Ana', evidence: 'lo sacamos en septiembre' }
+    stubFetch(json(state({ decisions: [decision] })))
+
+    await expect(fetchDrafts('nota.md')).resolves.toEqual(state({ decisions: [decision] }))
+  })
+
+  // Every state stored before those lists existed looks exactly like this, and
+  // losing a whole table of curated rows over three absent keys would be absurd.
+  it('reads an answer with no lists at all as three empty ones', async () => {
+    stubFetch(json({ rows: [row()], baseline: [row()], extracted: true }))
+
+    await expect(fetchDrafts('nota.md')).resolves.toEqual(state())
   })
 
   it('reports a server it could not reach', async () => {
@@ -183,7 +203,7 @@ describe('saveDrafts', () => {
     const calls = stubFetch(json(state()))
     const edited = { ...row(), title: 'Enviar el presupuesto revisado' }
 
-    await saveDrafts('nota.md', { rows: [edited], baseline: [row()], extracted: true })
+    await saveDrafts('nota.md', state({ rows: [edited], baseline: [row()], extracted: true }))
 
     const body = JSON.parse(String(calls[0].init?.body)) as DraftsState
     expect(body.rows).toEqual([edited])
@@ -200,7 +220,7 @@ describe('saveDrafts', () => {
 
   it('answers what the route stored', async () => {
     // The route sieves what it is sent, so the answer is the truth about disk.
-    const stored = { rows: [row()], baseline: [], extracted: false }
+    const stored = { rows: [row()], baseline: [], extracted: false, ...emptyInsights() }
     stubFetch(json(stored))
 
     await expect(saveDrafts('nota.md', state())).resolves.toEqual(stored)

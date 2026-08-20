@@ -1,15 +1,15 @@
 {
-  "id": "46fd4f4c-ffce-482b-acbb-d8f2ab1265b5",
+  "id": "332e2c1b-5e5e-471e-87fa-dd969e070cab",
   "status": "running",
-  "startedAt": "2026-08-19T23:52:19.086Z",
-  "updatedAt": "2026-08-20T00:37:00.561Z",
+  "startedAt": "2026-08-20T00:54:54.251Z",
+  "updatedAt": "2026-08-20T00:54:54.251Z",
   "agentPlugin": "claude",
   "trackerPlugin": "json",
   "executionScopes": [],
-  "prdPath": "./tasks/prd-meeting-memory.json",
-  "currentIteration": 8,
+  "prdPath": "./tasks/prd-inbox-search.json",
+  "currentIteration": 0,
   "maxIterations": 0,
   "totalTasks": 0,
-  "tasksCompleted": 8,
+  "tasksCompleted": 0,
   "cwd": "/Users/cristian/dev/tasks-app"
 }

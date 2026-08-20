@@ -5,12 +5,15 @@ import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import {
+  MAX_WALK_DEPTH,
+  MAX_WALK_FILES,
   PathEscapesRootError,
   listFolder,
   normalizeRelPath,
   readTranscript,
   resolveInsideRoot,
   titleFromFileName,
+  walkTranscripts,
 } from '@/lib/transcripts'
 
 describe('titleFromFileName', () => {
@@ -423,5 +426,210 @@ describe('listFolder', () => {
     expect(relPath).toBe('')
     expect(folders.map((it) => it.name)).toEqual(['notas', 'rota'])
     expect(files).toEqual([])
+  })
+})
+
+describe('walkTranscripts', () => {
+  let base: string
+  let root: string
+  /** `chmod 000` does nothing for root, so the unreadable cases can't be shown. */
+  const isRoot = typeof process.getuid === 'function' && process.getuid() === 0
+
+  const write = (relPath: string, contents: string) => {
+    const abs = path.join(root, relPath)
+    fs.mkdirSync(path.dirname(abs), { recursive: true })
+    fs.writeFileSync(abs, contents)
+  }
+
+  beforeAll(() => {
+    base = fs.mkdtempSync(path.join(os.tmpdir(), 'transcripts-walk-'))
+    root = path.join(base, 'root')
+    fs.mkdirSync(root, { recursive: true })
+
+    // Three levels of nesting, plus a note sitting in the root itself.
+    write('raiz.md', '# raiz\n')
+    write('notas/2026-03-01 alfa.md', '# alfa\n')
+    write('notas/sub/profundo.md', '# profundo\n')
+    write('notas/sub/mas/hondo.md', ['---', 'date: 2026-09-09', '---', 'hondo', ''].join('\n'))
+
+    // What the walk must leave out, the same way `listFolder` does.
+    write('notas/.oculto.md', '# oculto\n')
+    write('notas/nota.txt', 'no es markdown\n')
+    write('notas/README', 'tampoco\n')
+    write('notas/node_modules/dep.md', '# dep\n')
+    write('.secreta/escondido.md', '# escondido\n')
+
+    // Outside the root, inside the scratch folder we clean up: the symlinks
+    // below point here and must not be followed.
+    fs.mkdirSync(path.join(base, 'fuera-dir'), { recursive: true })
+    fs.writeFileSync(path.join(base, 'fuera.md'), '# fuera\n')
+    fs.writeFileSync(path.join(base, 'fuera-dir', 'ficha.md'), '# ficha\n')
+    fs.symlinkSync(path.join(base, 'fuera.md'), path.join(root, 'escape.md'))
+    fs.symlinkSync(path.join(base, 'fuera-dir'), path.join(root, 'escape-dir'))
+
+    // A link that stays inside the root is part of the tree.
+    fs.mkdirSync(path.join(root, 'vinculos'), { recursive: true })
+    fs.symlinkSync(
+      path.join(root, 'notas', 'sub', 'profundo.md'),
+      path.join(root, 'vinculos', 'enlace.md'),
+    )
+
+    // A folder that links back to the root: following it blindly never ends.
+    write('ciclo/dentro.md', '# dentro\n')
+    fs.symlinkSync(root, path.join(root, 'ciclo', 'loop'))
+  })
+
+  afterAll(() => {
+    fs.rmSync(base, { recursive: true, force: true })
+  })
+
+  it('finds every .md at every level, with the relPath of where it sits', () => {
+    const { files } = walkTranscripts(root)
+
+    expect(files.map((it) => it.relPath).sort()).toEqual([
+      'ciclo/dentro.md',
+      'notas/2026-03-01 alfa.md',
+      'notas/sub/mas/hondo.md',
+      'notas/sub/profundo.md',
+      'raiz.md',
+      'vinculos/enlace.md',
+    ])
+  })
+
+  it('reports a complete walk as not truncated', () => {
+    const walk = walkTranscripts(root)
+
+    expect(walk.truncated).toBe(false)
+    expect(walk.depthLimitReached).toBe(false)
+    expect(walk.fileLimitReached).toBe(false)
+  })
+
+  it('skips dotfiles, dot folders, node_modules and non-markdown files', () => {
+    const relPaths = walkTranscripts(root).files.map((it) => it.relPath)
+
+    expect(relPaths).not.toContain('notas/.oculto.md')
+    expect(relPaths).not.toContain('.secreta/escondido.md')
+    expect(relPaths).not.toContain('notas/node_modules/dep.md')
+    expect(relPaths).not.toContain('notas/nota.txt')
+    expect(relPaths).not.toContain('notas/README')
+  })
+
+  it('does not follow a symlink that points outside the root', () => {
+    // Guard against a vacuous pass: both targets exist, so the only reason
+    // they can be missing from the walk is the escape guard.
+    expect(fs.existsSync(path.join(base, 'fuera.md'))).toBe(true)
+    expect(fs.existsSync(path.join(base, 'fuera-dir', 'ficha.md'))).toBe(true)
+
+    const relPaths = walkTranscripts(root).files.map((it) => it.relPath)
+
+    expect(relPaths).not.toContain('escape.md')
+    expect(relPaths.some((it) => it.includes('ficha'))).toBe(false)
+  })
+
+  it('walks a symlinked cycle inside the root without hanging', () => {
+    const { files } = walkTranscripts(root)
+
+    // The loop resolves to the root, which is already walked, so nothing is
+    // visited twice and no path is reached through the link.
+    expect(files.filter((it) => it.relPath === 'ciclo/dentro.md')).toHaveLength(1)
+    expect(files.some((it) => it.relPath.includes('loop'))).toBe(false)
+  })
+
+  it('produces the same metadata as listFolder, for the same file', () => {
+    const walked = walkTranscripts(root).files.find(
+      (it) => it.relPath === 'notas/sub/mas/hondo.md',
+    )
+    const listed = listFolder(root, 'notas/sub/mas').files.find(
+      (it) => it.fileName === 'hondo.md',
+    )
+
+    expect(walked).toEqual(listed)
+    expect(walked?.date).toBe('2026-09-09')
+  })
+
+  it('sorts by date descending, then by title, like a listing does', () => {
+    const { files } = walkTranscripts(root)
+
+    expect(files.map((it) => it.title)).toEqual([
+      'hondo', //    2026-09-09, from its frontmatter
+      'alfa', //     2026-03-01
+      'dentro', //   undated from here down, so title order among themselves
+      'enlace',
+      'profundo',
+      'raiz',
+    ])
+  })
+
+  it('stops descending at the depth limit and says so', () => {
+    const deepRoot = path.join(base, 'deep')
+    // One folder per level, each holding a note: the note at level N is only
+    // reachable if the walk descended N times.
+    let current = deepRoot
+    for (let level = 1; level <= MAX_WALK_DEPTH + 2; level += 1) {
+      current = path.join(current, `n${level}`)
+      fs.mkdirSync(current, { recursive: true })
+      fs.writeFileSync(path.join(current, `nivel${level}.md`), `# nivel ${level}\n`)
+    }
+
+    const walk = walkTranscripts(deepRoot)
+    const found = walk.files.map((it) => it.fileName)
+
+    expect(found).toContain(`nivel${MAX_WALK_DEPTH}.md`)
+    expect(found).not.toContain(`nivel${MAX_WALK_DEPTH + 1}.md`)
+    expect(found).toHaveLength(MAX_WALK_DEPTH)
+    expect(walk.depthLimitReached).toBe(true)
+    expect(walk.truncated).toBe(true)
+    expect(walk.fileLimitReached).toBe(false)
+  })
+
+  it('stops collecting at the file limit and says so', () => {
+    // The default cap is thousands of files; the walk takes the limit as an
+    // option so the behaviour can be shown without writing that many.
+    const walk = walkTranscripts(root, { maxFiles: 2 })
+
+    expect(walk.files).toHaveLength(2)
+    expect(walk.fileLimitReached).toBe(true)
+    expect(walk.truncated).toBe(true)
+    expect(MAX_WALK_FILES).toBeGreaterThan(walk.files.length)
+  })
+
+  it.skipIf(isRoot)('skips an unreadable file and keeps walking', () => {
+    const rotoRoot = path.join(base, 'roto')
+    fs.mkdirSync(path.join(rotoRoot, 'sub'), { recursive: true })
+    fs.writeFileSync(path.join(rotoRoot, 'sub', 'buena.md'), '# buena\n')
+    fs.writeFileSync(path.join(rotoRoot, 'sub', 'ilegible.md'), '# ilegible\n')
+    fs.chmodSync(path.join(rotoRoot, 'sub', 'ilegible.md'), 0o000)
+
+    try {
+      // Guard against a vacuous pass: a readable file would just be listed.
+      expect(() =>
+        fs.readFileSync(path.join(rotoRoot, 'sub', 'ilegible.md'), 'utf8'),
+      ).toThrow()
+
+      const { files } = walkTranscripts(rotoRoot)
+
+      expect(files.map((it) => it.relPath)).toEqual(['sub/buena.md'])
+    } finally {
+      fs.chmodSync(path.join(rotoRoot, 'sub', 'ilegible.md'), 0o600)
+    }
+  })
+
+  it.skipIf(isRoot)('skips an unreadable folder and keeps walking', () => {
+    const cerradoRoot = path.join(base, 'cerrado')
+    fs.mkdirSync(path.join(cerradoRoot, 'abierta'), { recursive: true })
+    fs.mkdirSync(path.join(cerradoRoot, 'cerrada'), { recursive: true })
+    fs.writeFileSync(path.join(cerradoRoot, 'abierta', 'buena.md'), '# buena\n')
+    fs.writeFileSync(path.join(cerradoRoot, 'cerrada', 'perdida.md'), '# perdida\n')
+    fs.chmodSync(path.join(cerradoRoot, 'cerrada'), 0o000)
+
+    try {
+      expect(() => fs.readdirSync(path.join(cerradoRoot, 'cerrada'))).toThrow()
+
+      const { files } = walkTranscripts(cerradoRoot)
+
+      expect(files.map((it) => it.relPath)).toEqual(['abierta/buena.md'])
+    } finally {
+      fs.chmodSync(path.join(cerradoRoot, 'cerrada'), 0o700)
+    }
   })
 })

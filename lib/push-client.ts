@@ -4,7 +4,7 @@ import { isPushEvent, type PushEvent, type PushRequest } from './push-events'
  * `POST /api/linear/push` as seen from the browser: it calls `onEvent` for each
  * line the route streams and resolves when the run ends.
  *
- * Same failure contract as `fetchFolder`, `fetchTranscript` and `extractTasks`:
+ * Same failure contract as `fetchFolder`, `fetchTranscript` and `runExtraction`:
  * the route already answers user-facing Spanish, so a rejection carries that
  * text verbatim. The difference is *when* it can reject — only while the
  * request is being refused. Once the stream is open the status is already 200

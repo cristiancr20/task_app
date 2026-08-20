@@ -38,6 +38,22 @@ describe('countManualChanges', () => {
     expect(changes).toEqual({ edited: 0, added: 0, removed: 0, total: 0 })
   })
 
+  // The decisions, risks and open questions travel in the same state as the
+  // rows, and nothing edits them — so the warning in front of «Generar tareas»
+  // has to stay about the table, which is the only thing it can discard.
+  it('ignores everything in the state that is not a row', () => {
+    const table = extracted([row()])
+    const withInsights = {
+      ...table,
+      extracted: true,
+      decisions: [{ text: 'Ship in September', decidedBy: 'Ana', evidence: 'lo sacamos' }],
+      risks: [{ text: 'The vendor may be late', affects: null, evidence: 'va con retraso' }],
+      openQuestions: [{ text: '¿quién firma?', evidence: '¿quién firma?' }],
+    }
+
+    expect(countManualChanges(withInsights)).toEqual(countManualChanges(table))
+  })
+
   it('counts an edited title once, however many characters changed', () => {
     const state = extracted([row()])
     state.rows = [{ ...state.rows[0], title: 'Enviar el presupuesto del Q3 a Marta' }]

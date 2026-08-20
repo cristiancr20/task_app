@@ -37,14 +37,26 @@ export function mergeDrafts(memory: DraftsState, stored: DraftsState): DraftsSta
       ...stored.rows,
       ...memory.rows.map((row) => (taken.has(row.id) ? { ...row, id: `${row.id}-b` } : row)),
     ],
-    // The baseline and the extraction flag can only come from disk here: this
-    // branch is what «the table has rows but no extraction behind them» means.
+    // The baseline, the extraction flag and the three lists that came out of
+    // the same extraction can only come from disk here: this branch is what
+    // «the table has rows but no extraction behind them» means, and a row
+    // typed by hand never decided anything.
     baseline: stored.baseline,
     extracted: stored.extracted,
+    decisions: stored.decisions,
+    risks: stored.risks,
+    openQuestions: stored.openQuestions,
   }
 }
 
 /** Nothing a read would be overwriting. Mirrors the store's own emptiness. */
 function isEmpty(state: DraftsState): boolean {
-  return state.rows.length === 0 && state.baseline.length === 0 && !state.extracted
+  return (
+    state.rows.length === 0 &&
+    state.baseline.length === 0 &&
+    !state.extracted &&
+    state.decisions.length === 0 &&
+    state.risks.length === 0 &&
+    state.openQuestions.length === 0
+  )
 }

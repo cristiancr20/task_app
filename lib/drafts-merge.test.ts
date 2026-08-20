@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { DraftRow, DraftsState } from '@/lib/drafts-store'
 import { mergeDrafts } from '@/lib/drafts-merge'
+import { emptyInsights } from '@/lib/extractors/task'
 
 function row(overrides: Partial<DraftRow> = {}): DraftRow {
   return {
@@ -17,7 +18,7 @@ function row(overrides: Partial<DraftRow> = {}): DraftRow {
   }
 }
 
-const EMPTY: DraftsState = { rows: [], baseline: [], extracted: false }
+const EMPTY: DraftsState = { rows: [], baseline: [], extracted: false, ...emptyInsights() }
 
 function state(overrides: Partial<DraftsState> = {}): DraftsState {
   return { ...EMPTY, ...overrides }
@@ -69,6 +70,22 @@ describe('a table an extraction landed in first', () => {
     expect(mergeDrafts(fresh, stored)).toEqual(fresh)
   })
 
+  // The lists on screen came out of the extraction that just landed; the ones
+  // on disk are what the note said before it, and a slow read must not put
+  // them back next to the new rows.
+  it('keeps the lists the extraction on screen produced', () => {
+    const fresh = state({
+      extracted: true,
+      decisions: [{ text: 'Ship in September', decidedBy: null, evidence: 'lo sacamos' }],
+    })
+    const stored = state({
+      extracted: true,
+      decisions: [{ text: 'Ship in July', decidedBy: null, evidence: 'lo sacamos en julio' }],
+    })
+
+    expect(mergeDrafts(fresh, stored)).toEqual(fresh)
+  })
+
   // Without this the count restarts at zero and «Generar tareas» stops warning
   // about the edits it is about to discard.
   it('keeps the baseline the count is measured against', () => {
@@ -109,6 +126,19 @@ describe('rows typed while the read was out', () => {
 
     expect(merged.baseline).toEqual([row({ id: 'row-1' })])
     expect(merged.extracted).toBe(true)
+  })
+
+  // Same reasoning as the baseline: they came out of the extraction this page
+  // never saw, and a row typed by hand never decided anything.
+  it('takes what the meeting decided, risked and asked from disk', () => {
+    const decisions = [{ text: 'Ship in September', decidedBy: 'Ana', evidence: 'lo sacamos' }]
+    const stored = state({ rows: [row({ id: 'row-1' })], extracted: true, decisions })
+
+    const merged = mergeDrafts(state({ rows: [typed] }), stored)
+
+    expect(merged.decisions).toEqual(decisions)
+    expect(merged.risks).toEqual([])
+    expect(merged.openQuestions).toEqual([])
   })
 
   /**

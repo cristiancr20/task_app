@@ -1,164 +1,77 @@
 {
   "version": 1,
-  "sessionId": "46fd4f4c-ffce-482b-acbb-d8f2ab1265b5",
+  "sessionId": "332e2c1b-5e5e-471e-87fa-dd969e070cab",
   "status": "running",
-  "startedAt": "2026-08-19T23:52:19.741Z",
-  "updatedAt": "2026-08-20T00:44:10.705Z",
-  "currentIteration": 8,
+  "startedAt": "2026-08-20T00:54:54.824Z",
+  "updatedAt": "2026-08-20T00:58:24.609Z",
+  "currentIteration": 0,
   "maxIterations": 0,
-  "tasksCompleted": 8,
+  "tasksCompleted": 0,
   "isPaused": false,
   "agentPlugin": "claude",
   "trackerState": {
     "plugin": "json",
     "executionScopes": [],
-    "prdPath": "./tasks/prd-meeting-memory.json",
-    "totalTasks": 10,
+    "prdPath": "./tasks/prd-inbox-search.json",
+    "totalTasks": 9,
     "tasks": [
       {
         "id": "US-001",
-        "title": "Cliente de Linear — consultar el estado de issues por id",
-        "status": "completed",
-        "completedInSession": true
-      },
-      {
-        "id": "US-002",
-        "title": "Ruta y wrapper de cliente para el estado de una nota",
-        "status": "completed",
-        "completedInSession": true
-      },
-      {
-        "id": "US-003",
-        "title": "Resumen de estado en la nota abierta",
-        "status": "completed",
-        "completedInSession": true
-      },
-      {
-        "id": "US-004",
-        "title": "El estado se refresca solo en segundo plano",
-        "status": "completed",
-        "completedInSession": true
-      },
-      {
-        "id": "US-005",
-        "title": "El progreso también se ve en la lista de archivos",
-        "status": "completed",
-        "completedInSession": true
-      },
-      {
-        "id": "US-006",
-        "title": "El historial recuerda a qué proyecto se envió",
-        "status": "completed",
-        "completedInSession": true
-      },
-      {
-        "id": "US-007",
-        "title": "Selector de compromisos pendientes",
-        "status": "completed",
-        "completedInSession": true
-      },
-      {
-        "id": "US-008",
-        "title": "Panel «Pendiente de reuniones anteriores»",
-        "status": "completed",
-        "completedInSession": true
-      },
-      {
-        "id": "US-009",
-        "title": "El modelo extrae decisiones, riesgos y preguntas abiertas",
+        "title": "Escaneo recursivo de la carpeta de contexto",
         "status": "open",
         "completedInSession": false
       },
       {
-        "id": "US-010",
-        "title": "Decisiones, riesgos y preguntas en la interfaz",
+        "id": "US-002",
+        "title": "Índice en memoria con invalidación",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-003",
+        "title": "Búsqueda de texto completo",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-004",
+        "title": "Interfaz de búsqueda",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-005",
+        "title": "Filtro rápido en la lista de archivos",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-006",
+        "title": "Bandeja de entrada de notas sin procesar",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-007",
+        "title": "Selección múltiple en la bandeja",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-008",
+        "title": "Cola de extracción por lotes",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-009",
+        "title": "Revisar y enviar lo extraído",
         "status": "open",
         "completedInSession": false
       }
     ]
   },
-  "iterations": [
-    {
-      "iteration": 1,
-      "status": "completed",
-      "taskId": "US-001",
-      "taskTitle": "Cliente de Linear — consultar el estado de issues por id",
-      "taskCompleted": true,
-      "durationMs": 140055,
-      "startedAt": "2026-08-19T23:52:21.351Z",
-      "endedAt": "2026-08-19T23:54:41.406Z"
-    },
-    {
-      "iteration": 2,
-      "status": "completed",
-      "taskId": "US-002",
-      "taskTitle": "Ruta y wrapper de cliente para el estado de una nota",
-      "taskCompleted": true,
-      "durationMs": 153541,
-      "startedAt": "2026-08-19T23:54:42.517Z",
-      "endedAt": "2026-08-19T23:57:16.058Z"
-    },
-    {
-      "iteration": 3,
-      "status": "completed",
-      "taskId": "US-003",
-      "taskTitle": "Resumen de estado en la nota abierta",
-      "taskCompleted": true,
-      "durationMs": 279939,
-      "startedAt": "2026-08-19T23:57:17.171Z",
-      "endedAt": "2026-08-20T00:01:57.110Z"
-    },
-    {
-      "iteration": 4,
-      "status": "completed",
-      "taskId": "US-004",
-      "taskTitle": "El estado se refresca solo en segundo plano",
-      "taskCompleted": true,
-      "durationMs": 372447,
-      "startedAt": "2026-08-20T00:01:58.218Z",
-      "endedAt": "2026-08-20T00:08:10.665Z"
-    },
-    {
-      "iteration": 5,
-      "status": "completed",
-      "taskId": "US-005",
-      "taskTitle": "El progreso también se ve en la lista de archivos",
-      "taskCompleted": true,
-      "durationMs": 576177,
-      "startedAt": "2026-08-20T00:08:11.772Z",
-      "endedAt": "2026-08-20T00:17:47.949Z"
-    },
-    {
-      "iteration": 6,
-      "status": "completed",
-      "taskId": "US-006",
-      "taskTitle": "El historial recuerda a qué proyecto se envió",
-      "taskCompleted": true,
-      "durationMs": 164837,
-      "startedAt": "2026-08-20T00:17:49.059Z",
-      "endedAt": "2026-08-20T00:20:33.896Z"
-    },
-    {
-      "iteration": 7,
-      "status": "completed",
-      "taskId": "US-007",
-      "taskTitle": "Selector de compromisos pendientes",
-      "taskCompleted": true,
-      "durationMs": 228793,
-      "startedAt": "2026-08-20T00:20:35.005Z",
-      "endedAt": "2026-08-20T00:24:23.798Z"
-    },
-    {
-      "iteration": 8,
-      "status": "completed",
-      "taskId": "US-008",
-      "taskTitle": "Panel «Pendiente de reuniones anteriores»",
-      "taskCompleted": true,
-      "durationMs": 755564,
-      "startedAt": "2026-08-20T00:24:24.900Z",
-      "endedAt": "2026-08-20T00:37:00.464Z"
-    }
-  ],
+  "iterations": [],
   "skippedTaskIds": [],
   "cwd": "/Users/cristian/dev/tasks-app",
   "activeTaskIds": [],

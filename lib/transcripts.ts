@@ -32,6 +32,24 @@ export type FolderListing = {
   files: TranscriptMeta[]
 }
 
+/** Everything one recursive walk of the root produced. */
+export type TranscriptWalk = {
+  /** Every `.md` found, sorted like a listing: date descending, then title. */
+  files: TranscriptMeta[]
+  /** True when a limit stopped the walk before the whole tree was seen. */
+  truncated: boolean
+  /** Set when folders were left unvisited because they sat below `maxDepth`. */
+  depthLimitReached: boolean
+  /** Set when the walk stopped collecting because it reached `maxFiles`. */
+  fileLimitReached: boolean
+}
+
+/** Limits for one walk; both default to the module constants below. */
+export type WalkOptions = {
+  maxDepth?: number
+  maxFiles?: number
+}
+
 export type Transcript = {
   meta: TranscriptMeta
   /** File contents with the frontmatter block removed. */
@@ -126,6 +144,135 @@ export function listFolder(root: string, relPath: string): FolderListing {
   files.sort(byDateDescThenTitle)
 
   return { relPath: base, folders, files }
+}
+
+/**
+ * How many folder levels below the root the walk descends. Deep enough for the
+ * year / quarter / project nesting notes actually use, shallow enough that a
+ * checkout or a mounted volume dropped inside the root cannot turn one request
+ * into a full-disk scan. Folders deeper than this are not visited, and the
+ * result says so.
+ */
+export const MAX_WALK_DEPTH = 8
+
+/**
+ * How many `.md` files one walk collects. What this feeds — the inbox and the
+ * search index — is held in server memory, so the count is capped; reaching the
+ * cap stops the walk and is reported instead of silently returning a short list.
+ */
+export const MAX_WALK_FILES = 5000
+
+/**
+ * Walk the whole root and return the metadata of every `.md` under it.
+ *
+ * Same exclusions as `listFolder` (dotfiles, `node_modules`, non-markdown) and
+ * the same metadata, built by the same parser. What it adds is the part a
+ * recursive walk needs and a single listing does not: it never follows a
+ * symlink out of the root, it walks each real folder once so a symlinked cycle
+ * cannot loop forever, it skips whatever it cannot read, and it stops at the
+ * limits above rather than running away.
+ */
+export function walkTranscripts(root: string, options: WalkOptions = {}): TranscriptWalk {
+  const maxDepth = options.maxDepth ?? MAX_WALK_DEPTH
+  const maxFiles = options.maxFiles ?? MAX_WALK_FILES
+
+  const rootAbs = realpath(path.resolve(root))
+  const files: TranscriptMeta[] = []
+  let depthLimitReached = false
+  let fileLimitReached = false
+
+  // Real paths of the folders already queued. A symlink that loops back to an
+  // ancestor — or to any folder already seen — resolves to a path in here and
+  // is dropped, which is what keeps a cycle from walking forever.
+  const seen = new Set<string>([rootAbs])
+  // Breadth first, so the shallow notes are the ones that survive `maxFiles`.
+  // Every entry holds a real path, so the escape guard runs once per folder.
+  const queue: Array<{ abs: string; rel: string; depth: number }> = [
+    { abs: rootAbs, rel: '', depth: 0 },
+  ]
+
+  while (queue.length > 0 && !fileLimitReached) {
+    const folder = queue.shift()!
+
+    let entries: fs.Dirent[]
+    try {
+      entries = fs.readdirSync(folder.abs, { withFileTypes: true })
+    } catch {
+      // Unreadable folder (permissions, a volume that went away): skip this
+      // branch instead of failing the walk.
+      continue
+    }
+
+    for (const entry of entries) {
+      const name = entry.name
+      if (name.startsWith('.') || SKIPPED_DIRS.has(name)) continue
+
+      const childRel = folder.rel ? `${folder.rel}/${name}` : name
+      const childAbs = path.join(folder.abs, name)
+
+      // `withFileTypes` describes the link itself, never its target, so a
+      // symlink has to be resolved before it can be called a folder or a file.
+      let real = childAbs
+      let isDir = entry.isDirectory()
+      let isFile = entry.isFile()
+
+      if (entry.isSymbolicLink()) {
+        real = realpath(childAbs)
+        // Same guard as `resolveInsideRoot`: a link that lands outside the root
+        // is not part of the tree, whatever it points at.
+        if (!isInside(rootAbs, real)) continue
+
+        let stats: fs.Stats
+        try {
+          stats = fs.statSync(childAbs)
+        } catch {
+          // Broken link, or one we may not follow.
+          continue
+        }
+        isDir = stats.isDirectory()
+        isFile = stats.isFile()
+      } else if (isDir) {
+        real = realpath(childAbs)
+      }
+
+      if (isDir) {
+        if (folder.depth + 1 > maxDepth) {
+          depthLimitReached = true
+          continue
+        }
+        if (seen.has(real)) continue
+        seen.add(real)
+        queue.push({ abs: real, rel: childRel, depth: folder.depth + 1 })
+        continue
+      }
+
+      if (!isFile || !isMarkdown(name)) continue
+
+      if (files.length >= maxFiles) {
+        fileLimitReached = true
+        break
+      }
+
+      let raw: string
+      try {
+        raw = fs.readFileSync(childAbs, 'utf8')
+      } catch {
+        // Unreadable file: leave it out, exactly as `listFolder` does.
+        continue
+      }
+
+      files.push(buildMeta(childRel, name, raw))
+    }
+  }
+
+  files.sort(byDateDescThenTitle)
+
+  return {
+    files,
+    truncated: depthLimitReached || fileLimitReached,
+    depthLimitReached,
+    fileLimitReached,
+  }
 }
 
 /** Read one `.md` file: its metadata plus the body with frontmatter stripped. */

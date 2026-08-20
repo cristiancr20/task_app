@@ -7,8 +7,13 @@ import { countManualChanges } from '@/lib/drafts-changes'
 import { fetchDrafts, saveDrafts } from '@/lib/drafts-client'
 import { mergeDrafts } from '@/lib/drafts-merge'
 import type { DraftsState } from '@/lib/drafts-store'
-import { extractTasks } from '@/lib/extract-client'
-import type { ExtractedTask, Priority } from '@/lib/extractors/task'
+import { runExtraction } from '@/lib/extract-client'
+import {
+  emptyInsights,
+  type ExtractedTask,
+  type MeetingInsights,
+  type Priority,
+} from '@/lib/extractors/task'
 import { createSaveQueue, type SaveQueue } from '@/lib/save-queue'
 
 /**
@@ -21,7 +26,15 @@ export type TaskDraft = ExtractedTask & {
   include: boolean
 }
 
-/** What is known about one transcript's tasks. */
+/**
+ * What is known about one transcript's tasks — and about the three lists the
+ * same extraction produced, which are carried here rather than in a state of
+ * their own because they are replaced, stored and restored with the rows.
+ *
+ * They are `MeetingInsights` verbatim: nothing in them is editable, so unlike
+ * the rows they need no key and no «incluir» flag, and nothing in them is ever
+ * pushed or counted — `countManualChanges` reads `rows` and `baseline` alone.
+ */
 export type TaskDraftState = {
   rows: TaskDraft[]
   /**
@@ -44,7 +57,7 @@ export type TaskDraftState = {
   loading: boolean
   /** Message of the last failed load. Whatever is in memory is kept. */
   loadError: string | null
-}
+} & MeetingInsights
 
 const EMPTY: TaskDraftState = {
   rows: [],
@@ -55,6 +68,7 @@ const EMPTY: TaskDraftState = {
   confirming: false,
   loading: false,
   loadError: null,
+  ...emptyInsights(),
 }
 
 /**
@@ -185,12 +199,22 @@ export function useTaskDrafts(relPath: string | null): {
 
       // The answer is written under the path it was asked for, so a slow
       // extraction never lands on the file the user has moved on to.
-      extractTasks(path).then(
-        (tasks) => {
+      runExtraction(path).then(
+        (result) => {
           // The new rows *are* the new baseline, so an accepted regeneration
           // starts the count over at zero.
-          const rows = tasks.map(toDraft)
-          const stored: DraftsState = { rows, baseline: rows, extracted: true }
+          const rows = result.tasks.map(toDraft)
+          // The other three lists are replaced wholesale by the same answer:
+          // they came out of this reading of the transcript, so keeping the
+          // previous ones next to new rows would show two different meetings.
+          const stored: DraftsState = {
+            rows,
+            baseline: rows,
+            extracted: true,
+            decisions: result.decisions,
+            risks: result.risks,
+            openQuestions: result.openQuestions,
+          }
 
           // Straight to disk rather than through the debounce: this is the one
           // result in the app that cost a model call, and the reload that would
@@ -333,7 +357,14 @@ export function useTaskDrafts(relPath: string | null): {
 
 /** The part of the state worth a write. The rest describes this session only. */
 function durableOf(state: TaskDraftState): DraftsState {
-  return { rows: state.rows, baseline: state.baseline, extracted: state.extracted }
+  return {
+    rows: state.rows,
+    baseline: state.baseline,
+    extracted: state.extracted,
+    decisions: state.decisions,
+    risks: state.risks,
+    openQuestions: state.openQuestions,
+  }
 }
 
 /**

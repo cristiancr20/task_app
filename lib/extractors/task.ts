@@ -71,23 +71,38 @@ export type ExtractedQuestion = {
 }
 
 /**
- * The whole of one extraction. The tasks are what the Linear push and the
- * drafts store consume — the other three lists never leave the app — but they
- * travel together because they come out of a single read of the transcript.
+ * What the meeting knew and is about to forget: everything an extraction
+ * produces *except* the tasks.
  *
- * Every list may be empty, including all four at once: a transcript that
- * settled nothing and asked nothing is a valid meeting.
+ * They are named apart from the tasks because that is how they travel from
+ * here on: nothing in this group is ever pushed to Linear, nothing in it is
+ * counted by the push button, and it is stored, restored and copied as a unit
+ * (`lib/insights-markdown.ts`, `lib/drafts-store.ts`).
  */
-export type ExtractionResult = {
-  tasks: ExtractedTask[]
+export type MeetingInsights = {
   decisions: ExtractedDecision[]
   risks: ExtractedRisk[]
   openQuestions: ExtractedQuestion[]
 }
 
+/**
+ * The whole of one extraction. The tasks are what the Linear push consumes —
+ * the other three lists never leave the app — but they travel together because
+ * they come out of a single read of the transcript.
+ *
+ * Every list may be empty, including all four at once: a transcript that
+ * settled nothing and asked nothing is a valid meeting.
+ */
+export type ExtractionResult = { tasks: ExtractedTask[] } & MeetingInsights
+
+/** Three empty lists. A fresh object every call. */
+export function emptyInsights(): MeetingInsights {
+  return { decisions: [], risks: [], openQuestions: [] }
+}
+
 /** A result with nothing in it. A fresh object every call. */
 export function emptyExtraction(): ExtractionResult {
-  return { tasks: [], decisions: [], risks: [], openQuestions: [] }
+  return { tasks: [], ...emptyInsights() }
 }
 
 /** An extractor failed in a way the user can act on. Routes answer 502. */
@@ -313,8 +328,16 @@ export function normalizeTasks(payload: unknown): ExtractedTask[] {
  * rule `normalizeTasks` already applies to a payload with no tasks.
  */
 export function normalizeExtraction(payload: unknown): ExtractionResult {
+  return { tasks: normalizeTasks(payload), ...normalizeInsights(payload) }
+}
+
+/**
+ * The three lists that are not tasks, from a payload that carries them at the
+ * top level — which is both what a model answers and what `.data/drafts.json`
+ * stores, so a restored note is sieved by exactly the rules the extraction was.
+ */
+export function normalizeInsights(payload: unknown): MeetingInsights {
   return {
-    tasks: normalizeTasks(payload),
     decisions: normalizeList(payload, 'decisions', normalizeDecision),
     risks: normalizeList(payload, 'risks', normalizeRisk),
     openQuestions: normalizeList(payload, 'openQuestions', normalizeQuestion),

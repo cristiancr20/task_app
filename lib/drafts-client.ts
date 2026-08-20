@@ -1,10 +1,11 @@
 import type { DraftsState } from './drafts-store'
+import type { ExtractedDecision, ExtractedQuestion, ExtractedRisk } from './extractors/task'
 
 /**
  * `/api/drafts` as seen from the browser: the two calls that make the task
  * table survive a reload.
  *
- * Same contract as `fetchFolder`, `fetchTranscript` and `extractTasks` — the
+ * Same contract as `fetchFolder`, `fetchTranscript` and `runExtraction` — the
  * route already answers user-facing Spanish, so a failure travels as an `Error`
  * carrying that text verbatim — and the same type-only import, so the store
  * (which reads the filesystem) never reaches the client bundle.
@@ -54,7 +55,21 @@ async function unwrap(response: Response, fallback: string): Promise<DraftsState
   if (!response.ok) throw new Error(errorMessage(body, fallback))
   if (!isDraftsState(body)) throw new Error('El servidor devolvió una respuesta inesperada.')
 
-  return body
+  return {
+    rows: body.rows,
+    baseline: body.baseline,
+    extracted: body.extracted,
+    // A list that is not there is an empty list, never a failure: that is what
+    // every state stored before these lists existed looks like, and losing the
+    // whole table over three keys the note never had would be absurd.
+    decisions: list<ExtractedDecision>(body.decisions),
+    risks: list<ExtractedRisk>(body.risks),
+    openQuestions: list<ExtractedQuestion>(body.openQuestions),
+  }
+}
+
+function list<T>(value: unknown): T[] {
+  return Array.isArray(value) ? (value as T[]) : []
 }
 
 function errorMessage(body: unknown, fallback: string): string {

@@ -12,6 +12,7 @@ import {
   type DraftRow,
   type DraftsState,
 } from '@/lib/drafts-store'
+import { emptyInsights } from '@/lib/extractors/task'
 
 // Same trick as `store.test.ts`: `DATA_DIR` is `process.cwd() + '/.data'`,
 // resolved when the module loads, so pointing the store somewhere else means
@@ -80,7 +81,7 @@ function row(overrides: Partial<DraftRow> = {}): DraftRow {
 }
 
 function state(overrides: Partial<DraftsState> = {}): DraftsState {
-  return { rows: [row()], baseline: [row()], extracted: true, ...overrides }
+  return { rows: [row()], baseline: [row()], extracted: true, ...emptyInsights(), ...overrides }
 }
 
 /** A state whose fields are whatever the test needs, malformed included. */
@@ -90,7 +91,14 @@ function broken(value: unknown): DraftsState {
 
 describe('emptyDrafts', () => {
   it('has no rows, no baseline and no extraction behind it', () => {
-    expect(emptyDrafts()).toEqual({ rows: [], baseline: [], extracted: false })
+    expect(emptyDrafts()).toEqual({
+      rows: [],
+      baseline: [],
+      extracted: false,
+      decisions: [],
+      risks: [],
+      openQuestions: [],
+    })
   })
 
   it('hands out a fresh object each call, so callers cannot mutate the empty state', () => {
@@ -250,6 +258,97 @@ describe('getDrafts, on rows that are malformed', () => {
   })
 })
 
+/** One extracted decision, as the extractor's own normaliser leaves it. */
+const DECISION = {
+  text: 'Ship the beta in September',
+  decidedBy: 'Ana',
+  evidence: 'Ana: lo sacamos en septiembre.',
+}
+
+const RISK = {
+  text: 'The vendor may be late',
+  affects: 'the launch date',
+  evidence: 'Marta: el proveedor va con retraso.',
+}
+
+const QUESTION = { text: 'Who signs the pricing?', evidence: '¿quién firma el precio?' }
+
+// The three lists that never become issues are stored beside the rows they
+// came out of, because they cost the same model call and are replaced by the
+// same regeneration — see `lib/insights-markdown` for what is done with them.
+describe('getDrafts, on the decisions, risks and open questions', () => {
+  it('reads back the three lists a note was extracted with', () => {
+    const stored = state({ decisions: [DECISION], risks: [RISK], openQuestions: [QUESTION] })
+    plant('notes/a.md', stored)
+
+    expect(getDrafts('notes/a.md')).toEqual(stored)
+  })
+
+  // Every note stored before these lists existed looks exactly like this, and
+  // «ausente = vacía» is what keeps its rows readable.
+  it('reads a note stored before the lists existed as three empty ones', () => {
+    plant('notes/a.md', { rows: [row()], baseline: [row()], extracted: true })
+
+    expect(getDrafts('notes/a.md')).toEqual(state())
+  })
+
+  it('empties a list that is not an array at all', () => {
+    plant('notes/a.md', broken({ ...state(), risks: 'ninguno' }))
+
+    expect(getDrafts('notes/a.md').risks).toEqual([])
+  })
+
+  // The same sieve the extraction goes through: an entry with no text says
+  // nothing, so it is noise whether it came from a model or from disk.
+  it('drops an entry with no text', () => {
+    plant('notes/a.md', broken({ ...state(), decisions: [{ evidence: 'sin texto' }, DECISION] }))
+
+    expect(getDrafts('notes/a.md').decisions).toEqual([DECISION])
+  })
+
+  // Null and the empty string are both «no consta»; a number is read as its
+  // own text, exactly as the extractor reads a model that answered one.
+  it('nulls a qualifier that says nothing', () => {
+    plant(
+      'notes/a.md',
+      broken({
+        ...state(),
+        decisions: [{ ...DECISION, decidedBy: null }, { ...DECISION, decidedBy: '  ' }],
+        risks: [{ ...RISK, affects: 2026 }],
+      }),
+    )
+
+    const drafts = getDrafts('notes/a.md')
+    expect(drafts.decisions.map((decision) => decision.decidedBy)).toEqual([null, null])
+    expect(drafts.risks[0].affects).toBe('2026')
+  })
+})
+
+describe('saveDrafts, on the decisions, risks and open questions', () => {
+  it('persists the three lists, so a reload restores them', () => {
+    const stored = state({ decisions: [DECISION], risks: [RISK], openQuestions: [QUESTION] })
+    saveDrafts('notes/a.md', stored)
+
+    expect(getDrafts('notes/a.md')).toEqual(stored)
+  })
+
+  // A meeting that settled things and committed to none of them: the table is
+  // empty and the panel is full, and dropping the key would lose the lot.
+  it('keeps a note whose only content is what the meeting decided', () => {
+    const onlyDecisions = { ...emptyDrafts(), decisions: [DECISION] }
+    saveDrafts('notes/a.md', onlyDecisions)
+
+    expect(getDrafts('notes/a.md')).toEqual(onlyDecisions)
+  })
+
+  it('still drops a note with nothing in any of the six fields', () => {
+    saveDrafts('notes/a.md', state())
+    saveDrafts('notes/a.md', emptyDrafts())
+
+    expect(readRaw()).toEqual({ drafts: {} })
+  })
+})
+
 describe('saveDrafts', () => {
   it('persists the state, so the next read sees it', () => {
     saveDrafts('notes/a.md', state())
@@ -295,7 +394,7 @@ describe('saveDrafts', () => {
       broken({ rows: [row(), { title: 'no id' }], baseline: 'nope', extracted: 'yes' }),
     )
 
-    expect(saved).toEqual({ rows: [row()], baseline: [], extracted: false })
+    expect(saved).toEqual({ rows: [row()], baseline: [], extracted: false, ...emptyInsights() })
     expect(readRaw()).toEqual({ drafts: { 'notes/a.md': saved } })
   })
 
@@ -316,7 +415,7 @@ describe('saveDrafts', () => {
   })
 
   it('keeps a note with no rows once it has been extracted — the model found none', () => {
-    const nothingFound = { rows: [], baseline: [], extracted: true }
+    const nothingFound = { rows: [], baseline: [], extracted: true, ...emptyInsights() }
     saveDrafts('notes/a.md', nothingFound)
 
     expect(getDrafts('notes/a.md')).toEqual(nothingFound)
