@@ -14,6 +14,14 @@ import {
 import type { FilteredFiles } from '@/lib/file-filter'
 import type { InboxCounts, InboxItem } from '@/lib/inbox'
 import { noteSizeLabel } from '@/lib/inbox'
+import {
+  INBOX_SCOPES,
+  type InboxScope,
+  scopeCount,
+  scopeEmptyLabel,
+  scopeLabel,
+  scopeTitle,
+} from '@/lib/inbox-scope'
 import { selectionCountLabel, selectionLimitLabel } from '@/lib/inbox-selection'
 import type { InboxState } from '@/lib/inbox-state'
 import { folderLabel } from '@/lib/note-paths'
@@ -31,7 +39,10 @@ type Props = {
   rootLabel: string
   /** The note open in the transcript column, if it is one of these rows. */
   selectedFile: string | null
-  /** What the filter strip holds, and the rows it left on screen. */
+  /** Which pile is on screen: todas, sin tocar, o las que hay que revisar. */
+  scope: InboxScope
+  onScopeChange: (scope: InboxScope) => void
+  /** What the filter strip holds, and the rows the scope and it left on screen. */
   filter: string
   onFilterChange: (value: string) => void
   filtered: FilteredFiles<InboxItem>
@@ -71,12 +82,21 @@ const DATE = new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'short', 
  * the filter*, because it means the rows that filter left; and the action bar
  * sits outside the scrolling area, so scrolling never takes away what has been
  * chosen or the thing that acts on it.
+ *
+ * And the rows can be narrowed twice over, in this order: by what has been done
+ * to them — «Todas», «Sin tocar», «Por revisar» — and then by what is typed.
+ * The second tab is the pile a tanda leaves behind, so closing it is the whole
+ * of «revisar y enviar lo extraído»; from one of its rows the note opens in the
+ * column to the right with its table already on screen, and `ReviewNav` there
+ * walks the rest of the pile without coming back here.
  */
 export function InboxView({
   state,
   counts,
   rootLabel,
   selectedFile,
+  scope,
+  onScopeChange,
   filter,
   onFilterChange,
   filtered,
@@ -87,7 +107,14 @@ export function InboxView({
   onReload,
 }: Props) {
   const { loading, loaded, error, truncated, scanned } = state
-  const { files: items, active, total } = filtered
+  const { files: items } = filtered
+  // Three numbers, and keeping them apart is what makes the counts honest:
+  // `pending` is every note the bandeja holds — the same number the header
+  // button shows — `inScope` is what the tab holds, and `items` is what the
+  // filter left of it. The chip compares the last against the first, so
+  // `3 de 12 pendientes` reads the same whichever of the two narrowed it.
+  const pending = counts.total
+  const inScope = filtered.total
   const { summary } = selection
 
   // Which rows belong to the tanda that is running (or has just run), so a row
@@ -115,7 +142,7 @@ export function InboxView({
               panel that has not asked yet would read as «no queda nada». */}
           {loaded ? (
             <span className="chip shrink-0 tabular-nums">
-              {active ? shownLabel(items.length, total) : countLabel(total)}
+              {items.length === pending ? countLabel(pending) : shownLabel(items.length, pending)}
             </span>
           ) : null}
           <ReloadButton loading={loading} onClick={onReload} />
@@ -125,14 +152,23 @@ export function InboxView({
       {/* The strip appears once there are rows to narrow and to tick: a filter
           over nothing, and a «seleccionar todo» that would select nothing, are
           two controls that cannot do anything yet. */}
-      {loaded && total > 0 ? (
+      {loaded && pending > 0 ? (
         <div className="flex flex-col gap-1.5 border-b border-line px-2 py-1.5">
+          {/* The tabs are drawn from `counts`, never from the rows on screen: a
+              «Por revisar 4» that a text filter had turned into `0` would be a
+              way out of the filter that looks closed. They are also *above* the
+              field, because the field narrows whatever the tab chose. */}
+          <ScopeTabs counts={counts} scope={scope} onChange={onScopeChange} />
           <FilterField value={filter} onChange={onFilterChange} />
           <SelectAll
-            /* Labelled with what it reaches, not with «todo»: with a filter on
-               it only ever ticks the rows on screen, and saying so is cheaper
-               than making the user find that out by pressing it. */
-            label={active ? `Seleccionar las ${NUMBER.format(items.length)} filtradas` : 'Seleccionar todo'}
+            /* Labelled with what it reaches, not with «todo»: with a scope or a
+               filter on it only ever ticks the rows on screen, and saying so is
+               cheaper than making the user find that out by pressing it. */
+            label={
+              items.length === pending
+                ? 'Seleccionar todo'
+                : `Seleccionar las ${NUMBER.format(items.length)} de la lista`
+            }
             checked={summary.allVisibleSelected}
             indeterminate={summary.someVisibleSelected}
             disabled={items.length === 0}
@@ -146,7 +182,7 @@ export function InboxView({
       <div aria-live="polite" className="min-h-0 flex-1 overflow-y-auto p-2">
         {!loaded && loading ? (
           <p className="px-2 py-4 text-sm text-muted">Buscando notas sin procesar…</p>
-        ) : error && total === 0 ? (
+        ) : error && pending === 0 ? (
           <div className="px-2 py-4">
             <p role="alert" className="text-sm text-danger">
               {error}
@@ -159,7 +195,7 @@ export function InboxView({
               Reintentar
             </button>
           </div>
-        ) : total === 0 ? (
+        ) : pending === 0 ? (
           <EmptyInbox scanned={scanned} loaded={loaded} />
         ) : (
           <>
@@ -186,17 +222,24 @@ export function InboxView({
               </p>
             ) : null}
 
-            {counts.extracted > 0 ? (
+            {/* Said on the tabs that are *not* the review pile: there it would
+                only repeat the count of the list underneath it. */}
+            {counts.extracted > 0 && scope !== 'extracted' ? (
               <p className="mx-1 mb-2 px-1 text-xs text-muted">
                 {extractedLabel(counts.extracted)} · {NUMBER.format(scanned)} notas en la carpeta
               </p>
             ) : null}
 
-            {items.length === 0 ? (
+            {inScope === 0 ? (
+              // The bandeja is not empty; this tab is. Which of the two it is
+              // matters — one is work finished, the other is work waiting on
+              // the other tab — so they are worded apart.
+              <EmptyScope scope={scope} onShowAll={() => onScopeChange('all')} />
+            ) : items.length === 0 ? (
               // A list that empties itself without a word reads as a bandeja
               // that lost its notes: what happened is that *this* filter
               // matched none of them.
-              <NoMatches filter={filter.trim()} total={total} onClear={() => onFilterChange('')} />
+              <NoMatches filter={filter.trim()} total={inScope} onClear={() => onFilterChange('')} />
             ) : (
               // `buildInbox` already ordered them — most recent first, undated
               // last — so the rows are rendered as they arrive.
@@ -450,6 +493,89 @@ function QueueBar({
           ) : null}
         </>
       )}
+    </div>
+  )
+}
+
+/**
+ * The three piles of the bandeja, as one row of tabs.
+ *
+ * «Por revisar» is what US-009 is about: after a tanda, the notes with drafts
+ * and no push are the work that is left, and finding them among thirty
+ * untouched ones by reading badges is the trip this replaces. Each tab carries
+ * its own count so choosing one is never a guess, and the counts come from the
+ * whole bandeja rather than from the rows on screen — see `ScopeTabs`'s caller.
+ *
+ * Radio buttons rather than a row of `<button>`s: it is one choice out of
+ * three, exclusive, and that is what a screen reader should hear. The boxes
+ * themselves are hidden and the label is the control, which is why the checked
+ * state has to be drawn on it.
+ */
+function ScopeTabs({
+  counts,
+  scope,
+  onChange,
+}: {
+  counts: InboxCounts
+  scope: InboxScope
+  onChange: (scope: InboxScope) => void
+}) {
+  return (
+    <div
+      role="radiogroup"
+      aria-label="Qué notas pendientes mostrar"
+      className="flex items-center gap-1 rounded-lg bg-surface-2 p-0.5"
+    >
+      {INBOX_SCOPES.map((option) => {
+        const active = option === scope
+        const count = scopeCount(counts, option)
+
+        return (
+          <label
+            key={option}
+            title={scopeTitle(option)}
+            className={`flex flex-1 cursor-pointer items-center justify-center gap-1 rounded-md px-1.5 py-1 text-xs font-medium transition-colors ${
+              active ? 'bg-surface text-content shadow-panel' : 'text-muted hover:text-content'
+            }`}
+          >
+            <input
+              type="radio"
+              name="inbox-scope"
+              value={option}
+              checked={active}
+              onChange={() => onChange(option)}
+              className="sr-only"
+            />
+            <span className="truncate">{scopeLabel(option)}</span>
+            <span className={`tabular-nums ${active ? 'text-muted' : 'text-muted/70'}`}>
+              {NUMBER.format(count)}
+            </span>
+          </label>
+        )
+      })}
+    </div>
+  )
+}
+
+/**
+ * This tab is empty, but the bandeja is not.
+ *
+ * Worded per scope in `lib/inbox-scope.ts` — «ya tienen borrador», «extrae
+ * alguna y volverá aquí» — because the useful half of the sentence is where the
+ * pending notes *are*, and the way back to them is one button.
+ */
+function EmptyScope({ scope, onShowAll }: { scope: InboxScope; onShowAll: () => void }) {
+  return (
+    <div className="px-2 py-10 text-center">
+      <p className="text-sm font-medium text-content">Nada en «{scopeLabel(scope)}»</p>
+      <p className="mt-1 text-sm text-muted">{scopeEmptyLabel(scope)}</p>
+      <button
+        type="button"
+        onClick={onShowAll}
+        className="mt-3 rounded-lg border border-line-strong px-3 py-1.5 text-sm font-medium transition-colors hover:bg-surface-2"
+      >
+        Ver todas las pendientes
+      </button>
     </div>
   )
 }

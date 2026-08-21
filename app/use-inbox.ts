@@ -6,6 +6,11 @@ import { type FilteredFiles, filterFiles } from '@/lib/file-filter'
 import { inboxCounts, type InboxCounts, type InboxItem } from '@/lib/inbox'
 import { fetchInbox } from '@/lib/inbox-client'
 import {
+  DEFAULT_INBOX_SCOPE,
+  type InboxScope,
+  scopeItems,
+} from '@/lib/inbox-scope'
+import {
   deselectVisible,
   EMPTY_SELECTION,
   MAX_BATCH_SELECTION,
@@ -45,10 +50,21 @@ export type InboxApi = {
   state: InboxState
   /** How many are pending, and how many of those are already extracted. */
   counts: InboxCounts
+  /**
+   * Which pile is on screen: everything pending, only what is still untouched,
+   * or only what has been extracted and not sent — the review round.
+   */
+  scope: InboxScope
+  setScope: (scope: InboxScope) => void
   /** What the inbox's own filter strip holds. Narrows the rows already loaded. */
   filter: string
   setFilter: (value: string) => void
-  /** The rows the filter leaves on screen, and how many there were before it. */
+  /**
+   * The rows the scope *and* the filter leave on screen. `total` is the size of
+   * the scope they were taken from, which is why the panel counts what is shown
+   * against `counts.total` instead: `3 de 12 pendientes` means the same sentence
+   * whichever of the two narrowed it.
+   */
   filtered: FilteredFiles<InboxItem>
   /** Which of those rows are chosen — see `lib/inbox-selection.ts`. */
   selection: InboxSelectionApi
@@ -58,10 +74,12 @@ export type InboxApi = {
    * Ask again *without* forcing the walk: the notes on disk have not changed,
    * only what has been done to them.
    *
-   * It is what an extraction calls. A note that has just been extracted stops
-   * being «sin tocar» and becomes «extraída, sin enviar», and that difference
-   * lives in `drafts.json`, which every request reads anyway — walking the
-   * whole tree again for it would re-read a folder nothing happened to.
+   * It is what an extraction calls, and what a push calls. A note that has just
+   * been extracted stops being «sin tocar» and becomes «extraída, sin enviar»;
+   * a note that has just been sent leaves the bandeja altogether. Both facts
+   * live in the two small local files — `drafts.json` and `config.json` — that
+   * every request reads anyway, so walking the whole tree again for either
+   * would re-read a folder nothing happened to.
    */
   refresh: () => void
 }
@@ -81,8 +99,9 @@ export type InboxApi = {
  * button: the index is there so the app does not re-read the disk, and this is
  * the one moment the user is explicitly asking it to.
  *
- * The filter and the selection live here rather than inside the view for one
- * reason: leaving the inbox has to clear them, and leaving is `hide()`, which
+ * The scope, the filter and the selection live here rather than inside the view
+ * for one reason: leaving the inbox has to clear them, and leaving is `hide()`,
+ * which
  * the header button and the search both call. State kept in the view would
  * survive as long as the component did and come back on the next open — a
  * selection nobody remembers making, over rows that may no longer be pending.
@@ -90,6 +109,7 @@ export type InboxApi = {
 export function useInbox(): InboxApi {
   const [open, setOpen] = useState(false)
   const [state, dispatch] = useReducer(inboxReducer, INITIAL_INBOX)
+  const [scope, setScope] = useState<InboxScope>(DEFAULT_INBOX_SCOPE)
   const [filter, setFilter] = useState('')
   const [selected, setSelected] = useState<Selection>(EMPTY_SELECTION)
   /** The request that left last. Its answer is the only one worth writing. */
@@ -122,9 +142,12 @@ export function useInbox(): InboxApi {
   }
 
   const counts = useMemo(() => inboxCounts(state.items), [state.items])
-  // Filtering is arithmetic over the rows already loaded — the same module the
-  // file list uses, so «sin mayúsculas ni acentos» means one thing in the app.
-  const filtered = useMemo(() => filterFiles(state.items, filter), [state.items, filter])
+  // Scope first, text second, and both are arithmetic over the rows already
+  // loaded: what has been done to a note («por revisar») narrows the pile, and
+  // the filter — the same module the file list uses, so «sin mayúsculas ni
+  // acentos» means one thing in the app — narrows what is left of it.
+  const scoped = useMemo(() => scopeItems(state.items, scope), [state.items, scope])
+  const filtered = useMemo(() => filterFiles(scoped, filter), [scoped, filter])
   const visible = filtered.files
   const summary = useMemo(() => selectionSummary(selected, visible), [selected, visible])
   const chosen = useMemo(() => selectedItems(state.items, selected), [state.items, selected])
@@ -152,6 +175,7 @@ export function useInbox(): InboxApi {
   const hide = useCallback(() => {
     setOpen(false)
     setFilter('')
+    setScope(DEFAULT_INBOX_SCOPE)
     setSelected(EMPTY_SELECTION)
   }, [])
   const reload = useCallback(() => load(true), [load])
@@ -176,6 +200,8 @@ export function useInbox(): InboxApi {
     hide,
     state,
     counts,
+    scope,
+    setScope,
     filter,
     setFilter,
     filtered,

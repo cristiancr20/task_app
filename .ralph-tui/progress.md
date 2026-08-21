@@ -111,6 +111,26 @@ after each iteration and it's included in prompts for context.
   `os.tmpdir()`, fixtures written in `beforeAll`, `fs.rmSync` in `afterAll`, and
   a `chmod 000` case guarded by `it.skipIf(isRoot)` plus an assertion that the
   file really is unreadable (so the test cannot pass vacuously).
+- **Two narrowings compose in one order, and each count comes from its own
+  level.** The bandeja is narrowed by *what has been done* to a note
+  (`lib/inbox-scope.ts`) and then by *what was typed* (`lib/file-filter.ts`).
+  The tabs count `InboxCounts` — the whole bandeja — the chip counts what is on
+  screen against `counts.total`, and only the rows come from `filtered`. A tab
+  that counted the filtered rows would read `Por revisar 0` over notes the
+  filter is hiding: a way out that looks closed. For the same reason the strip
+  holding the tabs is gated on the bandeja's total, never on the current tab's.
+- **A list two views walk is defined once and derived twice.**
+  `reviewQueue(items)` *is* `scopeItems(items, 'extracted')`, so «Por revisar»
+  in the bandeja and the round in `app/review-nav.tsx` cannot disagree about
+  what is left or about its order — and every event that moves the bandeja
+  (extract, push, reload) moves the round with it, because there is only one
+  list.
+- **A queue over a shrinking list wraps, and «where am I» is allowed to be
+  nowhere.** `nextToReview` cycles: the round loses a note on every push, so
+  its end is a moving target and a strict «last one» would strand whatever was
+  skipped. `reviewPosition` answers `0` for a note that is not in the round —
+  which is what finishing a review *makes* the open note — so the label switches
+  from «Nota 2 de 3» to «Quedan 2» instead of inventing a place.
 
 ---
 
@@ -545,4 +565,76 @@ after each iteration and it's included in prompts for context.
     both «con borrador» and «3 tareas», and showing both says the same thing
     twice; the tanda's mark wins while the tanda is on screen, and «Cerrar»
     hands the row back to its status.
+---
+
+## 2026-08-20 - US-009
+- Closing the tanda: the bandeja gained a third dimension — **which pile** — and
+  the explorer gained a strip that walks the pile without going back to it.
+- New `lib/inbox-scope.ts` (pure): `InboxScope = 'all' | 'untouched' |
+  'extracted'`, `scopeItems` (returns the input array when nothing is narrowed),
+  `scopeCount` over the `InboxCounts` the inbox already produces, and every word
+  the tabs are drawn with (`scopeLabel`, `scopeTitle`, `scopeEmptyLabel`).
+- New `lib/inbox-review.ts` (pure): the round. `reviewQueue` is *defined as*
+  `scopeItems(items, 'extracted')`, so «Por revisar» in the bandeja and the
+  round in the explorer are structurally the same list; `reviewPosition`
+  (1-based, `0` for a note that is not in it), `nextToReview` (wraps, null when
+  the only one left is the one open, starts from the top for a note that just
+  left the round) and the two labels.
+- New `app/review-nav.tsx`: `Nota 2 de 3 por revisar · sigue «X»` plus
+  «Siguiente», at the top of the Linear column, drawn only while the round is
+  non-empty. It sends nothing: the push stays one note, one panel, one review.
+- `app/use-inbox.ts`: `scope`/`setScope`, applied *before* the text filter
+  (`scopeItems` → `filterFiles`), and cleared by `hide()` like the filter and
+  the selection.
+- `app/inbox-view.tsx`: `ScopeTabs` (a radiogroup, each tab with its count read
+  from `counts` rather than from the rows on screen), `EmptyScope` for a tab
+  that is empty while the bandeja is not, and the counts re-derived — `pending`
+  (= `counts.total`, what the header button shows), `inScope` (= `filtered.total`)
+  and `items.length` — so the chip always compares what is on screen against
+  every pending note.
+- `app/explorer.tsx`: the round is derived from `inbox.state.items` (loaded on
+  mount whether or not the panel was ever opened), «Siguiente» reuses
+  `openResult`, and `onPushed` now calls `inbox.refresh()` instead of
+  `reload()`.
+- Files changed: `lib/inbox-scope.ts` + test (19), `lib/inbox-review.ts` + test
+  (20), `app/review-nav.tsx`, `app/use-inbox.ts`, `app/inbox-view.tsx`,
+  `app/explorer.tsx`.
+- `pnpm typecheck`, `pnpm test` (35 files / 1051 tests) and `pnpm build` pass.
+  Also driven in a real browser over the configured root, with three notes
+  seeded as extracted and `.data/` backed up and restored byte-for-byte
+  afterwards: the tabs read `Todas 15 · Sin tocar 12 · Por revisar 3`, the chip
+  `3 de 15 pendientes`, opening a row brought its table up with its two rows,
+  «Siguiente» walked 1→2→3→1 without touching the bandeja, and a push against a
+  stubbed Linear (`LINEAR_API_URL` at a local script; parent + 2 tasks created)
+  left the header at `14`, the tabs at `Todas 14 · Sin tocar 12 · Por revisar 2`
+  and the strip at `Quedan 2 notas por revisar` — no reload.
+- **Learnings:**
+  - Two narrowings over one list have to be *ordered*, and the counts have to
+    be taken from different places or they start lying. Scope first, text
+    second; the tabs count `counts`, the chip counts `counts.total`, and only
+    the rows come from `filtered`. Reading the tab from the filtered rows would
+    have drawn `Por revisar 0` over four notes a filter was hiding — a way out
+    that looks closed.
+  - The strip that must not disappear is the one holding the way back. The
+    filter strip was gated on `filtered.total > 0`; with a scope on top of it
+    that is the count of the *current tab*, so an empty tab would have taken the
+    tabs off screen with it. It is gated on `counts.total` now — the bandeja,
+    not the slice.
+  - «Siguiente» wraps on purpose. The round shrinks as notes are sent, so its
+    end is a moving target; without wrapping, a note skipped near the top is
+    reachable only through the bandeja, which is the trip the control exists to
+    remove. Null then means one honest thing: «no queda otra».
+  - `reviewPosition` returning `0` is a feature, not a fallback. Finishing a
+    review *is* leaving the round — the push takes the note out of the inbox —
+    so the very act of succeeding invalidates the position, and the label has to
+    switch from «Nota 2 de 3» to «Quedan 2» rather than invent a place.
+  - A `sr-only` radio inside its `<label>` is what a screen reader should hear
+    for one-of-three, but Playwright's `check()` clicks the input and the label
+    text intercepts the pointer. Clicking the *label* is both what a user does
+    and what the test has to do.
+  - The push's `reload()` was doing a full walk for a change that never touches
+    the tree: it is `config.json` that gains the push. `refresh()` is the same
+    request against the cached index, and it is what keeps the round and the
+    bandeja in step the moment a note is sent — the same reasoning US-008 wrote
+    down for the queue.
 ---

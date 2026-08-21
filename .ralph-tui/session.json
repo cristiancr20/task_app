@@ -3,10 +3,10 @@
   "sessionId": "cc46fd1f-52ab-4e92-909d-16490d72d99a",
   "status": "running",
   "startedAt": "2026-08-21T01:44:47.724Z",
-  "updatedAt": "2026-08-21T02:18:38.271Z",
-  "currentIteration": 2,
+  "updatedAt": "2026-08-21T02:32:08.676Z",
+  "currentIteration": 3,
   "maxIterations": 0,
-  "tasksCompleted": 2,
+  "tasksCompleted": 3,
   "isPaused": false,
   "agentPlugin": "claude",
   "trackerState": {
@@ -60,8 +60,8 @@
       {
         "id": "US-008",
         "title": "Cola de extracción por lotes",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-009",
@@ -91,6 +91,16 @@
       "durationMs": 452443,
       "startedAt": "2026-08-21T01:53:55.665Z",
       "endedAt": "2026-08-21T02:01:28.108Z"
+    },
+    {
+      "iteration": 3,
+      "status": "completed",
+      "taskId": "US-008",
+      "taskTitle": "Cola de extracción por lotes",
+      "taskCompleted": true,
+      "durationMs": 1029019,
+      "startedAt": "2026-08-21T02:01:29.250Z",
+      "endedAt": "2026-08-21T02:18:38.269Z"
     }
   ],
   "skippedTaskIds": [],

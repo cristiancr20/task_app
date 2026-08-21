@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FileView } from '@/lib/browse-client'
 import type { DraftsState } from '@/lib/drafts-store'
 import { decideDuplicates, exclusionKey, scopeKeyOf } from '@/lib/duplicate-check'
+import { nextToReview, reviewPosition, reviewQueue } from '@/lib/inbox-review'
 import { issueStatesById } from '@/lib/issue-state-summary'
 import { ancestorFolders, folderLabel, folderName, folderOfNote } from '@/lib/note-paths'
 import { pendingCommitments } from '@/lib/pending-commitments'
@@ -17,6 +18,7 @@ import { MeetingInsights } from './meeting-insights'
 import { PendingCommitments } from './pending-commitments'
 import { PushPanel } from './push-panel'
 import { PushedHistory } from './pushed-history'
+import { ReviewNav } from './review-nav'
 import { useSearchApi } from './search-provider'
 import { SearchResults } from './search-results'
 import { TaskTable } from './task-table'
@@ -102,15 +104,19 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
   //
   // The inbox is «lo que no se ha enviado», so a push is exactly the event that
   // takes a note out of it: without this the header would go on counting a note
-  // that has just been processed until the page was reloaded.
-  const { reload: reloadInbox } = inbox
+  // that has just been processed until the page was reloaded. It is `refresh`
+  // and not `reload` for the same reason the queue's is — what changed is the
+  // push history in `config.json`, which every `/api/inbox` request reads
+  // anyway, not the folder on disk — and it is what keeps the round below in
+  // step: the note just sent leaves «Por revisar» the moment the answer lands.
+  const { refresh: refreshInbox } = inbox
   const onPushed = useCallback(
     (path: string) => {
       if (path === selectedFile) refreshTranscript()
       refreshFolder(folderOfNote(path))
-      reloadInbox()
+      refreshInbox()
     },
-    [refreshFolder, refreshTranscript, reloadInbox, selectedFile],
+    [refreshFolder, refreshInbox, refreshTranscript, selectedFile],
   )
   const run = usePushRun(selectedFile, onPushed)
 
@@ -127,7 +133,6 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
   // and the table showing an empty list over drafts that exist would be the
   // one way this queue could look like it did nothing.
   const { adopt } = drafts
-  const { refresh: refreshInbox } = inbox
   const onExtracted = useCallback(
     (path: string, stored: DraftsState) => {
       adopt(path, stored)
@@ -136,6 +141,15 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
     [adopt, refreshInbox],
   )
   const queue = useExtractionQueue(onExtracted)
+
+  // The round the tanda left behind: the notes with drafts that have never been
+  // sent, in the bandeja's own order. It is read from the inbox this page
+  // already keeps loaded — the hook fetches on mount whether or not the panel
+  // has ever been opened — so the strip above the table knows how much is left
+  // without a request of its own, and every event that moves the bandeja
+  // (extracting, pushing, reloading) moves the round with it.
+  const review = useMemo(() => reviewQueue(inbox.state.items), [inbox.state.items])
+  const reviewNext = useMemo(() => nextToReview(review, selectedFile), [review, selectedFile])
 
   // Launching empties the selection, but only if it really launched: the tanda
   // is now the queue's, and leaving the boxes ticked would offer to run again
@@ -413,6 +427,8 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
             counts={inbox.counts}
             rootLabel={rootLabel}
             selectedFile={selectedFile}
+            scope={inbox.scope}
+            onScopeChange={inbox.setScope}
             filter={inbox.filter}
             onFilterChange={inbox.setFilter}
             filtered={inbox.filtered}
@@ -477,6 +493,22 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
             full-width bar would separate the two. */}
         {selectedFile ? (
           <section aria-label="Tareas y envío a Linear" className="panel min-w-0 flex-1 bg-surface">
+            {/* The tanda's round, above the destination and above the table:
+                what is left to review and the way to the next one, so working
+                through what was extracted never goes back through the bandeja.
+                It appears only while there is something to review, and it sends
+                nothing — the push below stays one note at a time. */}
+            {review.length > 0 ? (
+              <ReviewNav
+                position={reviewPosition(review, selectedFile)}
+                total={review.length}
+                next={reviewNext}
+                onNext={() => {
+                  if (reviewNext) openResult(reviewNext.relPath)
+                }}
+              />
+            ) : null}
+
             <PushPanel
               target={target}
               parent={{
