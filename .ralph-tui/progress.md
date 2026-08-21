@@ -76,6 +76,37 @@ after each iteration and it's included in prompts for context.
   by the search taking the column — so one function clears both. Kept inside
   `InboxView` they would survive as long as the component did and come back on
   the next open.
+- **A long run is an async generator plus a pure fold, and the driver is
+  whatever can reach the network.** `lib/extraction-queue.ts` sequences the
+  tanda and yields events exactly like `lib/linear-push.ts` does for a push;
+  `lib/extraction-queue-state.ts` folds those events into what the view draws.
+  The push's generator lives on the server because it holds the API key, the
+  queue's runs in the browser because both its steps are already routes — but
+  the shape is the same, and «una nota que falla no detiene la cola» is a unit
+  test over a generator with fake deps rather than a story about a model.
+- **Derive the summary, never accumulate it beside the rows.** `queueTally`
+  counts the tanda out of `notes` + `results`, so the line at the bottom
+  («3 extraídas · 1 falló · 6 tareas») is structurally incapable of disagreeing
+  with the chips on the rows above it. The run still emits its own `done` with
+  the same three numbers — that is its contract with any other consumer — and
+  the reducer uses it only to mark the run over.
+- **State that must outlive a view lives in the component that outlives it.**
+  The bandeja's filter and selection are cleared by `hide()` and so live in
+  `useInbox`; the tanda must survive the search taking the column, so
+  `useExtractionQueue` is called in `Explorer` — which is never unmounted — and
+  passed into `InboxView` as a prop. «Navegar a otra vista no cancela la cola»
+  is then a fact about where the hook is called, not a mechanism.
+- **Cancelling a run of long steps stops the *next* step, not the current
+  one.** The run reads `cancelled()` between notes: the extraction in flight has
+  already cost its minutes, so it finishes and is stored («lo ya extraído se
+  conserva») while nothing else is launched. That makes `cancelling` a status of
+  its own — neither running nor finished — and the panel says so instead of
+  pretending the stop was instant.
+- **One builder for a result two paths produce.** `draftsFromExtraction` is what
+  makes «se guarda exactamente igual que si se hubiera extraído a mano» a
+  structural fact: both `useTaskDrafts` and the queue go through it, so the
+  rows, the baseline, `extracted: true` and the three insight lists cannot drift
+  apart between the two.
 - **Filesystem tests build a real temp tree.** `fs.mkdtempSync` under
   `os.tmpdir()`, fixtures written in `beforeAll`, `fs.rmSync` in `afterAll`, and
   a `chmod 000` case guarded by `it.skipIf(isRoot)` plus an assertion that the
@@ -426,3 +457,92 @@ after each iteration and it's included in prompts for context.
   - Playwright's `check()` asserts the box ends up checked, so it fails on a
     «seleccionar todo» that legitimately stops at the limit. `click()` is what
     exercises a tri-state box.
+
+## 2026-08-20 - US-008
+- The batch extraction queue: from the bandeja's action bar, «Extraer N notas»
+  runs the ticked notes **one at a time**, stores each result as that note's
+  drafts, marks each row with how it went, and ends with a summary.
+- New `lib/extraction-queue.ts` (pure): `runExtractionQueue(notes, { extract,
+  store, cancelled })`, an async generator yielding `start` →
+  `extracting`/`extracted`|`failed` per note → `stopped`? → `done`. Same shape
+  and same `MAX_CONSECUTIVE_FAILURES = 3` as `lib/linear-push.ts`, with the
+  reasoning restated for a provider rather than for Linear: one note can choke
+  a model, three in a row is Ollama not running or a key that is wrong, and the
+  remaining twenty would each cost a full timeout to fail identically.
+- New `lib/extraction-queue-state.ts` (pure): the reducer the hook dispatches
+  into (`started`, `event`, `cancelling`, `crashed`, `dismissed`), `queueTally`
+  — the summary is *derived*, so it cannot disagree with the row chips — and
+  every label (`queueProgressLabel`, `queueSummaryLabel`, `extractedTasksLabel`,
+  `extractButtonLabel`). `crashed` settles a note left mid-extraction, like
+  `usePushRun#settle`.
+- New `lib/extraction-drafts.ts`: `draftsFromExtraction(result, nextId)` — the
+  one place an `ExtractionResult` becomes a `DraftsState`. `useTaskDrafts` was
+  changed to build its own extraction through it, which is what makes «igual
+  que a mano» true rather than a coincidence.
+- New `app/use-extraction-queue.ts`: the React half — `runExtraction` +
+  `saveDrafts` as the run's two calls, a `cancelled` ref read between notes, a
+  `running` ref so a second tanda cannot be launched on top of one in flight,
+  and an `onExtracted(path, stored)` callback per note that lands.
+- `Explorer` runs the queue (not `InboxView`, which is unmounted whenever the
+  search or the folder takes the column back) and wires `onExtracted` to two
+  things: `inbox.refresh()` — new, an index-cached reload, since only
+  `drafts.json` changed — and `drafts.adopt(path, stored)`, also new, which
+  writes the result into the open note's table as if it had been extracted
+  there.
+- `InboxView`: the selection bar gained the primary «Extraer N notas» button
+  (disabled with a reason while a tanda runs) and a warning when the tanda
+  would replace existing drafts; a new `QueueBar` below it shows «Extrayendo»
+  with `QueueProgress`, «Cancelar»/«Cancelando…», and afterwards the summary
+  with «Cerrar»; rows carry `En cola` / `Extrayendo…` / `N tareas` / `Falló`
+  plus the error text under the failed row.
+- `app/progress.tsx` gained `QueueProgress` and both bars now share `StepBar`.
+- Files changed: `lib/extraction-queue.ts` + test (18), 
+  `lib/extraction-queue-state.ts` + test (33), `lib/extraction-drafts.ts` +
+  test (7), `app/use-extraction-queue.ts`, `app/use-task-drafts.ts`,
+  `app/use-inbox.ts`, `app/inbox-view.tsx`, `app/explorer.tsx`,
+  `app/progress.tsx`.
+- `pnpm typecheck`, `pnpm test` (33 files / 1012 tests) and `pnpm build` pass.
+  Also driven in a real browser against the configured root with a stub Ollama
+  (`OLLAMA_URL` pointing at a local script; `.data/drafts.json` backed up and
+  restored afterwards): a tanda of 4 with the second note failing ended
+  «3 extraídas · 1 falló · 6 tareas» with the error on its row; leaving for the
+  search mid-run and coming back showed «3 de 4» still going; cancelling after
+  one note ended «1 extraída · ninguna falló · 2 tareas · 2 sin lanzar» with
+  exactly one request having reached the stub; five notes against a stub that
+  always fails stopped after exactly three; and a note open in the table filled
+  its rows by itself when the queue reached it.
+- **Learnings:**
+  - The queue could not live in the bandeja's own hook. `useInbox` clears the
+    filter and the selection on `hide()`, which is right for them and fatal for
+    a tanda — so the queue is called from `Explorer`, the component that
+    outlives every switch of the centre column. Where a hook is called *is* the
+    lifetime rule; nothing else had to be built for «navegar no la cancela».
+  - Cancelling between notes rather than aborting the request is what makes «lo
+    ya extraído se conserva» true: an extraction in flight has already spent its
+    minutes against a local model, and throwing that away to feel responsive
+    would be the most expensive kind of politeness. It costs a `cancelling`
+    status, which the panel has to word — «se detendrá al terminar esta nota».
+  - Storing is part of extracting. A result the app could not write is not
+    «extraída» — the bandeja will not move the row and the drafts are not there
+    — so `store` is awaited inside the note's own `try` and a failed save marks
+    the note failed. Counting it as a success would be the one lie the summary
+    could tell.
+  - A re-read cannot adopt what the queue wrote. `mergeDrafts` deliberately
+    lets what is on screen win over what comes back from disk (a slow read must
+    not undo the user's typing), so calling `load` for a note the queue has just
+    extracted would keep the stale, empty table. `adopt` writes the stored state
+    in directly and records it as saved, which also stops the table's own
+    write-behind from putting the empty version back.
+  - Refreshing the bandeja after every note must *not* force the walk. What
+    changed is `drafts.json`, which every `/api/inbox` request reads anyway;
+    `reload()` would re-read the whole tree for a change that is not in the
+    tree. Hence `refresh()` beside it — same request, cached index.
+  - Testing «de una en una» needs a macrotask, not two `await Promise.resolve()`:
+    the generator is several microtask hops away from its first `extract`, so
+    the cheap flush asserts on a run that has not started yet. `setTimeout(0)`
+    drains everything that is not genuinely blocked.
+  - The row's two chips had to become one. A note the tanda just extracted is
+    both «con borrador» and «3 tareas», and showing both says the same thing
+    twice; the tanda's mark wins while the tanda is on screen, and «Cerrar»
+    hands the row back to its status.
+---

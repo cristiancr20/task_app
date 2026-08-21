@@ -54,6 +54,16 @@ export type InboxApi = {
   selection: InboxSelectionApi
   /** Walk the disk again — the reload button, and «Reintentar» after a failure. */
   reload: () => void
+  /**
+   * Ask again *without* forcing the walk: the notes on disk have not changed,
+   * only what has been done to them.
+   *
+   * It is what an extraction calls. A note that has just been extracted stops
+   * being «sin tocar» and becomes «extraída, sin enviar», and that difference
+   * lives in `drafts.json`, which every request reads anyway — walking the
+   * whole tree again for it would re-read a folder nothing happened to.
+   */
+  refresh: () => void
 }
 
 /**
@@ -145,6 +155,7 @@ export function useInbox(): InboxApi {
     setSelected(EMPTY_SELECTION)
   }, [])
   const reload = useCallback(() => load(true), [load])
+  const refresh = useCallback(() => load(false), [load])
 
   const selection = useMemo<InboxSelectionApi>(
     () => ({
@@ -159,7 +170,19 @@ export function useInbox(): InboxApi {
     [chosen, clear, selected, summary, toggle, toggleVisible],
   )
 
-  return { open, show, hide, state, counts, filter, setFilter, filtered, selection, reload }
+  return {
+    open,
+    show,
+    hide,
+    state,
+    counts,
+    filter,
+    setFilter,
+    filtered,
+    selection,
+    reload,
+    refresh,
+  }
 }
 
 function errorMessage(err: unknown): string {

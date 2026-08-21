@@ -61,16 +61,10 @@ export function ExtractionProgress({ model }: { model?: string }) {
   )
 }
 
-/**
- * A push does have a denominator, so the bar fills. `index` is 1-based and can
- * momentarily exceed nothing — it is clamped anyway, because a bar that
- * overshoots its track looks broken even when the numbers behind it are right.
- */
+/** A push does have a denominator, so the bar fills rather than sliding. */
 export function PushProgress({ index, total }: { index: number; total: number }) {
   const seconds = useElapsedSeconds()
-  const safeTotal = Math.max(total, 1)
-  const current = Math.min(Math.max(index, 1), safeTotal)
-  const percent = Math.round((current / safeTotal) * 100)
+  const { current, safeTotal } = clamp(index, total)
 
   return (
     <div role="status" aria-live="polite">
@@ -79,18 +73,71 @@ export function PushProgress({ index, total }: { index: number; total: number })
         <p className="shrink-0 text-sm tabular-nums text-muted">{formatElapsed(seconds)}</p>
       </div>
 
-      <div
-        className="mt-2 h-1 w-full overflow-hidden rounded-full bg-line"
-        role="progressbar"
-        aria-valuemin={0}
-        aria-valuemax={safeTotal}
-        aria-valuenow={current}
-      >
-        <div
-          className="h-full rounded-full bg-accent transition-[width] duration-300 ease-out"
-          style={{ width: `${percent}%` }}
-        />
+      <StepBar current={current} total={safeTotal} />
+    </div>
+  )
+}
+
+/**
+ * The batch queue: the same filling bar as a push, and for the same reason —
+ * the denominator is known, because the tanda is a list the user chose.
+ *
+ * There is no elapsed counter here, unlike the two above. The panel it lives
+ * in is unmounted whenever the search or the folder takes the column back, so
+ * a timer started at mount would restart on the way back and claim a tanda
+ * that has been running for ten minutes has been running for two seconds. The
+ * note being named, and the number moving, are the proof that it is alive.
+ */
+export function QueueProgress({
+  index,
+  total,
+  title,
+}: {
+  index: number
+  total: number
+  /** The note being extracted right now, so the progress names something. */
+  title: string
+}) {
+  const { current, safeTotal } = clamp(index, total)
+
+  return (
+    <div role="status" aria-live="polite">
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="min-w-0 flex-1 truncate text-sm text-content" title={title}>
+          {title}
+        </p>
+        <p className="shrink-0 text-sm tabular-nums text-muted">{`${current} de ${safeTotal}`}</p>
       </div>
+
+      <StepBar current={current} total={safeTotal} />
+    </div>
+  )
+}
+
+/**
+ * `index` is 1-based and can momentarily exceed nothing — it is clamped anyway,
+ * because a bar that overshoots its track looks broken even when the numbers
+ * behind it are right.
+ */
+function clamp(index: number, total: number): { current: number; safeTotal: number } {
+  const safeTotal = Math.max(total, 1)
+  return { current: Math.min(Math.max(index, 1), safeTotal), safeTotal }
+}
+
+/** The track both runs fill, one step at a time. */
+function StepBar({ current, total }: { current: number; total: number }) {
+  return (
+    <div
+      className="mt-2 h-1 w-full overflow-hidden rounded-full bg-line"
+      role="progressbar"
+      aria-valuemin={0}
+      aria-valuemax={total}
+      aria-valuenow={current}
+    >
+      <div
+        className="h-full rounded-full bg-accent transition-[width] duration-300 ease-out"
+        style={{ width: `${Math.round((current / total) * 100)}%` }}
+      />
     </div>
   )
 }

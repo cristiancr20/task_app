@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import type { FileView } from '@/lib/browse-client'
+import type { DraftsState } from '@/lib/drafts-store'
 import { decideDuplicates, exclusionKey, scopeKeyOf } from '@/lib/duplicate-check'
 import { issueStatesById } from '@/lib/issue-state-summary'
 import { ancestorFolders, folderLabel, folderName, folderOfNote } from '@/lib/note-paths'
@@ -21,6 +22,7 @@ import { SearchResults } from './search-results'
 import { TaskTable } from './task-table'
 import { TranscriptPreview } from './transcript-preview'
 import { useDuplicateCheck } from './use-duplicate-check'
+import { useExtractionQueue } from './use-extraction-queue'
 import { useFolderHistory } from './use-folder-history'
 import { useFolderIssueStates } from './use-folder-issue-states'
 import { useFolderListings } from './use-folder-listings'
@@ -111,6 +113,37 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
     [refreshFolder, refreshTranscript, reloadInbox, selectedFile],
   )
   const run = usePushRun(selectedFile, onPushed)
+
+  // The batch extraction of the bandeja. It is run *here*, not inside the
+  // inbox's view, and that is the whole of «navegar a otra vista no cancela la
+  // cola»: the view is unmounted the moment the search or the folder takes the
+  // column back, while this component stays for as long as the page does.
+  //
+  // A note the queue extracts changes twice over: on disk, where its drafts
+  // now exist — so the bandeja has to hear about it and move the row from «sin
+  // tocar» to «extraída, sin enviar» — and in this page's memory, if the note
+  // happens to be the one open in the table. `adopt` is what covers the second
+  // one: a re-read would lose to what is already on screen (see `mergeDrafts`),
+  // and the table showing an empty list over drafts that exist would be the
+  // one way this queue could look like it did nothing.
+  const { adopt } = drafts
+  const { refresh: refreshInbox } = inbox
+  const onExtracted = useCallback(
+    (path: string, stored: DraftsState) => {
+      adopt(path, stored)
+      refreshInbox()
+    },
+    [adopt, refreshInbox],
+  )
+  const queue = useExtractionQueue(onExtracted)
+
+  // Launching empties the selection, but only if it really launched: the tanda
+  // is now the queue's, and leaving the boxes ticked would offer to run again
+  // exactly what is running.
+  const { clear: clearSelection, items: selectedNotes } = inbox.selection
+  const startBatch = useCallback(() => {
+    if (queue.start(selectedNotes)) clearSelection()
+  }, [clearSelection, queue, selectedNotes])
 
   // The parent issue stands for the meeting, so its title starts as the note's
   // own — and only until the user types, which is what the null means.
@@ -384,6 +417,8 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
             onFilterChange={inbox.setFilter}
             filtered={inbox.filtered}
             selection={inbox.selection}
+            queue={queue}
+            onExtract={startBatch}
             onOpen={openResult}
             onReload={inbox.reload}
           />

@@ -8,6 +8,7 @@ import { fetchDrafts, saveDrafts } from '@/lib/drafts-client'
 import { mergeDrafts } from '@/lib/drafts-merge'
 import type { DraftsState } from '@/lib/drafts-store'
 import { runExtraction } from '@/lib/extract-client'
+import { draftsFromExtraction } from '@/lib/extraction-drafts'
 import {
   emptyInsights,
   type ExtractedTask,
@@ -120,6 +121,8 @@ export function useTaskDrafts(relPath: string | null): {
   addRow: () => void
   /** «Reintentar» after a failed load. */
   retryLoad: () => void
+  /** Adopt drafts written elsewhere for a note — the batch queue's results. */
+  adopt: (path: string, stored: DraftsState) => void
 } {
   const [byPath, setByPath] = useState<Record<string, TaskDraftState>>({})
 
@@ -201,20 +204,10 @@ export function useTaskDrafts(relPath: string | null): {
       // extraction never lands on the file the user has moved on to.
       runExtraction(path).then(
         (result) => {
-          // The new rows *are* the new baseline, so an accepted regeneration
-          // starts the count over at zero.
-          const rows = result.tasks.map(toDraft)
-          // The other three lists are replaced wholesale by the same answer:
-          // they came out of this reading of the transcript, so keeping the
-          // previous ones next to new rows would show two different meetings.
-          const stored: DraftsState = {
-            rows,
-            baseline: rows,
-            extracted: true,
-            decisions: result.decisions,
-            risks: result.risks,
-            openQuestions: result.openQuestions,
-          }
+          // The same builder the batch queue uses (`lib/extraction-drafts.ts`):
+          // a note extracted from the bandeja has to end up exactly as one
+          // extracted here, and that only holds while both go through it.
+          const stored = draftsFromExtraction(result, ids.next)
 
           // Straight to disk rather than through the debounce: this is the one
           // result in the app that cost a model call, and the reload that would
@@ -340,6 +333,44 @@ export function useTaskDrafts(relPath: string | null): {
     if (relPath) load(relPath)
   }, [load, relPath])
 
+  /**
+   * Take on drafts that were written for `path` somewhere else — the batch
+   * queue extracting a note while the page is open.
+   *
+   * It cannot be a re-read: `mergeDrafts` deliberately lets what is on screen
+   * win over what comes back from disk, because the ordinary case is a slow
+   * read landing on a table the user has been working in. This is the opposite
+   * case — the disk is *newer*, and it holds the result of a model call — so
+   * the state is written in as if the extraction had happened here, which for
+   * the user it did.
+   *
+   * The keys are reserved for the same reason a load reserves them: the queue
+   * mints its own `row-N`, and a row added by hand afterwards must not collide
+   * with one that is already on screen.
+   */
+  const adopt = useCallback(
+    (path: string, stored: DraftsState) => {
+      ids.reserve([...stored.rows, ...stored.baseline].map((row) => row.id))
+
+      // It is on disk already, so recording it as saved is what keeps the
+      // adoption from being written straight back out.
+      requested.current.add(path)
+      savable.current.add(path)
+      savedAt.current[path] = fingerprint(stored)
+
+      patch(path, (prev) => ({
+        ...prev,
+        ...stored,
+        generating: false,
+        error: null,
+        confirming: false,
+        loading: false,
+        loadError: null,
+      }))
+    },
+    [patch],
+  )
+
   return {
     // A selected file with no entry yet is one whose load is about to start, so
     // it reads as loading rather than as empty.
@@ -352,6 +383,7 @@ export function useTaskDrafts(relPath: string | null): {
     removeRow,
     addRow,
     retryLoad,
+    adopt,
   }
 }
 
@@ -374,11 +406,6 @@ function durableOf(state: TaskDraftState): DraftsState {
  */
 function fingerprint(stored: DraftsState): string {
   return JSON.stringify(stored)
-}
-
-/** Everything the model returns starts included — curating is opting *out*. */
-function toDraft(task: ExtractedTask): TaskDraft {
-  return { ...task, id: ids.next(), include: true }
 }
 
 /**

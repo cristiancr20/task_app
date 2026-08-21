@@ -1,7 +1,16 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 
+import {
+  extractButtonLabel,
+  extractedTasksLabel,
+  type QueueNoteResult,
+  type QueueState,
+  queueSummaryLabel,
+  type QueueTally,
+  queueTally,
+} from '@/lib/extraction-queue-state'
 import type { FilteredFiles } from '@/lib/file-filter'
 import type { InboxCounts, InboxItem } from '@/lib/inbox'
 import { noteSizeLabel } from '@/lib/inbox'
@@ -9,6 +18,8 @@ import { selectionCountLabel, selectionLimitLabel } from '@/lib/inbox-selection'
 import type { InboxState } from '@/lib/inbox-state'
 import { folderLabel } from '@/lib/note-paths'
 
+import { QueueProgress } from './progress'
+import type { ExtractionQueueApi } from './use-extraction-queue'
 import type { InboxSelectionApi } from './use-inbox'
 
 type Props = {
@@ -26,6 +37,10 @@ type Props = {
   filtered: FilteredFiles<InboxItem>
   /** Which rows are ticked, and everything the bar needs to say about it. */
   selection: InboxSelectionApi
+  /** The batch extraction: where it stands and how to stop it. */
+  queue: ExtractionQueueApi
+  /** «Extraer N notas»: launches the tanda over what is ticked right now. */
+  onExtract: () => void
   /** Open a pending note: the note in the transcript, its folder in the tree. */
   onOpen: (relPath: string) => void
   /** Walk the disk again — the reload control, and «Reintentar» after a failure. */
@@ -66,12 +81,30 @@ export function InboxView({
   onFilterChange,
   filtered,
   selection,
+  queue,
+  onExtract,
   onOpen,
   onReload,
 }: Props) {
   const { loading, loaded, error, truncated, scanned } = state
   const { files: items, active, total } = filtered
   const { summary } = selection
+
+  // Which rows belong to the tanda that is running (or has just run), so a row
+  // can show what happened to *it* rather than only what the bar says about
+  // all of them. A set, because the tanda is looked up once per row.
+  const inTanda = useMemo(
+    () => new Set(queue.state.notes.map((note) => note.relPath)),
+    [queue.state.notes],
+  )
+  const tally = useMemo(() => queueTally(queue.state), [queue.state])
+  // Chosen notes that already carry drafts. Extracting them again replaces
+  // what is there, edits included, and that is worth saying *before* the
+  // button is pressed rather than after.
+  const replacing = useMemo(
+    () => selection.items.filter((item) => item.status === 'extracted').length,
+    [selection.items],
+  )
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -178,7 +211,14 @@ export function InboxView({
                       /* A full tanda greys out what is *not* in it and leaves
                          what is alone: the way out of the limit has to keep
                          working, or the only escape would be the bar. */
-                      disabled={summary.atLimit && !selection.paths.has(item.relPath)}
+                      disabled={
+                        (summary.atLimit && !selection.paths.has(item.relPath)) ||
+                        // A note the running tanda is going to reach is not
+                        // available for another one: it is already spoken for.
+                        (queue.busy && inTanda.has(item.relPath))
+                      }
+                      queued={inTanda.has(item.relPath)}
+                      result={queue.state.results[item.relPath] ?? null}
                       onToggle={() => selection.toggle(item.relPath)}
                       onSelect={() => onOpen(item.relPath)}
                     />
@@ -199,7 +239,22 @@ export function InboxView({
           hidden={summary.count - summary.visibleSelected}
           atLimit={summary.atLimit}
           max={selection.max}
+          replacing={replacing}
+          busy={queue.busy}
+          onExtract={onExtract}
           onClear={selection.clear}
+        />
+      ) : null}
+
+      {/* The tanda outlives this view — it is run by the explorer around it —
+          so coming back mid-run finds it exactly where it was, and the panel
+          is simply absent while there is no tanda at all. */}
+      {queue.state.status !== 'idle' ? (
+        <QueueBar
+          state={queue.state}
+          tally={tally}
+          onCancel={queue.cancel}
+          onDismiss={queue.dismiss}
         />
       ) : null}
     </div>
@@ -207,7 +262,8 @@ export function InboxView({
 }
 
 /**
- * What is chosen right now, and the way out of it.
+ * What is chosen right now, what it is going to cost, and the two things that
+ * can be done with it: extract it, or undo it.
  *
  * It appears with the first tick and goes away with the last, so its presence
  * is itself the answer to «¿tengo algo seleccionado?». The limit is explained
@@ -215,14 +271,20 @@ export function InboxView({
  * user has already pressed something that did nothing, and this is the only
  * place that can say why.
  *
- * The actions that consume the selection land in this bar; for now the only
- * one is the one that undoes it.
+ * «Extraer» is the primary action of the whole bandeja, so it is a full-width
+ * button at the bottom of the bar rather than one more control in the row of
+ * links above it. It refuses while a tanda is running and says which of the
+ * two reasons it is: a local model cannot serve two extractions at once, so
+ * queueing a second tanda would not make either finish sooner.
  */
 function SelectionBar({
   count,
   hidden,
   atLimit,
   max,
+  replacing,
+  busy,
+  onExtract,
   onClear,
 }: {
   count: number
@@ -230,6 +292,11 @@ function SelectionBar({
   hidden: number
   atLimit: boolean
   max: number
+  /** Chosen notes that already have drafts, which extracting would replace. */
+  replacing: number
+  /** A tanda is already running: this one cannot be launched on top of it. */
+  busy: boolean
+  onExtract: () => void
   onClear: () => void
 }) {
   return (
@@ -258,6 +325,131 @@ function SelectionBar({
           con el resto.
         </p>
       ) : null}
+
+      {/* Said before the button, not after the fact: an extraction replaces the
+          drafts of the note it runs on — the manual edits with them — and that
+          is the one thing this button can destroy. */}
+      {replacing > 0 ? (
+        <p className="mt-1.5 text-xs text-warn">
+          {replacing === 1
+            ? '1 ya tiene borrador y se reemplazará con lo que salga ahora.'
+            : `${NUMBER.format(replacing)} ya tienen borrador y se reemplazarán con lo que salga ahora.`}
+        </p>
+      ) : null}
+
+      <button
+        type="button"
+        onClick={onExtract}
+        disabled={busy}
+        title={busy ? 'Ya hay una tanda en curso' : undefined}
+        className="mt-2 w-full rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-on-accent shadow-panel transition-colors hover:bg-accent-soft disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
+      >
+        {busy ? 'Hay una tanda en curso' : extractButtonLabel(count)}
+      </button>
+    </div>
+  )
+}
+
+/**
+ * The tanda itself: what is being extracted right now, or how it went.
+ *
+ * It sits below the selection bar and outside the scrolling area, because it
+ * is about work that is happening rather than about the list — and because it
+ * has to be readable while the rows underneath reload, which they do after
+ * every note that lands.
+ *
+ * The summary stays until it is dismissed. A tanda of fifteen notes finishes
+ * while the user is somewhere else in the app, and «así fue» is the one thing
+ * they will come back for; making it vanish on its own would answer the
+ * question only for whoever happened to be watching.
+ */
+function QueueBar({
+  state,
+  tally,
+  onCancel,
+  onDismiss,
+}: {
+  state: QueueState
+  tally: QueueTally
+  onCancel: () => void
+  onDismiss: () => void
+}) {
+  const running = state.status === 'running' || state.status === 'cancelling'
+
+  return (
+    <div className="border-t border-line bg-surface-2 px-2.5 py-2">
+      {running ? (
+        <>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted">
+              Extrayendo la tanda
+            </p>
+            <button
+              type="button"
+              onClick={onCancel}
+              disabled={state.status === 'cancelling'}
+              className="shrink-0 rounded-lg border border-line-strong px-2.5 py-1 text-xs font-medium transition-colors hover:bg-surface disabled:opacity-50"
+            >
+              {state.status === 'cancelling' ? 'Cancelando…' : 'Cancelar'}
+            </button>
+          </div>
+
+          <div className="mt-1.5">
+            {state.progress ? (
+              <QueueProgress
+                index={state.progress.index}
+                total={state.progress.total}
+                title={state.progress.title}
+              />
+            ) : (
+              <p className="text-sm text-muted">Preparando la tanda…</p>
+            )}
+          </div>
+
+          {/* The cancellation is not instant and pretending otherwise would be
+              a lie the next minute exposes: the note in flight has already cost
+              its time, so it is finished and kept. */}
+          {state.status === 'cancelling' ? (
+            <p className="mt-1.5 text-xs text-muted">
+              Se detendrá al terminar esta nota; las demás no se lanzarán.
+            </p>
+          ) : (
+            <p className="mt-1.5 text-xs text-muted">
+              Una nota cada vez. Puedes seguir leyendo o buscando mientras tanto.
+            </p>
+          )}
+        </>
+      ) : (
+        <>
+          <div className="flex items-center justify-between gap-2">
+            <p aria-live="polite" className="min-w-0 text-sm font-medium text-content">
+              Tanda terminada
+            </p>
+            <button
+              type="button"
+              onClick={onDismiss}
+              className="shrink-0 rounded-lg border border-line-strong px-2.5 py-1 text-xs font-medium transition-colors hover:bg-surface"
+            >
+              Cerrar
+            </button>
+          </div>
+
+          <p className="mt-0.5 text-xs tabular-nums text-muted">{queueSummaryLabel(tally)}</p>
+
+          {/* Why it ended early, when it did. A cancellation carries no error
+              because there was none: the user asked, and what had already been
+              extracted is on disk. */}
+          {state.stopped?.error ? (
+            <p role="alert" className="mt-1.5 text-xs text-danger">
+              {state.stopped.error}
+            </p>
+          ) : state.stopped?.reason === 'cancelled' ? (
+            <p className="mt-1.5 text-xs text-muted">
+              Cancelaste la tanda. Lo extraído está guardado; lo que faltaba sigue pendiente.
+            </p>
+          ) : null}
+        </>
+      )}
     </div>
   )
 }
@@ -321,6 +513,8 @@ function InboxRow({
   selected,
   checked,
   disabled,
+  queued,
+  result,
   onToggle,
   onSelect,
 }: {
@@ -329,6 +523,10 @@ function InboxRow({
   selected: boolean
   checked: boolean
   disabled: boolean
+  /** This note belongs to the tanda on screen, whether or not it has run yet. */
+  queued: boolean
+  /** How the tanda went for this note; null while it has not been attempted. */
+  result: QueueNoteResult | null
   onToggle: () => void
   onSelect: () => void
 }) {
@@ -356,53 +554,107 @@ function InboxRow({
         className="mt-0.5 h-4 w-4 shrink-0 accent-accent disabled:opacity-40"
       />
 
-      <button
-        type="button"
-        onClick={onSelect}
-        aria-current={selected ? 'true' : undefined}
-        className="min-w-0 flex-1 text-left"
-      >
-        <span className="flex items-baseline gap-2">
-          <span
-            className={`min-w-0 flex-1 truncate text-sm text-content ${
-              selected ? 'font-semibold' : 'font-medium'
-            }`}
-          >
-            {item.title}
-          </span>
-          {/* Only the note that has been started carries a mark. «Sin tocar» is
-              the ordinary case and the whole panel is already about it, so a
-              badge on every row would say nothing and drown the one that does. */}
-          {item.status === 'extracted' ? (
-            <span className="shrink-0 rounded-full bg-accent-wash px-1.5 py-0.5 text-[0.6875rem] font-medium text-accent">
-              Con borrador
+      <div className="min-w-0 flex-1">
+        <button
+          type="button"
+          onClick={onSelect}
+          aria-current={selected ? 'true' : undefined}
+          className="block w-full min-w-0 text-left"
+        >
+          <span className="flex items-baseline gap-2">
+            <span
+              className={`min-w-0 flex-1 truncate text-sm text-content ${
+                selected ? 'font-semibold' : 'font-medium'
+              }`}
+            >
+              {item.title}
             </span>
-          ) : null}
-        </span>
-
-        {/* One line, not a wrapping one: the folder is the only part that can be
-            arbitrarily long, so it is the part that truncates. Letting the row
-            wrap instead put the size on a second line and left a separator
-            dangling at the end of the first. */}
-        <span className="mt-1 flex items-center gap-x-1.5 text-xs text-muted">
-          {/* An undated note says so rather than leaving a gap where every other
-              row has a day: it is «no consta», and it is why it sorts last. */}
-          {item.date ? (
-            <time dateTime={item.date} className="shrink-0">
-              {formatDate(item.date)}
-            </time>
-          ) : (
-            <span className="shrink-0">Sin fecha</span>
-          )}
-          <Separator />
-          <span className="min-w-0 truncate" title={folder}>
-            {folder}
+            {/* The tanda's own mark wins over the status when there is one: it
+                says everything the badge would and one thing more — how this
+                note went, just now. Otherwise only the note that has been started
+                carries a mark, because «sin tocar» is what the whole panel is
+                about and a badge on every row would drown the one that matters. */}
+            {result || queued ? (
+              <QueueChip result={result} />
+            ) : item.status === 'extracted' ? (
+              <span className="shrink-0 rounded-full bg-accent-wash px-1.5 py-0.5 text-[0.6875rem] font-medium text-accent">
+                Con borrador
+              </span>
+            ) : null}
           </span>
-          <Separator />
-          <span className="shrink-0 tabular-nums">{noteSizeLabel(item.words)}</span>
-        </span>
-      </button>
+
+          {/* One line, not a wrapping one: the folder is the only part that can be
+              arbitrarily long, so it is the part that truncates. Letting the row
+              wrap instead put the size on a second line and left a separator
+              dangling at the end of the first. */}
+          <span className="mt-1 flex items-center gap-x-1.5 text-xs text-muted">
+            {/* An undated note says so rather than leaving a gap where every other
+                row has a day: it is «no consta», and it is why it sorts last. */}
+            {item.date ? (
+              <time dateTime={item.date} className="shrink-0">
+                {formatDate(item.date)}
+              </time>
+            ) : (
+              <span className="shrink-0">Sin fecha</span>
+            )}
+            <Separator />
+            <span className="min-w-0 truncate" title={folder}>
+              {folder}
+            </span>
+            <Separator />
+            <span className="shrink-0 tabular-nums">{noteSizeLabel(item.words)}</span>
+          </span>
+        </button>
+
+        {/* Outside the button, because it is not what pressing the row does: a
+            note the tanda could not extract says why, right where it failed, so
+            the queue's summary never has to be the only account of it. */}
+        {result?.state === 'failed' ? (
+          <p role="alert" className="mt-1 text-xs text-danger">
+            {result.error}
+          </p>
+        ) : null}
+      </div>
     </div>
+  )
+}
+
+/**
+ * What the tanda did to one note, as a chip beside its title.
+ *
+ * A note with no result yet is «en cola» rather than unmarked: it was chosen,
+ * it is going to be extracted, and the difference between «esperando» and «no
+ * la elegí» is the whole reason for ticking rows in the first place.
+ */
+function QueueChip({ result }: { result: QueueNoteResult | null }) {
+  if (!result) {
+    return (
+      <span className="shrink-0 rounded-full bg-surface-2 px-1.5 py-0.5 text-[0.6875rem] font-medium text-muted">
+        En cola
+      </span>
+    )
+  }
+
+  if (result.state === 'extracting') {
+    return (
+      <span className="shrink-0 animate-pulse rounded-full bg-accent px-1.5 py-0.5 text-[0.6875rem] font-medium text-on-accent">
+        Extrayendo…
+      </span>
+    )
+  }
+
+  if (result.state === 'failed') {
+    return (
+      <span className="shrink-0 rounded-full bg-danger/10 px-1.5 py-0.5 text-[0.6875rem] font-medium text-danger">
+        Falló
+      </span>
+    )
+  }
+
+  return (
+    <span className="shrink-0 rounded-full bg-accent-wash px-1.5 py-0.5 text-[0.6875rem] font-medium tabular-nums text-accent">
+      {extractedTasksLabel(result.tasks)}
+    </span>
   )
 }
 
