@@ -1,9 +1,15 @@
 'use client'
 
+import { useEffect, useRef } from 'react'
+
+import type { FilteredFiles } from '@/lib/file-filter'
 import type { InboxCounts, InboxItem } from '@/lib/inbox'
 import { noteSizeLabel } from '@/lib/inbox'
+import { selectionCountLabel, selectionLimitLabel } from '@/lib/inbox-selection'
 import type { InboxState } from '@/lib/inbox-state'
 import { folderLabel } from '@/lib/note-paths'
+
+import type { InboxSelectionApi } from './use-inbox'
 
 type Props = {
   /** Where the shared inbox stands — see `useInbox`. */
@@ -14,6 +20,12 @@ type Props = {
   rootLabel: string
   /** The note open in the transcript column, if it is one of these rows. */
   selectedFile: string | null
+  /** What the filter strip holds, and the rows it left on screen. */
+  filter: string
+  onFilterChange: (value: string) => void
+  filtered: FilteredFiles<InboxItem>
+  /** Which rows are ticked, and everything the bar needs to say about it. */
+  selection: InboxSelectionApi
   /** Open a pending note: the note in the transcript, its folder in the tree. */
   onOpen: (relPath: string) => void
   /** Walk the disk again — the reload control, and «Reintentar» after a failure. */
@@ -37,16 +49,29 @@ const DATE = new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'short', 
  * walk that hit its limit says so instead of passing for the whole folder, and
  * a note with drafts is marked rather than mixed in with the untouched ones —
  * they are both pending, but the next step is not the same.
+ *
+ * The rows can be ticked, which is what turns the inbox from a list into a
+ * pile that can be worked through in one go. Two rules hold the selection
+ * together and are visible in the markup: «seleccionar todo» is drawn *beside
+ * the filter*, because it means the rows that filter left; and the action bar
+ * sits outside the scrolling area, so scrolling never takes away what has been
+ * chosen or the thing that acts on it.
  */
 export function InboxView({
   state,
   counts,
   rootLabel,
   selectedFile,
+  filter,
+  onFilterChange,
+  filtered,
+  selection,
   onOpen,
   onReload,
 }: Props) {
-  const { items, loading, loaded, error, truncated, scanned } = state
+  const { loading, loaded, error, truncated, scanned } = state
+  const { files: items, active, total } = filtered
+  const { summary } = selection
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -56,18 +81,39 @@ export function InboxView({
           {/* Nothing is claimed before the first answer: a `0 pendientes` on a
               panel that has not asked yet would read as «no queda nada». */}
           {loaded ? (
-            <span className="chip shrink-0 tabular-nums">{countLabel(counts.total)}</span>
+            <span className="chip shrink-0 tabular-nums">
+              {active ? shownLabel(items.length, total) : countLabel(total)}
+            </span>
           ) : null}
           <ReloadButton loading={loading} onClick={onReload} />
         </div>
       </header>
+
+      {/* The strip appears once there are rows to narrow and to tick: a filter
+          over nothing, and a «seleccionar todo» that would select nothing, are
+          two controls that cannot do anything yet. */}
+      {loaded && total > 0 ? (
+        <div className="flex flex-col gap-1.5 border-b border-line px-2 py-1.5">
+          <FilterField value={filter} onChange={onFilterChange} />
+          <SelectAll
+            /* Labelled with what it reaches, not with «todo»: with a filter on
+               it only ever ticks the rows on screen, and saying so is cheaper
+               than making the user find that out by pressing it. */
+            label={active ? `Seleccionar las ${NUMBER.format(items.length)} filtradas` : 'Seleccionar todo'}
+            checked={summary.allVisibleSelected}
+            indeterminate={summary.someVisibleSelected}
+            disabled={items.length === 0}
+            onChange={selection.toggleVisible}
+          />
+        </div>
+      ) : null}
 
       {/* One live region for the whole body: «cargando», «bandeja vacía» and
           the count all reach a screen reader as they replace each other. */}
       <div aria-live="polite" className="min-h-0 flex-1 overflow-y-auto p-2">
         {!loaded && loading ? (
           <p className="px-2 py-4 text-sm text-muted">Buscando notas sin procesar…</p>
-        ) : error && items.length === 0 ? (
+        ) : error && total === 0 ? (
           <div className="px-2 py-4">
             <p role="alert" className="text-sm text-danger">
               {error}
@@ -80,7 +126,7 @@ export function InboxView({
               Reintentar
             </button>
           </div>
-        ) : items.length === 0 ? (
+        ) : total === 0 ? (
           <EmptyInbox scanned={scanned} loaded={loaded} />
         ) : (
           <>
@@ -113,24 +159,147 @@ export function InboxView({
               </p>
             ) : null}
 
-            {/* `buildInbox` already ordered them — most recent first, undated
-                last — so the rows are rendered as they arrive. */}
-            <ul className="flex flex-col gap-0.5">
-              {items.map((item) => (
-                <li key={item.relPath}>
-                  <InboxRow
-                    item={item}
-                    rootLabel={rootLabel}
-                    selected={item.relPath === selectedFile}
-                    onSelect={() => onOpen(item.relPath)}
-                  />
-                </li>
-              ))}
-            </ul>
+            {items.length === 0 ? (
+              // A list that empties itself without a word reads as a bandeja
+              // that lost its notes: what happened is that *this* filter
+              // matched none of them.
+              <NoMatches filter={filter.trim()} total={total} onClear={() => onFilterChange('')} />
+            ) : (
+              // `buildInbox` already ordered them — most recent first, undated
+              // last — so the rows are rendered as they arrive.
+              <ul className="flex flex-col gap-0.5">
+                {items.map((item) => (
+                  <li key={item.relPath}>
+                    <InboxRow
+                      item={item}
+                      rootLabel={rootLabel}
+                      selected={item.relPath === selectedFile}
+                      checked={selection.paths.has(item.relPath)}
+                      /* A full tanda greys out what is *not* in it and leaves
+                         what is alone: the way out of the limit has to keep
+                         working, or the only escape would be the bar. */
+                      disabled={summary.atLimit && !selection.paths.has(item.relPath)}
+                      onToggle={() => selection.toggle(item.relPath)}
+                      onSelect={() => onOpen(item.relPath)}
+                    />
+                  </li>
+                ))}
+              </ul>
+            )}
           </>
         )}
       </div>
+
+      {/* Outside the scrolling area on purpose: what is chosen and what can be
+          done with it must not scroll away — and the bar is not there at all
+          while nothing is chosen, so an empty selection costs no height. */}
+      {summary.count > 0 ? (
+        <SelectionBar
+          count={summary.count}
+          hidden={summary.count - summary.visibleSelected}
+          atLimit={summary.atLimit}
+          max={selection.max}
+          onClear={selection.clear}
+        />
+      ) : null}
     </div>
+  )
+}
+
+/**
+ * What is chosen right now, and the way out of it.
+ *
+ * It appears with the first tick and goes away with the last, so its presence
+ * is itself the answer to «¿tengo algo seleccionado?». The limit is explained
+ * *here*, when it is reached, rather than on the box that refused: by then the
+ * user has already pressed something that did nothing, and this is the only
+ * place that can say why.
+ *
+ * The actions that consume the selection land in this bar; for now the only
+ * one is the one that undoes it.
+ */
+function SelectionBar({
+  count,
+  hidden,
+  atLimit,
+  max,
+  onClear,
+}: {
+  count: number
+  /** Chosen notes the filter is currently hiding. */
+  hidden: number
+  atLimit: boolean
+  max: number
+  onClear: () => void
+}) {
+  return (
+    <div className="border-t border-line bg-surface-2 px-2.5 py-2">
+      <div className="flex items-center justify-between gap-2">
+        <p aria-live="polite" className="min-w-0 truncate text-sm font-medium text-content">
+          {selectionCountLabel(count)}
+          {/* Said only when it is true: a count that does not match the ticked
+              boxes on screen is otherwise read as a bug. */}
+          {hidden > 0 ? (
+            <span className="font-normal text-muted"> ({hidden} fuera del filtro)</span>
+          ) : null}
+        </p>
+        <button
+          type="button"
+          onClick={onClear}
+          className="shrink-0 rounded-lg border border-line-strong px-2.5 py-1 text-xs font-medium transition-colors hover:bg-surface"
+        >
+          No seleccionar nada
+        </button>
+      </div>
+
+      {atLimit ? (
+        <p className="mt-1.5 text-xs text-warn">
+          {selectionLimitLabel(max)}. Quita alguna para elegir otra, o procesa esta tanda y sigue
+          con el resto.
+        </p>
+      ) : null}
+    </div>
+  )
+}
+
+/**
+ * «Seleccionar todo», with the three states a group checkbox has.
+ *
+ * `indeterminate` is a property, never an attribute, so it is written to the
+ * node after every render: React has no prop for it and a box that is «algunas»
+ * would otherwise be drawn as «ninguna».
+ */
+function SelectAll({
+  label,
+  checked,
+  indeterminate,
+  disabled,
+  onChange,
+}: {
+  label: string
+  checked: boolean
+  indeterminate: boolean
+  disabled: boolean
+  onChange: () => void
+}) {
+  const box = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (box.current) box.current.indeterminate = indeterminate
+  }, [indeterminate])
+
+  return (
+    <label className="flex w-fit items-center gap-2 px-0.5 text-xs text-muted">
+      <input
+        ref={box}
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={onChange}
+        className="h-3.5 w-3.5 shrink-0 accent-accent"
+      />
+      {label}
+    </label>
   )
 }
 
@@ -140,27 +309,35 @@ export function InboxView({
  * Built like a file row and like a search result on purpose — same edge mark
  * for the selection, same muted meta line — because it does the same thing: it
  * is how a note is opened.
+ *
+ * The tick box is a sibling of that button rather than inside it: two
+ * independent actions on one row — «elígela para la tanda» and «ábrela» — and
+ * a control nested in a button is neither valid markup nor reachable with a
+ * keyboard.
  */
 function InboxRow({
   item,
   rootLabel,
   selected,
+  checked,
+  disabled,
+  onToggle,
   onSelect,
 }: {
   item: InboxItem
   rootLabel: string
   selected: boolean
+  checked: boolean
+  disabled: boolean
+  onToggle: () => void
   onSelect: () => void
 }) {
   const folder = folderLabel(rootLabel, item.folder)
 
   return (
-    <button
-      type="button"
-      onClick={onSelect}
-      aria-current={selected ? 'true' : undefined}
-      className={`relative w-full rounded-lg py-2.5 pl-4 pr-3 text-left transition-colors ${
-        selected ? 'bg-accent-wash' : 'hover:bg-surface-2'
+    <div
+      className={`relative flex items-start gap-2 rounded-lg py-2.5 pl-4 pr-3 transition-colors ${
+        selected ? 'bg-accent-wash' : checked ? 'bg-surface-2' : 'hover:bg-surface-2'
       }`}
     >
       <span
@@ -170,46 +347,62 @@ function InboxRow({
         }`}
       />
 
-      <span className="flex items-baseline gap-2">
-        <span
-          className={`min-w-0 flex-1 truncate text-sm text-content ${
-            selected ? 'font-semibold' : 'font-medium'
-          }`}
-        >
-          {item.title}
-        </span>
-        {/* Only the note that has been started carries a mark. «Sin tocar» is
-            the ordinary case and the whole panel is already about it, so a
-            badge on every row would say nothing and drown the one that does. */}
-        {item.status === 'extracted' ? (
-          <span className="shrink-0 rounded-full bg-accent-wash px-1.5 py-0.5 text-[0.6875rem] font-medium text-accent">
-            Con borrador
-          </span>
-        ) : null}
-      </span>
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={onToggle}
+        aria-label={`Seleccionar ${item.title}`}
+        className="mt-0.5 h-4 w-4 shrink-0 accent-accent disabled:opacity-40"
+      />
 
-      {/* One line, not a wrapping one: the folder is the only part that can be
-          arbitrarily long, so it is the part that truncates. Letting the row
-          wrap instead put the size on a second line and left a separator
-          dangling at the end of the first. */}
-      <span className="mt-1 flex items-center gap-x-1.5 text-xs text-muted">
-        {/* An undated note says so rather than leaving a gap where every other
-            row has a day: it is «no consta», and it is why it sorts last. */}
-        {item.date ? (
-          <time dateTime={item.date} className="shrink-0">
-            {formatDate(item.date)}
-          </time>
-        ) : (
-          <span className="shrink-0">Sin fecha</span>
-        )}
-        <Separator />
-        <span className="min-w-0 truncate" title={folder}>
-          {folder}
+      <button
+        type="button"
+        onClick={onSelect}
+        aria-current={selected ? 'true' : undefined}
+        className="min-w-0 flex-1 text-left"
+      >
+        <span className="flex items-baseline gap-2">
+          <span
+            className={`min-w-0 flex-1 truncate text-sm text-content ${
+              selected ? 'font-semibold' : 'font-medium'
+            }`}
+          >
+            {item.title}
+          </span>
+          {/* Only the note that has been started carries a mark. «Sin tocar» is
+              the ordinary case and the whole panel is already about it, so a
+              badge on every row would say nothing and drown the one that does. */}
+          {item.status === 'extracted' ? (
+            <span className="shrink-0 rounded-full bg-accent-wash px-1.5 py-0.5 text-[0.6875rem] font-medium text-accent">
+              Con borrador
+            </span>
+          ) : null}
         </span>
-        <Separator />
-        <span className="shrink-0 tabular-nums">{noteSizeLabel(item.words)}</span>
-      </span>
-    </button>
+
+        {/* One line, not a wrapping one: the folder is the only part that can be
+            arbitrarily long, so it is the part that truncates. Letting the row
+            wrap instead put the size on a second line and left a separator
+            dangling at the end of the first. */}
+        <span className="mt-1 flex items-center gap-x-1.5 text-xs text-muted">
+          {/* An undated note says so rather than leaving a gap where every other
+              row has a day: it is «no consta», and it is why it sorts last. */}
+          {item.date ? (
+            <time dateTime={item.date} className="shrink-0">
+              {formatDate(item.date)}
+            </time>
+          ) : (
+            <span className="shrink-0">Sin fecha</span>
+          )}
+          <Separator />
+          <span className="min-w-0 truncate" title={folder}>
+            {folder}
+          </span>
+          <Separator />
+          <span className="shrink-0 tabular-nums">{noteSizeLabel(item.words)}</span>
+        </span>
+      </button>
+    </div>
   )
 }
 
@@ -218,6 +411,127 @@ function Separator() {
     <span aria-hidden="true" className="text-muted/50">
       ·
     </span>
+  )
+}
+
+/**
+ * The filter of the bandeja, in the strip under its head.
+ *
+ * The same box as the file list's, and for the same reasons — no debounce, no
+ * minimum length, no request, Escape to empty it — because it does the same
+ * thing to a list already in memory. What differs is what it narrows: every
+ * pending note under the root rather than one folder's listing.
+ */
+function FilterField({
+  value,
+  onChange,
+}: {
+  value: string
+  onChange: (value: string) => void
+}) {
+  const input = useRef<HTMLInputElement>(null)
+
+  function onKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    if (event.key !== 'Escape') return
+    // `type="search"` clears itself on Escape in some browsers without React
+    // hearing about it, which would leave the field and the filter disagreeing.
+    event.preventDefault()
+    if (value) {
+      onChange('')
+    } else {
+      input.current?.blur()
+    }
+  }
+
+  return (
+    <div className="relative">
+      <FilterIcon />
+      <input
+        ref={input}
+        type="search"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        onKeyDown={onKeyDown}
+        placeholder="Filtrar la bandeja…"
+        aria-label="Filtrar las notas pendientes"
+        spellCheck={false}
+        autoComplete="off"
+        className="w-full rounded-lg border border-line bg-surface py-1 pl-7 pr-7 text-sm text-content outline-none placeholder:text-muted focus:border-accent [&::-webkit-search-cancel-button]:appearance-none"
+      />
+      {value ? (
+        <button
+          type="button"
+          onClick={() => {
+            onChange('')
+            // Emptying the filter is a step inside it, not a way out: the
+            // cursor stays where the next one is typed.
+            input.current?.focus()
+          }}
+          title="Quitar el filtro (Esc)"
+          className="absolute right-1 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted transition-colors hover:bg-line hover:text-content"
+        >
+          <span className="sr-only">Quitar el filtro</span>
+          <svg
+            viewBox="0 0 16 16"
+            aria-hidden="true"
+            className="h-3 w-3"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.75"
+            strokeLinecap="round"
+          >
+            <path d="m4 4 8 8M12 4l-8 8" />
+          </svg>
+        </button>
+      ) : null}
+    </div>
+  )
+}
+
+/** A funnel, so the box is not mistaken for the search up in the header. */
+function FilterIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      aria-hidden="true"
+      className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M2.5 3.5h11l-4.25 5v4l-2.5 1.25v-5.25z" />
+    </svg>
+  )
+}
+
+/** There are pending notes; this filter simply matches none of them. */
+function NoMatches({
+  filter,
+  total,
+  onClear,
+}: {
+  filter: string
+  total: number
+  onClear: () => void
+}) {
+  return (
+    <div className="px-2 py-10 text-center">
+      <p className="text-sm font-medium text-content">Ninguna nota coincide</p>
+      <p className="mt-1 text-sm text-muted">
+        {filter ? <>Nada pendiente contiene «{filter}». </> : null}
+        Prueba con otras palabras o busca en todas las notas desde la cabecera.
+      </p>
+      <button
+        type="button"
+        onClick={onClear}
+        className="mt-3 rounded-lg border border-line-strong px-3 py-1.5 text-sm font-medium transition-colors hover:bg-surface-2"
+      >
+        Quitar el filtro y ver{' '}
+        {total === 1 ? 'la nota pendiente' : `las ${NUMBER.format(total)} pendientes`}
+      </button>
+    </div>
   )
 }
 
@@ -293,6 +607,11 @@ function ReloadButton({ loading, onClick }: { loading: boolean; onClick: () => v
 /** `12 pendientes`: what is left to process, for the panel head. */
 function countLabel(total: number): string {
   return total === 1 ? '1 pendiente' : `${NUMBER.format(total)} pendientes`
+}
+
+/** `3 de 12 pendientes`: the same count, with how much of it the filter shows. */
+function shownLabel(shown: number, total: number): string {
+  return `${NUMBER.format(shown)} de ${NUMBER.format(total)} ${total === 1 ? 'pendiente' : 'pendientes'}`
 }
 
 /** `3 con borrador`: how many of the pending notes have already been extracted. */

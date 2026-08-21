@@ -380,6 +380,10 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
             counts={inbox.counts}
             rootLabel={rootLabel}
             selectedFile={selectedFile}
+            filter={inbox.filter}
+            onFilterChange={inbox.setFilter}
+            filtered={inbox.filtered}
+            selection={inbox.selection}
             onOpen={openResult}
             onReload={inbox.reload}
           />

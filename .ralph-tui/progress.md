@@ -62,6 +62,20 @@ after each iteration and it's included in prompts for context.
   (pushed, drafted) and nothing else — no filesystem, no `node:`, no React — so
   the route builds the inbox on the server and the browser imports the same
   types and the same labels (`noteSizeLabel`) for the rows.
+- **A selection is a set of ids, and every group action takes the *visible*
+  rows.** `lib/inbox-selection.ts` holds `ReadonlySet<string>` of `relPath` and
+  nothing else, so a reload, a filter or a push are set operations
+  (`pruneSelection`, `selectVisible`, `deselectVisible`) rather than special
+  cases in the view — and «seleccionar todo» is structurally incapable of
+  reaching a row the filter is hiding, because the functions are only ever
+  handed what is on screen. A cap is enforced on the way in by returning the
+  *same set*, which costs no render and leaves the interface to explain why.
+- **State that must not outlive a view lives in that view's hook, not in its
+  component.** The inbox's filter and selection sit in `app/use-inbox.ts`
+  because leaving the bandeja is `hide()` — called by the header button *and*
+  by the search taking the column — so one function clears both. Kept inside
+  `InboxView` they would survive as long as the component did and come back on
+  the next open.
 - **Filesystem tests build a real temp tree.** `fs.mkdtempSync` under
   `os.tmpdir()`, fixtures written in `beforeAll`, `fs.rmSync` in `afterAll`, and
   a `chmod 000` case guarded by `it.skipIf(isRoot)` plus an assertion that the
@@ -349,3 +363,66 @@ after each iteration and it's included in prompts for context.
     `<a> cannot be a descendant of <a>` from `app/markdown.tsx` — the autolinker
     runs inside link text. Worth its own fix.
 ---
+
+## 2026-08-20 - US-007
+- Multiple selection in the inbox: a checkbox per row, «seleccionar todo» over
+  the visible rows, an action bar with the count, and a ceiling per tanda.
+- New `lib/inbox-selection.ts` (pure): a selection is a `ReadonlySet<string>` of
+  `relPath`s and nothing else. `selectionSummary` (counts, the three states of
+  the master checkbox, `remaining`/`atLimit`), `toggleSelected`, `selectVisible`,
+  `deselectVisible`, `pruneSelection`, `selectedItems`, `selectionCountLabel`,
+  `selectionLimitLabel`, `EMPTY_SELECTION` and `MAX_BATCH_SELECTION` (25,
+  commented against US-008: the batch is extracted one note at a time against a
+  possibly local model, so the ceiling is about how long a tanda a person can
+  start and wait for). Every function returns the input set when it changes
+  nothing.
+- Every group function takes the *visible* rows, so «seleccionar todo» can never
+  reach what the filter is hiding — that rule is in the module, not in the view.
+- The inbox got its own filter strip, which is what «solo alcanza a las filas
+  visibles con el filtro puesto» is about: it reuses `filterFiles` from
+  `lib/file-filter.ts` unchanged (it was already generic over
+  `{ title, fileName }`, which `InboxItem` satisfies), so the fold is the app's
+  single definition of «sin mayúsculas ni acentos».
+- `app/use-inbox.ts` owns the filter and the selection — not the view — because
+  leaving the inbox is `hide()`, which both the header button and the search
+  call: `hide()` empties both. It also prunes the selection against the rows
+  during render whenever `state.items` changes, so a note that a push took out
+  of the inbox never survives in the count for even one frame.
+- `app/inbox-view.tsx`: the head chip now switches to `3 de 15 pendientes`, the
+  strip holds the filter field plus a `SelectAll` labelled with what it reaches
+  (`Seleccionar las 12 filtradas` when filtering), rows are a `<div>` with the
+  checkbox beside the open button instead of one big `<button>`, a full tanda
+  disables only the *unticked* boxes, `NoMatches` explains an empty filter, and
+  `SelectionBar` sits outside the scrolling area with the count, the notes that
+  are outside the filter, «No seleccionar nada» and the limit message.
+- Files changed: `lib/inbox-selection.ts`, `lib/inbox-selection.test.ts`
+  (42 tests), `app/use-inbox.ts`, `app/inbox-view.tsx`, `app/explorer.tsx`.
+- `pnpm typecheck`, `pnpm test` (30 files / 954 tests) and `pnpm build` pass.
+  Also driven in a real browser over the configured root (15 pending): ticking
+  rows, «seleccionar todo» reaching only the 12 the filter left, the bar saying
+  `13 notas seleccionadas (1 fuera del filtro)`, and the selection gone after
+  closing and reopening the bandeja. The limit was exercised the same way with
+  `MAX_BATCH_SELECTION` temporarily at 3: the bar explained it, the unticked
+  boxes went disabled, the ticked ones stayed usable, and the master box went
+  indeterminate.
+- **Learnings:**
+  - A row that does two things cannot be one `<button>`. Opening the note and
+    choosing it for the tanda are independent actions, and a checkbox nested in
+    a button is invalid markup that the keyboard cannot reach: the row became a
+    `<div>` holding a checkbox and a button, with the hover/selected background
+    moved to the wrapper.
+  - Enforcing the ceiling by *returning the same set* is what lets the UI be
+    honest: the box does not tick, and the identity comparison React does means
+    the refused click costs no render — but a refusal with nothing said reads as
+    a broken checkbox, so the bar carries the explanation and the unticked boxes
+    go `disabled`. The ticked ones must stay enabled or the limit has no exit.
+  - `indeterminate` is a DOM property with no React prop: a group checkbox needs
+    a ref and an effect, otherwise «algunas» is drawn exactly like «ninguna».
+  - Counting the selection against the *visible* rows and against the whole set
+    are two different numbers, and both are needed: the master checkbox is about
+    the first, the action bar about the second — which is why the bar says
+    `(1 fuera del filtro)` when they disagree instead of showing a count the
+    ticked boxes on screen do not add up to.
+  - Playwright's `check()` asserts the box ends up checked, so it fails on a
+    «seleccionar todo» that legitimately stops at the limit. `click()` is what
+    exercises a tri-state box.
