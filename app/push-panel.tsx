@@ -147,11 +147,12 @@ export function PushPanel({ target, parent, duplicates, push }: Props) {
   const open = choice ?? !settled
 
   return (
-    // Header of the tasks column, so it stacks instead of spreading: at this
-    // width a row of side-by-side fields wraps into an unreadable staircase.
-    // The whole block is recessed: it is the panel's controls, and the rows it
-    // acts on are what should stay on the light surface below.
-    <div className="flex shrink-0 flex-col border-b border-line bg-surface-2">
+    // The top half of the column's action bar, above the button and below
+    // whichever pestaña is open. It stacks instead of spreading: at this width
+    // a row of side-by-side fields wraps into an unreadable staircase. The
+    // whole block is recessed: it is the column's controls, and the rows it
+    // acts on are what stays on the light surface above.
+    <div className="flex shrink-0 flex-col border-t border-line bg-surface-2">
       <div className="panel-head justify-between">
         <h2 className="panel-title">Enviar a Linear</h2>
         {target.status === 'ready' ? (

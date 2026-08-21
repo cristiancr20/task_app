@@ -3,13 +3,21 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import type { FileView } from '@/lib/browse-client'
+import {
+  activeTab,
+  type ColumnTab,
+  columnCounts,
+  DEFAULT_COLUMN_TAB,
+} from '@/lib/column-tabs'
 import type { DraftsState } from '@/lib/drafts-store'
 import { decideDuplicates, exclusionKey, scopeKeyOf } from '@/lib/duplicate-check'
+import { emptyInsights } from '@/lib/extractors/task'
 import { nextToReview, reviewPosition, reviewQueue } from '@/lib/inbox-review'
 import { issueStatesById } from '@/lib/issue-state-summary'
 import { ancestorFolders, folderLabel, folderName, folderOfNote } from '@/lib/note-paths'
 import { pendingCommitments } from '@/lib/pending-commitments'
 
+import { ColumnTabs, columnPanelId, columnTabId } from './column-tabs'
 import { FileList } from './file-list'
 import { FolderTree } from './folder-tree'
 import { useInboxApi } from './inbox-provider'
@@ -38,6 +46,9 @@ import { useTranscript } from './use-transcript'
 
 /** A folder that has not been listed yet, as one array rather than a new one per render. */
 const NO_FILES: FileView[] = []
+
+/** What a note with no drafts loaded contributes to «La reunión»: nothing, once. */
+const NO_INSIGHTS = emptyInsights()
 
 type Props = {
   /** Absolute path of the configured context folder, for the tree's root row. */
@@ -237,6 +248,37 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
   const created = rows.filter((row) => results[row.id]?.state === 'created').length
   const parentIssue = parentIssueOf(run.state)
   const createdIssues = createdIssuesOf(run.state)
+
+  // The three piles the column splits into — the table, what the meeting knew,
+  // what it already produced — and which of them is on screen.
+  //
+  // The choice belongs to the session and not to the note: «cambiar de nota
+  // vuelve a Tareas», because opening a note is opening its table, and coming
+  // back to a reading panel somebody left open two notes ago would hide the one
+  // thing that is edited. The reset happens in the render body, like
+  // `FileList`'s filter, so the previous note's tab never reaches the screen.
+  //
+  // What is *really* open is `activeTab`, not `chosenTab`: a tab holds a report
+  // that can empty underneath the user — a re-extraction with no insights, a
+  // history that is still loading — and the fallback has to be immediate rather
+  // than an effect that draws the empty panel once before correcting itself.
+  const [chosenTab, setChosenTab] = useState<ColumnTab>(DEFAULT_COLUMN_TAB)
+  const [tabbedFile, setTabbedFile] = useState(selectedFile)
+  if (tabbedFile !== selectedFile) {
+    setTabbedFile(selectedFile)
+    setChosenTab(DEFAULT_COLUMN_TAB)
+  }
+  const tabCounts = useMemo(
+    () =>
+      columnCounts({
+        rows: rows.length,
+        insights: drafts.state ?? NO_INSIGHTS,
+        commitments: previousCommitments.length,
+        history,
+      }),
+    [drafts.state, history, previousCommitments.length, rows.length],
+  )
+  const tab = activeTab(tabCounts, chosenTab)
 
   // What the duplicate check is aimed at. Only a chosen project counts: the
   // whole team is a far wider net than the user asked for, and a check against
@@ -531,36 +573,23 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
               />
             ) : null}
 
-            <PushPanel
-              target={target}
-              parent={parentApi}
-              duplicates={{
-                status: duplicates.status,
-                checking: duplicates.checking,
-                error: duplicates.error,
-                excluded: decisions.excluded,
-                onCheck: duplicates.recheck,
-              }}
-              push={pushApi}
-            />
+            {/* The head of the column: three piles that are never read at the
+                same time, instead of five blocks stacked on one another. What
+                each of them holds, which can be opened and which is open is
+                `lib/column-tabs.ts` — see `ColumnTabs`. */}
+            <ColumnTabs counts={tabCounts} chosen={chosenTab} onChange={setChosenTab} />
 
-            {/* Everything that grows with the meeting, between the two fixed
-                strips: the record, the reminders, the table and the insights.
-                It is one shrinkable box (`min-h-0`) so that a column with no
-                room left takes it out of *this* — the table keeps a floor and
-                the rest scrolls — instead of pushing the button below the
-                bottom edge, which is where `overflow-hidden` would eat it. */}
-            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-              {history.length > 0 ? (
-                <PushedHistory history={history} states={issueStates} />
-              ) : null}
-
-              {/* What the *other* meetings of this project left open, under what
-                  this one already produced: the note's own record first, then
-                  what it should be asked about. */}
-              <PendingCommitments commitments={previousCommitments} onOpenNote={setSelectedFile} />
-
-              <div className="flex min-h-40 flex-1">
+            {/* The open pile, filling everything between the tabs and the
+                action bar. Only one is mounted: they are alternatives, and a
+                hidden panel that kept rendering would go on costing the column
+                the very height the tabs were introduced to give back. */}
+            {tab === 'tasks' ? (
+              <div
+                role="tabpanel"
+                id={columnPanelId('tasks')}
+                aria-labelledby={columnTabId('tasks')}
+                className="flex min-h-0 flex-1 flex-col"
+              >
                 <TaskTable
                   state={drafts.state}
                   results={results}
@@ -578,18 +607,53 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
                   onRetryLoad={drafts.retryLoad}
                 />
               </div>
+            ) : tab === 'meeting' ? (
+              // What the meeting knew and what the previous ones left open:
+              // read once, before or during the review, and never edited — so
+              // it scrolls in its own panel instead of pushing the table down.
+              <div
+                role="tabpanel"
+                id={columnPanelId('meeting')}
+                aria-labelledby={columnTabId('meeting')}
+                tabIndex={0}
+                className="flex min-h-0 flex-1 flex-col overflow-y-auto"
+              >
+                <PendingCommitments commitments={previousCommitments} onOpenNote={setSelectedFile} />
+                {drafts.state ? <MeetingInsights insights={drafts.state} /> : null}
+              </div>
+            ) : (
+              // What this note already produced in Linear. The tab is disabled
+              // without a single push, so this is never an empty panel.
+              <div
+                role="tabpanel"
+                id={columnPanelId('sent')}
+                aria-labelledby={columnTabId('sent')}
+                tabIndex={0}
+                className="flex min-h-0 flex-1 flex-col overflow-y-auto"
+              >
+                <PushedHistory history={history} states={issueStates} />
+              </div>
+            )}
 
-              {/* What the same extraction found that is not work: below the
-                  table, outside it, and explicitly not going anywhere. It draws
-                  nothing at all until a meeting has decided, risked or asked
-                  something. */}
-              {drafts.state ? <MeetingInsights insights={drafts.state} /> : null}
-            </div>
+            {/* The action bar: where it goes and the button that sends it,
+                together at the foot of the column and outside the panel above
+                that scrolls. The destination moved down here from the top with
+                the tabs: it belongs to the push and not to the pile being read,
+                and above the tabs it would have been a second header between
+                them and the table they open onto. */}
+            <PushPanel
+              target={target}
+              parent={parentApi}
+              duplicates={{
+                status: duplicates.status,
+                checking: duplicates.checking,
+                error: duplicates.error,
+                excluded: decisions.excluded,
+                onCheck: duplicates.recheck,
+              }}
+              push={pushApi}
+            />
 
-            {/* The action, at the bottom of the column and outside the box
-                above that scrolls: the button keeps its height whatever the
-                meeting produced, so reviewing a long table never means losing
-                the way to send it. */}
             <PushFooter target={target} parent={parentApi} push={pushApi} />
           </section>
         ) : null}

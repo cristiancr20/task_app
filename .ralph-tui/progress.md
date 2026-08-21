@@ -144,6 +144,21 @@ after each iteration and it's included in prompts for context.
   skipped. `reviewPosition` answers `0` for a note that is not in the round —
   which is what finishing a review *makes* the open note — so the label switches
   from «Nota 2 de 3» to «Quedan 2» instead of inventing a place.
+- **A tab with nothing behind it is disabled, and «cuál está abierta» is
+  derived on every render.** `lib/column-tabs.ts` answers the whole header out
+  of three numbers: the words, the counts, which tabs can be pressed and where
+  an arrow key lands. `activeTab(counts, chosen)` is what the column draws, not
+  `chosen`, so a pestaña that empties underneath the user — a re-extraction
+  with no insights, a history still loading — falls back to «Tareas» in the
+  same render instead of showing an empty panel once and correcting itself in
+  an effect. The default tab is the exception that is never disabled: an empty
+  table still carries «Generar tareas», so it is a panel with something to do
+  rather than an empty one.
+- **A count that gates a panel counts everything the panel draws.** «La
+  reunión» adds decisions, risks, open questions *and* the pending commitments
+  of previous meetings into one number, because they are one panel: counting
+  only the insights would disable a tab holding six commitments — the one thing
+  the disabled rule must never do.
 
 ---
 
@@ -717,4 +732,61 @@ after each iteration and it's included in prompts for context.
     30 s. Every assertion after it in the script is then about a run that
     finished long ago — the markup (`disabled=""` in `outerHTML`) is what
     actually answered «¿editable durante el envío?».
+---
+
+## 2026-08-20 - US-011
+- The Linear column's five stacked blocks became three pestañas over one frame:
+  the round strip on top, the tab row as the column's head, the open pile
+  filling everything below it, and the action bar — destination fold plus the
+  send button — pinned at the foot.
+- New `lib/column-tabs.ts` (pure): `COLUMN_TABS` / `DEFAULT_COLUMN_TAB`,
+  `columnCounts` (rows, `insightsCount` + commitments, `historyIssueCount`),
+  `tabEnabled` («Tareas» always, the two reports only with something to
+  report), `tabLabel` / `tabTitle` / `tabEmptyTitle`, `activeTab`,
+  `columnTabViews` and the keyboard's `nextEnabledTab` / `edgeEnabledTab`.
+  29 tests in `lib/column-tabs.test.ts`.
+- New `app/column-tabs.tsx`: a real `role="tablist"` — roving `tabIndex`,
+  arrows wrapping and skipping the disabled tabs, Inicio/Fin, `aria-selected`
+  and `aria-controls` — that only draws `columnTabViews` and moves the focus.
+- `app/explorer.tsx`: `chosenTab` in session state with the render-body reset on
+  `selectedFile` («cambiar de nota vuelve a Tareas»), `tabCounts` memoised from
+  the rows, the drafts' insights, the commitments and the history, and three
+  `role="tabpanel"` bodies — the table alone in the first, `PendingCommitments`
+  + `MeetingInsights` in «La reunión», `PushedHistory` in «Enviadas». Only the
+  open one is mounted.
+- `app/push-panel.tsx`: the destination block moved from the top of the column
+  to just above the footer and its rule flipped (`border-t`), so destination
+  and button read as one barra de acción. Nothing about the fold changed.
+- `app/task-table.tsx`: the `<h2>Tareas</h2>` of its toolbar is gone — the
+  pestaña says it and labels the panel through `aria-labelledby`. The chips
+  («3 de 8», los cambios manuales, «Comprobando duplicados…») stay.
+- Files changed: `lib/column-tabs.ts` + test, `app/column-tabs.tsx`,
+  `app/explorer.tsx`, `app/push-panel.tsx`, `app/task-table.tsx`.
+- `pnpm typecheck`, `pnpm test` (37 files / 1111 tests) and `pnpm build` pass.
+  No browser driving this time: the Playwright MCP the previous stories used was
+  not available in this session, so the layout claims here rest on the flex
+  frame US-010 already verified — one `min-h-0 flex-1` panel between two
+  `shrink-0` strips — and not on a screenshot.
+- **Learnings:**
+  - «Nunca es la pestaña inicial» and «no se queda abierta si se vacía» are the
+    same rule, and it is cheapest as a derivation. Storing the resolved tab in
+    state would need an effect per count change; `activeTab(counts, chosen)` in
+    the render body answers both at every moment, and `chosen` stays what the
+    user pressed — so a tab that fills up again comes back on its own.
+  - The default tab cannot be count-driven. Every other tab is a report and an
+    empty report is nothing to open, but an empty table is where the extraction
+    is launched from — disabling it would take away the only way to fill the
+    other two.
+  - `panel-head` is an `@utility` that sets padding and gap, so a caller that
+    needs its own is fighting Tailwind's ordering rather than reusing anything.
+    The tab row writes the four properties out; `justify-between` on top of
+    `panel-head` is fine precisely because it sets none of them.
+  - Moving the destination to the foot is what makes «entre las pestañas y la
+    barra de acción» true. Left where it was, the fold would have sat between
+    the tab row and the panel it opens onto — a second header the tabs were
+    supposed to remove — and the table's top would still not have been the tabs.
+  - The tab and the panel must not say the same word. Once the pestaña reads
+    «Tareas» and labels the panel, the table's own `<h2>Tareas</h2>` is the
+    heading twice within a centimetre; what the tab cannot say — how many of the
+    rows are actually going — is what earns the space instead.
 ---

@@ -111,7 +111,10 @@ export function TaskTable({
     <div className="relative flex min-h-0 flex-1 flex-col">
       <header className="panel-head justify-between gap-2 py-1.5">
         <div className="flex min-w-0 items-center gap-2">
-          <h2 className="panel-title">Tareas</h2>
+          {/* No title: the pestaña above says «Tareas» and labels this panel
+              through `aria-labelledby`, so a heading here would be the same
+              word twice within one centimetre of screen. What is left is what
+              the tab cannot say — how many of the rows are going. */}
           {rows.length > 0 ? (
             <span className="chip tabular-nums">
               {selected} de {rows.length}
