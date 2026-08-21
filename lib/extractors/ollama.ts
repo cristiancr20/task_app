@@ -15,6 +15,7 @@ import {
   TASKS_JSON_SCHEMA,
   buildUserPrompt,
   normalizeExtraction,
+  withTimeout,
   type ExtractionResult,
 } from './task'
 
@@ -50,11 +51,18 @@ const EXTRACTION_TIMEOUT_MS = 10 * 60_000
  *
  * Throws `ExtractionError` when Ollama refuses the request or answers with
  * something that is not the JSON it was asked for.
+ *
+ * `signal` is the caller giving up — the browser closing the connection behind
+ * `POST /api/extract`. It is combined with the timeout rather than replacing
+ * it, so cancelling actually reaches Ollama and it stops generating: a local
+ * model left running has the user's whole machine, and the next extraction
+ * would queue behind the one nobody is waiting for any more.
  */
 export async function extractWithOllama(
   transcript: string,
   meta: TranscriptMeta,
   model: string,
+  signal?: AbortSignal,
 ): Promise<ExtractionResult> {
   const name = model.trim()
   if (!name) {
@@ -88,7 +96,7 @@ export async function extractWithOllama(
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(request),
-      signal: AbortSignal.timeout(EXTRACTION_TIMEOUT_MS),
+      signal: withTimeout(signal, EXTRACTION_TIMEOUT_MS),
       cache: 'no-store',
     })
   } catch (err) {

@@ -26,6 +26,11 @@ import { readTranscript, type TranscriptMeta } from '@/lib/transcripts'
  *
  * A `POST` because the transcript path is input to a job that costs minutes and
  * money, and nothing here is cacheable.
+ *
+ * The request's own signal travels all the way down to the provider, so
+ * «Cancelar» in the table is not just the browser looking away: it stops the
+ * model. That is what makes cancelling worth having with a local Ollama, where
+ * an abandoned extraction otherwise keeps the machine busy for minutes.
  */
 export async function POST(request: Request): Promise<Response> {
   let relPath = ''
@@ -38,8 +43,13 @@ export async function POST(request: Request): Promise<Response> {
     // not as YAML the model has to parse.
     const { meta, body } = readTranscript(requireContextRoot(), relPath)
 
-    return Response.json(await extract(body, meta))
+    return Response.json(await extract(body, meta, request.signal))
   } catch (err) {
+    // The browser hung up: it pressed «Cancelar», and the failure the extractor
+    // reported is about a connection that no longer exists. Nothing reads this
+    // response, so it says only what happened and never dresses a cancellation
+    // up as «Ollama no responde» in the log.
+    if (request.signal.aborted) return new Response(null, { status: 499 })
     return errorResponse(err, relPath)
   }
 }
@@ -52,7 +62,11 @@ export async function POST(request: Request): Promise<Response> {
  * the provider itself refuses arrives as an `ExtractionError`, which
  * `describeError` already maps to 502 with the provider's own wording.
  */
-async function extract(body: string, meta: TranscriptMeta): Promise<ExtractionResult> {
+async function extract(
+  body: string,
+  meta: TranscriptMeta,
+  signal: AbortSignal,
+): Promise<ExtractionResult> {
   const config = getConfig()
 
   if (config.provider === 'claude') {
@@ -63,7 +77,7 @@ async function extract(body: string, meta: TranscriptMeta): Promise<ExtractionRe
         'No hay ninguna API key de Anthropic guardada. Configúrala en /settings.',
       )
     }
-    return extractWithClaude(body, meta, apiKey)
+    return extractWithClaude(body, meta, apiKey, signal)
   }
 
   const model = config.ollamaModel.trim()
@@ -73,5 +87,5 @@ async function extract(body: string, meta: TranscriptMeta): Promise<ExtractionRe
       'No hay ningún modelo de Ollama seleccionado. Elige uno en /settings.',
     )
   }
-  return extractWithOllama(body, meta, model)
+  return extractWithOllama(body, meta, model, signal)
 }

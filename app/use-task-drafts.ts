@@ -7,7 +7,7 @@ import { countManualChanges } from '@/lib/drafts-changes'
 import { fetchDrafts, saveDrafts } from '@/lib/drafts-client'
 import { mergeDrafts } from '@/lib/drafts-merge'
 import type { DraftsState } from '@/lib/drafts-store'
-import { runExtraction } from '@/lib/extract-client'
+import { ExtractionAborted, runExtraction } from '@/lib/extract-client'
 import { draftsFromExtraction } from '@/lib/extraction-drafts'
 import {
   emptyInsights,
@@ -114,6 +114,15 @@ export function useTaskDrafts(relPath: string | null): {
   confirmGenerate: () => void
   /** «Cancelar» in the confirmation — the table is left exactly as it was. */
   cancelGenerate: () => void
+  /**
+   * «Cancelar» *during* an extraction, which is a different button from the one
+   * above: that one declines to start, this one stops one already running. It
+   * aborts the request, which reaches the provider, and leaves the table
+   * exactly as it was — no error, because nothing failed.
+   */
+  cancelExtraction: () => void
+  /** An extraction of the selected note is in flight and can be cancelled. */
+  canCancelExtraction: boolean
   updateRow: (id: string, changes: Partial<TaskDraft>) => void
   /** Uncheck several rows at once — what the duplicate check asks for. */
   excludeRows: (ids: readonly string[]) => void
@@ -125,6 +134,16 @@ export function useTaskDrafts(relPath: string | null): {
   adopt: (path: string, stored: DraftsState) => void
 } {
   const [byPath, setByPath] = useState<Record<string, TaskDraftState>>({})
+
+  /**
+   * The in-flight extraction of each note, so «Cancelar» has something to abort.
+   *
+   * Keyed by path like everything else here: an extraction belongs to the note
+   * it was asked for, not to the note on screen, so cancelling from one file
+   * can never stop the run of another — and moving away from a note does not
+   * cancel it, which is the whole reason the run survives the selection.
+   */
+  const running = useRef(new Map<string, AbortController>())
 
   // One queue for the whole page: the note a save belongs to is the key it was
   // scheduled under, so a slow write never lands on the file now on screen.
@@ -200,10 +219,19 @@ export function useTaskDrafts(relPath: string | null): {
     (path: string) => {
       patch(path, (prev) => ({ ...prev, generating: true, error: null, confirming: false }))
 
+      const controller = new AbortController()
+      running.current.set(path, controller)
+      // Only the run that is still the current one for a path clears it: a
+      // cancelled run settling late must not unregister the one that replaced it.
+      const done = () => {
+        if (running.current.get(path) === controller) running.current.delete(path)
+      }
+
       // The answer is written under the path it was asked for, so a slow
       // extraction never lands on the file the user has moved on to.
-      runExtraction(path).then(
+      runExtraction(path, controller.signal).then(
         (result) => {
+          done()
           // The same builder the batch queue uses (`lib/extraction-drafts.ts`):
           // a note extracted from the bandeja has to end up exactly as one
           // extracted here, and that only holds while both go through it.
@@ -232,8 +260,16 @@ export function useTaskDrafts(relPath: string | null): {
         // wrong, and rows the user already edited are not collateral damage —
         // neither are the changes counted against them, since `baseline` is
         // only replaced by an extraction that actually returned something.
-        (err: unknown) =>
-          patch(path, (prev) => ({ ...prev, generating: false, error: errorMessage(err) })),
+        (err: unknown) => {
+          done()
+          // A cancellation is not a failure: the user knows what they pressed,
+          // so the spinner stops and nothing is written in red.
+          if (err instanceof ExtractionAborted) {
+            patch(path, (prev) => ({ ...prev, generating: false, error: null }))
+            return
+          }
+          patch(path, (prev) => ({ ...prev, generating: false, error: errorMessage(err) }))
+        },
       )
     },
     [patch, queue],
@@ -284,6 +320,15 @@ export function useTaskDrafts(relPath: string | null): {
   const cancelGenerate = useCallback(() => {
     patchSelected((prev) => ({ ...prev, confirming: false }))
   }, [patchSelected])
+
+  /**
+   * Stop the extraction of the note on screen. Aborting the request is enough:
+   * the rejection it causes is what puts the table back, so there is no state
+   * to reset here and no way for the two to disagree.
+   */
+  const cancelExtraction = useCallback(() => {
+    if (relPath) running.current.get(relPath)?.abort()
+  }, [relPath])
 
   const updateRow = useCallback(
     (id: string, changes: Partial<TaskDraft>) => {
@@ -378,6 +423,10 @@ export function useTaskDrafts(relPath: string | null): {
     generate,
     confirmGenerate,
     cancelGenerate,
+    cancelExtraction,
+    // Read from the state rather than from the map: a ref does not re-render,
+    // and the button has to appear the moment the spinner does.
+    canCancelExtraction: Boolean(relPath && byPath[relPath]?.generating),
     updateRow,
     excludeRows,
     removeRow,

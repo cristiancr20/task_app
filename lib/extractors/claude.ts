@@ -13,6 +13,7 @@ import {
   TASKS_JSON_SCHEMA,
   buildUserPrompt,
   normalizeExtraction,
+  withTimeout,
   type ExtractionResult,
 } from './task'
 
@@ -37,6 +38,11 @@ const MAX_TOKENS = 16000
 const EXTRACTION_TIMEOUT_MS = 5 * 60_000
 
 /**
+ * `signal` is the caller giving up — the browser closing the connection behind
+ * `POST /api/extract`. It is combined with the timeout rather than replacing
+ * it, so cancelling actually reaches Anthropic and stops the generation being
+ * billed for an answer nobody is going to read.
+ *
  * Run Claude over `transcript` and return everything it found: the tasks, the
  * decisions, the risks and the open questions.
  *
@@ -51,6 +57,7 @@ export async function extractWithClaude(
   transcript: string,
   meta: TranscriptMeta,
   apiKey: string,
+  signal?: AbortSignal,
 ): Promise<ExtractionResult> {
   const key = apiKey.trim()
   if (!key) {
@@ -82,7 +89,7 @@ export async function extractWithClaude(
         'anthropic-version': ANTHROPIC_VERSION,
       },
       body: JSON.stringify(request),
-      signal: AbortSignal.timeout(EXTRACTION_TIMEOUT_MS),
+      signal: withTimeout(signal, EXTRACTION_TIMEOUT_MS),
       cache: 'no-store',
     })
   } catch (err) {

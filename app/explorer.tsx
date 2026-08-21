@@ -642,6 +642,7 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
                   onGenerate={drafts.generate}
                   onConfirmGenerate={drafts.confirmGenerate}
                   onCancelGenerate={drafts.cancelGenerate}
+                onCancelExtraction={drafts.cancelExtraction}
                   onUpdateRow={drafts.updateRow}
                   onRemoveRow={drafts.removeRow}
                   onAddRow={drafts.addRow}

@@ -50,6 +50,8 @@ type Props = {
   /** The check is running. It is said out loud, and it stops nothing. */
   checkingDuplicates: boolean
   onGenerate: () => void
+  /** «Cancelar» while an extraction is running — see `onCancelGenerate`, which is the other one. */
+  onCancelExtraction: () => void
   onConfirmGenerate: () => void
   onCancelGenerate: () => void
   onUpdateRow: (id: string, changes: Partial<TaskDraft>) => void
@@ -88,6 +90,7 @@ export function TaskTable({
   showDuplicates,
   checkingDuplicates,
   onGenerate,
+  onCancelExtraction,
   onConfirmGenerate,
   onCancelGenerate,
   onUpdateRow,
@@ -143,14 +146,28 @@ export function TaskTable({
           >
             Añadir
           </button>
-          <button
-            type="button"
-            onClick={onGenerate}
-            disabled={!state || loading || generating || busy}
-            className="rounded-lg bg-accent px-2.5 py-1 text-xs font-semibold text-on-accent shadow-panel transition-colors hover:bg-accent-soft disabled:opacity-50 disabled:shadow-none"
-          >
-            {generating ? 'Generando…' : 'Generar tareas'}
-          </button>
+          {/* While it runs, the same slot holds the way out of it. Two buttons
+              side by side would leave «Generar tareas» disabled next to a
+              «Cancelar» that is the only thing to press — and the extraction is
+              minutes long with a local model, so this is not a rare state. */}
+          {generating ? (
+            <button
+              type="button"
+              onClick={onCancelExtraction}
+              className="rounded-lg border border-danger/30 bg-danger-wash px-2.5 py-1 text-xs font-semibold text-danger shadow-panel transition-colors hover:border-danger/50 hover:bg-danger/15"
+            >
+              Cancelar generación
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onGenerate}
+              disabled={!state || loading || busy}
+              className="rounded-lg bg-accent px-2.5 py-1 text-xs font-semibold text-on-accent shadow-panel transition-colors hover:bg-accent-soft disabled:opacity-50 disabled:shadow-none"
+            >
+              Generar tareas
+            </button>
+          )}
         </div>
       </header>
 

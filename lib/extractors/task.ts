@@ -16,6 +16,21 @@
 
 import type { TranscriptMeta } from '../transcripts'
 
+/**
+ * The signal one extraction request runs under: its own timeout, and the
+ * caller's cancellation when there is one.
+ *
+ * `AbortSignal.any` rather than picking one of the two, because they answer
+ * different questions and both have to be able to stop the call: the timeout
+ * is «this provider is never going to answer», the caller is «nobody is
+ * waiting for this any more». Dropping the timeout when a caller passes a
+ * signal would leave a wedged provider hanging a request that no clock owns.
+ */
+export function withTimeout(signal: AbortSignal | undefined, ms: number): AbortSignal {
+  const timeout = AbortSignal.timeout(ms)
+  return signal ? AbortSignal.any([signal, timeout]) : timeout
+}
+
 /** Linear's own priority scale, lowercased. `none` is the fallback. */
 export const PRIORITIES = ['urgent', 'high', 'medium', 'low', 'none'] as const
 

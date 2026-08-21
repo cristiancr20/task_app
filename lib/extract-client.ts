@@ -7,6 +7,18 @@ import type {
 } from './extractors/task'
 
 /**
+ * The extraction was cancelled by whoever asked for it. Its own type because it
+ * is the one outcome of `runExtraction` that is not a failure: nothing is shown
+ * in red, nothing is retried, and the table simply stops waiting.
+ */
+export class ExtractionAborted extends Error {
+  constructor() {
+    super('Generación cancelada.')
+    this.name = 'ExtractionAborted'
+  }
+}
+
+/**
  * `POST /api/extract` as seen from the browser.
  *
  * Same contract as `fetchFolder` and `fetchTranscript`: the route already
@@ -17,12 +29,21 @@ import type {
  *
  * Which provider runs is server state — the body carries only the path.
  *
+ * `signal` is «Cancelar» in the table. Aborting is not a failure and must not
+ * read as one, so it comes back as `ExtractionAborted` rather than as the
+ * network error the aborted `fetch` actually throws — the table has to tell
+ * «lo paraste tú» from «no se pudo contactar con el servidor», and only the
+ * second one deserves a red message.
+ *
  * The four lists arrive at the top level of the answer. Only `tasks` decides
  * whether the answer is usable at all: it is the list that becomes issues, and
  * a meeting that decided nothing is an ordinary meeting, so the other three
  * are read as empty when they are absent rather than as a broken response.
  */
-export async function runExtraction(relPath: string): Promise<ExtractionResult> {
+export async function runExtraction(
+  relPath: string,
+  signal?: AbortSignal,
+): Promise<ExtractionResult> {
   let response: Response
   try {
     response = await fetch('/api/extract', {
@@ -30,8 +51,12 @@ export async function runExtraction(relPath: string): Promise<ExtractionResult> 
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ path: relPath }),
       cache: 'no-store',
+      signal,
     })
   } catch {
+    // The signal is what tells the two apart: an aborted fetch and a server
+    // that is not there both land here as a thrown `TypeError`.
+    if (signal?.aborted) throw new ExtractionAborted()
     throw new Error('No se pudo contactar con el servidor de la aplicación.')
   }
 

@@ -6,6 +6,7 @@ import {
   normalizeExtraction,
   normalizeTasks,
   PRIORITIES,
+  withTimeout,
 } from '@/lib/extractors/task'
 import type { TranscriptMeta } from '@/lib/transcripts'
 
@@ -629,5 +630,51 @@ describe('buildUserPrompt', () => {
     expect(
       prompt.endsWith('Extract the action items, decisions, risks and open questions as JSON.'),
     ).toBe(true)
+  })
+})
+
+describe('withTimeout', () => {
+  /** Resolves once `signal` aborts, so a test can await the abort rather than a clock. */
+  function aborted(signal: AbortSignal): Promise<void> {
+    return new Promise((resolve) => {
+      if (signal.aborted) return resolve()
+      signal.addEventListener('abort', () => resolve(), { once: true })
+    })
+  }
+
+  it('aborts when the caller aborts, long before the timeout', () => {
+    const caller = new AbortController()
+    const signal = withTimeout(caller.signal, 60_000)
+
+    expect(signal.aborted).toBe(false)
+    caller.abort()
+
+    expect(signal.aborted).toBe(true)
+  })
+
+  it('comes back already aborted when the caller gave up first', () => {
+    const caller = new AbortController()
+    caller.abort()
+
+    expect(withTimeout(caller.signal, 60_000).aborted).toBe(true)
+  })
+
+  it('still aborts on the timeout when a caller signal is passed', async () => {
+    // The point of combining rather than choosing: a caller that never aborts
+    // must not leave a wedged provider hanging a request no clock owns.
+    const caller = new AbortController()
+
+    await aborted(withTimeout(caller.signal, 1))
+
+    expect(caller.signal.aborted).toBe(false)
+  })
+
+  it('is just the timeout when nobody passes a signal', async () => {
+    const signal = withTimeout(undefined, 1)
+
+    expect(signal.aborted).toBe(false)
+    await aborted(signal)
+
+    expect(signal.aborted).toBe(true)
   })
 })
