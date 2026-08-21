@@ -1,12 +1,12 @@
 {
   "version": 1,
-  "sessionId": "332e2c1b-5e5e-471e-87fa-dd969e070cab",
+  "sessionId": "cc46fd1f-52ab-4e92-909d-16490d72d99a",
   "status": "running",
-  "startedAt": "2026-08-20T00:54:54.824Z",
-  "updatedAt": "2026-08-20T01:21:41.635Z",
-  "currentIteration": 4,
+  "startedAt": "2026-08-21T01:44:47.724Z",
+  "updatedAt": "2026-08-21T01:53:54.547Z",
+  "currentIteration": 0,
   "maxIterations": 0,
-  "tasksCompleted": 4,
+  "tasksCompleted": 0,
   "isPaused": false,
   "agentPlugin": "claude",
   "trackerState": {
@@ -19,30 +19,30 @@
         "id": "US-001",
         "title": "Escaneo recursivo de la carpeta de contexto",
         "status": "completed",
-        "completedInSession": true
+        "completedInSession": false
       },
       {
         "id": "US-002",
         "title": "Índice en memoria con invalidación",
         "status": "completed",
-        "completedInSession": true
+        "completedInSession": false
       },
       {
         "id": "US-003",
         "title": "Búsqueda de texto completo",
         "status": "completed",
-        "completedInSession": true
+        "completedInSession": false
       },
       {
         "id": "US-004",
         "title": "Interfaz de búsqueda",
         "status": "completed",
-        "completedInSession": true
+        "completedInSession": false
       },
       {
         "id": "US-005",
         "title": "Filtro rápido en la lista de archivos",
-        "status": "open",
+        "status": "completed",
         "completedInSession": false
       },
       {
@@ -71,48 +71,7 @@
       }
     ]
   },
-  "iterations": [
-    {
-      "iteration": 1,
-      "status": "completed",
-      "taskId": "US-001",
-      "taskTitle": "Escaneo recursivo de la carpeta de contexto",
-      "taskCompleted": true,
-      "durationMs": 208480,
-      "startedAt": "2026-08-20T00:54:56.128Z",
-      "endedAt": "2026-08-20T00:58:24.608Z"
-    },
-    {
-      "iteration": 2,
-      "status": "completed",
-      "taskId": "US-002",
-      "taskTitle": "Índice en memoria con invalidación",
-      "taskCompleted": true,
-      "durationMs": 195170,
-      "startedAt": "2026-08-20T00:58:25.713Z",
-      "endedAt": "2026-08-20T01:01:40.883Z"
-    },
-    {
-      "iteration": 3,
-      "status": "completed",
-      "taskId": "US-003",
-      "taskTitle": "Búsqueda de texto completo",
-      "taskCompleted": true,
-      "durationMs": 449955,
-      "startedAt": "2026-08-20T01:01:41.964Z",
-      "endedAt": "2026-08-20T01:09:11.919Z"
-    },
-    {
-      "iteration": 4,
-      "status": "completed",
-      "taskId": "US-004",
-      "taskTitle": "Interfaz de búsqueda",
-      "taskCompleted": true,
-      "durationMs": 514482,
-      "startedAt": "2026-08-20T01:09:13.016Z",
-      "endedAt": "2026-08-20T01:17:47.498Z"
-    }
-  ],
+  "iterations": [],
   "skippedTaskIds": [],
   "cwd": "/Users/cristian/dev/tasks-app",
   "activeTaskIds": [],

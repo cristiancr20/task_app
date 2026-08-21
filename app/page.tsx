@@ -6,6 +6,8 @@ import type { Theme } from '@/lib/theme'
 import { getTheme } from '@/lib/theme-server'
 
 import { Explorer } from './explorer'
+import { InboxButton } from './inbox-button'
+import { InboxProvider } from './inbox-provider'
 import { SearchField } from './search-field'
 import { SearchProvider } from './search-provider'
 import { ThemeToggle } from './theme-toggle'
@@ -33,46 +35,56 @@ export default async function Home() {
     // inside the explorer, so the provider has to wrap both of them. Everything
     // under it — this page included — stays a Server Component: only the two
     // pieces that read the search are client code.
+    //
+    // The inbox is the same arrangement — a button in the header, a list inside
+    // the explorer — and its provider sits inside the search's because opening
+    // one puts the other away: they are two ways of replacing the same column.
     <SearchProvider>
-      <div className="flex h-dvh flex-col bg-bg font-sans">
-        {/* The bar rides on the ground rather than on a white fill of its own:
-            the panels below are the raised things, and a second raised surface
-            above them would flatten the page again. */}
-        <header className="flex items-center justify-between gap-4 px-3 py-2.5">
-          <div className="flex min-w-0 items-center gap-2.5">
-            <AppMark />
-            <div className="min-w-0">
-              <h1 className="text-sm font-semibold leading-tight text-content">Explorador</h1>
-              <p className="truncate font-mono text-xs text-muted" title={contextRoot}>
-                {contextRoot}
-              </p>
+      <InboxProvider>
+        <div className="flex h-dvh flex-col bg-bg font-sans">
+          {/* The bar rides on the ground rather than on a white fill of its own:
+              the panels below are the raised things, and a second raised surface
+              above them would flatten the page again. */}
+          <header className="flex items-center justify-between gap-4 px-3 py-2.5">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <AppMark />
+              <div className="min-w-0">
+                <h1 className="text-sm font-semibold leading-tight text-content">Explorador</h1>
+                <p className="truncate font-mono text-xs text-muted" title={contextRoot}>
+                  {contextRoot}
+                </p>
+              </div>
             </div>
-          </div>
-          {/* In the middle of the header, and in the header rather than in a
-              panel, because it is about every note under the root and not about
-              the folder that happens to be open. */}
-          <div className="flex min-w-0 flex-1 justify-center">
-            <SearchField />
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <ThemeToggle current={theme} />
-            <Link
-              href="/settings"
-              className="shrink-0 rounded-lg border border-line bg-surface px-3 py-1.5 text-sm font-medium shadow-panel transition-colors hover:bg-surface-2"
-            >
-              Ajustes
-            </Link>
-          </div>
-        </header>
+            {/* In the middle of the header, and in the header rather than in a
+                panel, because it is about every note under the root and not about
+                the folder that happens to be open. */}
+            <div className="flex min-w-0 flex-1 justify-center">
+              <SearchField />
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              {/* Next to the search and for the same reason: it is about every
+                  note under the root, and it carries the one number the user
+                  opens the app to check — cuántas quedan sin procesar. */}
+              <InboxButton />
+              <ThemeToggle current={theme} />
+              <Link
+                href="/settings"
+                className="shrink-0 rounded-lg border border-line bg-surface px-3 py-1.5 text-sm font-medium shadow-panel transition-colors hover:bg-surface-2"
+              >
+                Ajustes
+              </Link>
+            </div>
+          </header>
 
-        {/* The stored Linear key stays on the server: the push panel only learns
-            whether there is one, so it can say why it cannot create anything. */}
-        <Explorer
-          contextRoot={contextRoot}
-          hasLinearApiKey={linearApiKey.trim() !== ''}
-          lastProjectId={lastProjectId}
-        />
-      </div>
+          {/* The stored Linear key stays on the server: the push panel only learns
+              whether there is one, so it can say why it cannot create anything. */}
+          <Explorer
+            contextRoot={contextRoot}
+            hasLinearApiKey={linearApiKey.trim() !== ''}
+            lastProjectId={lastProjectId}
+          />
+        </div>
+      </InboxProvider>
     </SearchProvider>
   )
 }

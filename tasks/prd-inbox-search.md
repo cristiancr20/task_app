@@ -141,6 +141,50 @@ Sin verificación en navegador: las historias con UI se validan con tests y type
 - [ ] La bandeja refleja el resultado del envío en cuanto termina, sin recargar la página
 - [ ] El recuento de la cabecera se mantiene coherente con lo que se ve tras extraer y tras enviar
 
+### US-010: Barra de acción fija y destino plegado en la columna de envío
+**Description:** Como usuario, quiero el botón de enviar siempre a la vista y el formulario de destino fuera de en medio, para revisar las tareas sin perder la acción ni gastar alto de pantalla en unos campos que toco una vez.
+
+**Acceptance Criteria:**
+- [ ] El destino (equipo, proyecto, «agrupar bajo una tarea padre» y su título) se pliega a una sola línea resumen que dice a qué proyecto se enviaría y si habrá tarea padre
+- [ ] Esa línea despliega y repliega el formulario completo; empieza desplegada mientras falte algo por elegir y plegada cuando el destino ya está completo
+- [ ] El botón de envío vive en un pie fijo al fondo de la columna y se ve sin desplazarse, por larga que sea la tabla
+- [ ] El motivo por el que el botón está deshabilitado se sigue leyendo junto a él, con la misma lógica de una sola razón que ya usa `pushBlockedBy`
+- [ ] Mientras el envío corre, el pie muestra el progreso «creando N de M» en el lugar del botón, y ningún control del destino es editable
+- [ ] Tras un envío con fallos el botón sigue siendo «Reintentar N fallidas» y sigue enviando solo lo que no se creó
+- [ ] El chip de tareas a enviar y el de excluidas por duplicado siguen visibles sin desplegar el destino
+
+### US-011: La columna derecha se organiza en pestañas
+**Description:** Como usuario, quiero que la columna de tareas deje de apilar cinco bloques que compiten por el alto, para que la tabla —lo único que edito— ocupe toda la pantalla disponible.
+
+**Acceptance Criteria:**
+- [ ] La cabecera de la columna es una fila de pestañas: «Tareas», «La reunión» y «Enviadas», cada una con su contador
+- [ ] «Tareas» es la pestaña por defecto y su tabla ocupa todo el alto entre las pestañas y la barra de acción
+- [ ] Una pestaña sin nada que mostrar aparece deshabilitada en vez de abrir a un panel vacío, y nunca es la pestaña inicial
+- [ ] Cambiar de nota vuelve a «Tareas»: la pestaña abierta pertenece a la sesión, no a la nota
+- [ ] Qué pestañas existen, cuáles están habilitadas y qué número muestra cada una es un módulo puro en `lib/`, con sus tests, siguiendo la regla de que la aritmética no vive en el hook
+- [ ] Las pestañas se pueden recorrer con el teclado y anuncian cuál está activa
+
+### US-012: «La reunión» reúne el contexto de lectura
+**Description:** Como usuario, quiero lo que la reunión supo y lo que dejaron abierto las anteriores en un sitio propio, para que no empujen la tabla hacia abajo cuando más filas tiene.
+
+**Acceptance Criteria:**
+- [ ] Las decisiones, riesgos y preguntas abiertas y el panel «Pendiente de reuniones anteriores» se muestran en esa pestaña y en ningún otro sitio de la columna
+- [ ] El contador de la pestaña suma las cuatro cosas
+- [ ] Con la nota sin nada de eso, la pestaña está deshabilitada y no se dibuja panel alguno
+- [ ] Abrir una nota desde los compromisos pendientes sigue funcionando igual que hoy
+- [ ] Nada de esto se envía a Linear ni cambia lo que se envía: sigue siendo solo lectura
+
+### US-013: «Enviadas» unifica el historial y el resultado del envío
+**Description:** Como usuario, quiero ver en un solo sitio lo que esta nota ya produjo, para dejar de leer la misma lista de issues dos veces en la misma columna.
+
+**Acceptance Criteria:**
+- [ ] El historial de envíos con el estado real de cada issue se muestra en esa pestaña
+- [ ] La lista de issues creados desaparece de la barra de envío: al terminar un envío es esta pestaña la que actualiza su contador y se señala como recién cambiada
+- [ ] El estado de cada fila (creada, fallida, duplicada) lo sigue pintando la tabla, que es donde el usuario está mirando
+- [ ] El issue padre y cada issue creado siguen enlazando a Linear y mostrando su estado
+- [ ] Ninguna información que hoy muestre el panel de envío al terminar se pierde por el camino
+- [ ] Con una nota sin envíos, la pestaña está deshabilitada
+
 ## Functional Requirements
 
 - FR-1: El sistema debe poder enumerar todas las transcripciones bajo la carpeta de contexto, de forma recursiva y acotada.
@@ -155,6 +199,9 @@ Sin verificación en navegador: las historias con UI se validan con tests y type
 - FR-10: Un fallo aislado no detiene la cola; varios fallos seguidos sí.
 - FR-11: La cola debe poder cancelarse conservando lo ya hecho.
 - FR-12: El envío a Linear sigue siendo por nota, con revisión previa: este PRD no introduce ningún envío masivo sin revisar.
+
+- FR-13: La columna de tareas debe separar la acción de enviar del contexto de lectura, de modo que la tabla disponga de todo el alto de la columna.
+- FR-14: Ninguna información que hoy muestre la columna de envío puede desaparecer del reorganizarla: solo cambia dónde se lee.
 
 ## Non-Goals (Out of Scope)
 

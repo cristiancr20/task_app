@@ -10,6 +10,7 @@ import {
   defaultConfig,
   getConfig,
   getHistory,
+  getPushedPaths,
   getPushSummaries,
   updateConfig,
   type Config,
@@ -501,6 +502,41 @@ describe('getPushSummaries', () => {
       pushes: 2,
       lastPushedAt: '2026-02-02T00:00:00.000Z',
     })
+  })
+})
+
+describe('getPushedPaths', () => {
+  it('is empty when nothing was ever pushed', () => {
+    expect(getPushedPaths()).toEqual([])
+  })
+
+  it('names every note that has a push behind it', () => {
+    addHistoryEntry('notes/a.md', entry())
+    addHistoryEntry('notes/b.md', entry())
+
+    expect(getPushedPaths().sort()).toEqual(['notes/a.md', 'notes/b.md'])
+  })
+
+  it('names a note once however many times it was pushed', () => {
+    addHistoryEntry('notes/a.md', entry({ pushedAt: '2026-01-01T00:00:00.000Z' }))
+    addHistoryEntry('notes/a.md', entry({ pushedAt: '2026-02-02T00:00:00.000Z' }))
+
+    expect(getPushedPaths()).toEqual(['notes/a.md'])
+  })
+
+  it('names a note whose push created no issue — it was still sent', () => {
+    addHistoryEntry('notes/empty.md', entry({ issues: [] }))
+
+    expect(getPushedPaths()).toEqual(['notes/empty.md'])
+    // The difference with `getPushSummaries`, which is about what a push
+    // produced rather than about whether there was one.
+    expect(getPushSummaries()).toEqual({})
+  })
+
+  it('ignores a history whose entries are all unreadable', () => {
+    writeConfig({ history: { 'notes/rota.md': ['no es una entrada'] } })
+
+    expect(getPushedPaths()).toEqual([])
   })
 })
 

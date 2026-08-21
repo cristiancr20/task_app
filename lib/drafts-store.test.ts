@@ -8,6 +8,7 @@ import {
   clearDrafts,
   emptyDrafts,
   getDrafts,
+  getDraftedPaths,
   saveDrafts,
   type DraftRow,
   type DraftsState,
@@ -443,6 +444,48 @@ describe('clearDrafts', () => {
   it('does not create the file when there is nothing stored at all', () => {
     clearDrafts('notes/never.md')
     expect(fs.existsSync(DRAFTS_PATH)).toBe(false)
+  })
+})
+
+describe('getDraftedPaths', () => {
+  it('is empty when nothing has ever been curated', () => {
+    expect(getDraftedPaths()).toEqual([])
+  })
+
+  it('names every note with something stored', () => {
+    saveDrafts('notes/a.md', state())
+    saveDrafts('notes/b.md', state())
+
+    expect(getDraftedPaths().sort()).toEqual(['notes/a.md', 'notes/b.md'])
+  })
+
+  it('stops naming a note whose drafts were cleared', () => {
+    saveDrafts('notes/a.md', state())
+    clearDrafts('notes/a.md')
+
+    expect(getDraftedPaths()).toEqual([])
+  })
+
+  it('does not name a note whose stored state is empty', () => {
+    saveDrafts('notes/a.md', state())
+    saveDrafts('notes/a.md', emptyDrafts())
+
+    expect(getDraftedPaths()).toEqual([])
+  })
+
+  it('names a note that only carries what the extraction found besides tasks', () => {
+    saveDrafts(
+      'notes/a.md',
+      state({ rows: [], baseline: [], extracted: false, decisions: [DECISION] }),
+    )
+
+    expect(getDraftedPaths()).toEqual(['notes/a.md'])
+  })
+
+  it('does not name a note whose stored state is unreadable', () => {
+    plant('notes/rota.md', 'esto no es un estado')
+
+    expect(getDraftedPaths()).toEqual([])
   })
 })
 

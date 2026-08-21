@@ -90,6 +90,18 @@ export function saveDrafts(relPath: string, state: DraftsState): DraftsState {
   return next
 }
 
+/**
+ * The path of every note that has something stored: rows, a baseline, or what
+ * the extraction found besides tasks. `readAll` already drops the notes whose
+ * state is empty, so this is exactly «notas que se han tocado».
+ *
+ * It is what tells the inbox a pending note apart: one with drafts is waiting
+ * to be reviewed, one without has not been opened at all.
+ */
+export function getDraftedPaths(): string[] {
+  return Object.keys(readAll())
+}
+
 /** Forget the drafts of `relPath`. A note that had none is not an error. */
 export function clearDrafts(relPath: string): void {
   const drafts = readAll()

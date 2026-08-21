@@ -10,6 +10,8 @@ import { pendingCommitments } from '@/lib/pending-commitments'
 
 import { FileList } from './file-list'
 import { FolderTree } from './folder-tree'
+import { useInboxApi } from './inbox-provider'
+import { InboxView } from './inbox-view'
 import { MeetingInsights } from './meeting-insights'
 import { PendingCommitments } from './pending-commitments'
 import { PushPanel } from './push-panel'
@@ -58,9 +60,10 @@ type Props = {
  * back shows the edits again.
  *
  * While the header's search field has something in it the centre column shows
- * the results instead of the folder. Only that column changes: the note being
- * read stays on screen throughout, and opening a result moves the selection to
- * its folder so that leaving the search lands somewhere that makes sense.
+ * the results instead of the folder, and while the inbox is open it shows the
+ * notes that have never been pushed. Only that column changes: the note being
+ * read stays on screen throughout, and opening a row moves the selection to its
+ * folder so that leaving lands somewhere that makes sense.
  */
 export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props) {
   const { states, open, reload, refresh: refreshFolder } = useFolderListings()
@@ -74,6 +77,9 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
   // The field is in the header, outside this component; what it is looking for
   // is drawn here, in the column the folder's files occupy — see `SearchProvider`.
   const search = useSearchApi()
+  // The other view of that same column: everything under the root that has not
+  // been pushed yet. Its button is in the header too — see `InboxProvider`.
+  const inbox = useInboxApi()
   const split = useSplit(50)
   const {
     state: transcript,
@@ -91,12 +97,18 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
   // note that ran: a push finishing after the user moved on must not re-read
   // somebody else's file. Its badge in the list is out of date either way, and
   // that one belongs to the note's own folder, not to the folder on screen.
+  //
+  // The inbox is «lo que no se ha enviado», so a push is exactly the event that
+  // takes a note out of it: without this the header would go on counting a note
+  // that has just been processed until the page was reloaded.
+  const { reload: reloadInbox } = inbox
   const onPushed = useCallback(
     (path: string) => {
       if (path === selectedFile) refreshTranscript()
       refreshFolder(folderOfNote(path))
+      reloadInbox()
     },
-    [refreshFolder, refreshTranscript, selectedFile],
+    [refreshFolder, refreshTranscript, reloadInbox, selectedFile],
   )
   const run = usePushRun(selectedFile, onPushed)
 
@@ -283,15 +295,16 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
   }
 
   /**
-   * Open a search result: the note in the transcript column, and the folder it
-   * came from selected and revealed in the tree behind the results.
+   * Open a note from the search results or from the inbox: the note in the
+   * transcript column, and the folder it came from selected and revealed in the
+   * tree behind them.
    *
-   * A result may name a note in a folder nobody has clicked in this session,
+   * A row may name a note in a folder nobody has clicked in this session,
    * so the whole chain of ancestors is listed and expanded rather than just the
-   * folder itself — otherwise leaving the search would land on a selection the
-   * tree cannot show. The search is *not* closed: the field still holds the
-   * query, so the next result is one click away, and emptying it later comes
-   * back to this folder with this note still open.
+   * folder itself — otherwise leaving would land on a selection the tree cannot
+   * show. The list is *not* closed: the next row is one click away, which is
+   * what makes working through an inbox possible at all, and leaving it later
+   * comes back to this folder with this note still open.
    */
   function openResult(relPath: string) {
     const folder = folderOfNote(relPath)
@@ -346,10 +359,12 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
         </div>
       )}
 
-      {/* The same column, showing either the folder or what the header's field
-          is looking for. The search takes the place of the list rather than
-          covering the page, so the transcript to the right — and the note open
-          in it — survives both entering and leaving a search. */}
+      {/* The same column, showing one of three things: the folder, what the
+          header's field is looking for, or the inbox. All of them take the
+          place of the list rather than covering the page, so the transcript to
+          the right — and the note open in it — survives every switch between
+          them. The search wins over the inbox because opening either one puts
+          the other away (see `InboxProvider`), so they are never both on. */}
       <section className="panel w-80 shrink-0 bg-surface">
         {search.active ? (
           <SearchResults
@@ -358,6 +373,15 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
             selectedFile={selectedFile}
             onOpen={openResult}
             onRetry={search.retry}
+          />
+        ) : inbox.open ? (
+          <InboxView
+            state={inbox.state}
+            counts={inbox.counts}
+            rootLabel={rootLabel}
+            selectedFile={selectedFile}
+            onOpen={openResult}
+            onReload={inbox.reload}
           />
         ) : (
           <FileList

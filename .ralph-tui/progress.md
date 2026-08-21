@@ -50,6 +50,18 @@ after each iteration and it's included in prompts for context.
 - before committing and the previous folder's filter never reaches the screen —
 - cheaper and more explicit than an effect or a remounting `key`.
 
+- **Two views over the same column are mutually exclusive, and each closes the
+  other.** The header's search field and the inbox button both replace the
+  centre column of the explorer. `InboxProvider` sits *inside* `SearchProvider`,
+  so the inbox can read the search: the button empties the field when the inbox
+  is opened, and an effect closes the inbox when the field has something in it.
+  Explorer then renders `search.active ? <SearchResults> : inbox.open ?
+  <InboxView> : <FileList>` and the button's `aria-pressed` is never a lie.
+- **A pure module owns «what state is this note in», not the component.**
+  `lib/inbox.ts` answers rows out of `TranscriptMeta[]` plus two lists of paths
+  (pushed, drafted) and nothing else — no filesystem, no `node:`, no React — so
+  the route builds the inbox on the server and the browser imports the same
+  types and the same labels (`noteSizeLabel`) for the rows.
 - **Filesystem tests build a real temp tree.** `fs.mkdtempSync` under
   `os.tmpdir()`, fixtures written in `beforeAll`, `fs.rmSync` in `afterAll`, and
   a `chmod 000` case guarded by `it.skipIf(isRoot)` plus an assertion that the
@@ -272,4 +284,68 @@ after each iteration and it's included in prompts for context.
   - Stripping diacritics folds `ñ` to `n` too, so «manana» matches «mañana» —
     consistent with the search, and worth a test so it is a decision rather
     than a side effect.
+---
+
+## 2026-08-20 - US-006
+- The inbox: every note under the context root that has never been pushed, as a
+  view of its own reachable from the header.
+- `lib/inbox.ts` (pure): `buildInbox({ files, pushed, drafted })` → rows carrying
+  `relPath`, `title`, `date`, `folder`, `words`, `approxTokens` and a `status`
+  of `untouched` | `extracted`; `inboxCounts`, the `byDateDescThenTitle`
+  comparator (undated notes last, title as the tie-break) and `noteSizeLabel`
+  (`840 palabras`, `1,2k palabras`, `18k palabras`, `sin texto`).
+- `lib/store.ts#getPushedPaths` and `lib/drafts-store.ts#getDraftedPaths` are
+  the two records the definition of «sin procesar» is built from. `getPushedPaths`
+  reads `history` directly rather than `getPushSummaries`, so a push that
+  created no issue still counts as a push and does not put the note back.
+- `app/api/inbox/route.ts` (`GET /api/inbox`, `?refresh=1` forces the walk) reads
+  the cached index plus the two local files — no transcript body is opened —
+  and answers `{ items, truncated, scanned }`.
+- `lib/inbox-client.ts` (`fetchInbox({ refresh })` + response guard),
+  `lib/inbox-state.ts` (token reducer: rows survive a reload, a failed reload
+  keeps `loaded` and the previous list), `app/use-inbox.ts` (loads once on
+  mount so the header can carry the count), `app/inbox-provider.tsx`,
+  `app/inbox-button.tsx` (header toggle with the pending count) and
+  `app/inbox-view.tsx` (the list itself).
+- The view words each of its states: `Buscando notas sin procesar…`, an error
+  with «Reintentar», `Bandeja vacía` vs `No hay notas` for the two ways of
+  having nothing, a warning when the walk was truncated, `1 con borrador · 17
+  notas en la carpeta`, a `Con borrador` badge on the started notes, and a
+  reload control in the panel head that forces a fresh walk.
+- Clicking a row calls the explorer's `openResult`, so a note in a folder nobody
+  has clicked opens with its whole ancestor chain listed and expanded; the inbox
+  stays open, which is what makes working through it possible.
+- A finished push calls `reload()` on the inbox from `onPushed`, so the header
+  count stops including a note the moment it is processed.
+- Files changed: `lib/inbox.ts`, `lib/inbox.test.ts` (25 tests),
+  `lib/inbox-state.ts`, `lib/inbox-state.test.ts` (11 tests), `lib/inbox-client.ts`,
+  `lib/store.ts` + `lib/store.test.ts`, `lib/drafts-store.ts` +
+  `lib/drafts-store.test.ts`, `app/api/inbox/route.ts`, `app/use-inbox.ts`,
+  `app/inbox-provider.tsx`, `app/inbox-button.tsx`, `app/inbox-view.tsx`,
+  `app/explorer.tsx`, `app/page.tsx`.
+- `pnpm typecheck`, `pnpm test` (29 files / 912 tests) and `pnpm build` pass.
+  Also driven in a real browser against the configured root (17 notes, 15
+  pending): open, row click, reload, and the search taking the column back.
+- **Learnings:**
+  - «Sin procesar» has to be defined against the *history*, not against the push
+    summaries: a push that created no issue is still a push, and using
+    `getPushSummaries` would have quietly put those notes back on the pile.
+  - Drafts are a status, not an exit: a note with an extraction pending review
+    is still unprocessed, so it stays in the list with a badge instead of being
+    filtered out. Filtering it would hide exactly the work that is half done.
+  - The count belongs on the header button, which is why `useInbox` loads on
+    mount rather than on first open — a button that only learns the number after
+    being pressed cannot answer «¿me queda algo?». The request is cheap (one
+    cached walk, no bodies) and it warms the index the search is about to use.
+  - `loaded` and `loading` are separate booleans on purpose: `loaded` is what
+    tells «bandeja vacía» from «todavía no se ha preguntado», and rendering a
+    `0` before the first answer would say the opposite of the truth.
+  - The row's meta line must not wrap. With `flex-wrap` in a 20-rem column the
+    size dropped to a second line and left a `·` dangling at the end of the
+    first; one line with the folder as the only shrinking part is what makes
+    every row the same height.
+  - Spotted while driving the page, unrelated to this story: opening a note
+    whose Markdown contains a bare URL inside a link logs
+    `<a> cannot be a descendant of <a>` from `app/markdown.tsx` — the autolinker
+    runs inside link text. Worth its own fix.
 ---

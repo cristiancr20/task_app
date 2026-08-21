@@ -138,6 +138,20 @@ export function getHistory(relPath: string): HistoryEntry[] {
 }
 
 /**
+ * The path of every note that has ever been pushed, in no particular order.
+ *
+ * Deliberately not `Object.keys(getPushSummaries())`: a summary only exists for
+ * a push that created issues, and a push that created none is still a push. The
+ * inbox asks «¿queda algo por enviar?», so an attempt with nothing to show for
+ * it must not put the note back on the pile as though it had never been sent.
+ */
+export function getPushedPaths(): string[] {
+  // `normalizeHistory` drops a note whose entries are all unreadable, so every
+  // key here has at least one push behind it.
+  return Object.keys(getConfig().history)
+}
+
+/**
  * One summary per note that has ever been pushed, keyed by the same
  * root-relative path the history uses. Notes that were never pushed are absent
  * rather than present with zeros, so a lookup answers the badge's question —
