@@ -15,6 +15,12 @@ type Props = {
   counts: ColumnCounts
   /** The tab last pressed. What is really open is decided by `columnTabViews`. */
   chosen: ColumnTab
+  /**
+   * A tab whose contents changed while another one was open — a push that just
+   * landed in «Enviadas». It is dropped by `tabMarked` the moment that tab is
+   * the one on screen, so the caller never has to clear it on a click.
+   */
+  marked?: ColumnTab | null
   onChange: (tab: ColumnTab) => void
 }
 
@@ -40,18 +46,18 @@ export function columnPanelId(tab: ColumnTab): string {
  * one of three, this one open, that one empty.
  *
  * Everything it decides comes from `lib/column-tabs.ts`: the words, the
- * numbers, which tabs can be pressed and where an arrow key lands. This file
- * only draws it and moves the focus, which is the half that cannot be a unit
- * test — the arithmetic is.
+ * numbers, which tabs can be pressed, which one wears the «recién cambiada»
+ * dot and where an arrow key lands. This file only draws it and moves the
+ * focus, which is the half that cannot be a unit test — the arithmetic is.
  *
  * Keyboard, as the tablist pattern has it: one stop in the tab order (the open
  * tab), arrows to move — wrapping, skipping the disabled ones exactly like a
  * click does — and Inicio/Fin for the ends. Moving selects, because each panel
  * is already on screen and there is nothing to confirm.
  */
-export function ColumnTabs({ counts, chosen, onChange }: Props) {
+export function ColumnTabs({ counts, chosen, marked = null, onChange }: Props) {
   const buttons = useRef<Partial<Record<ColumnTab, HTMLButtonElement | null>>>({})
-  const views = columnTabViews(counts, chosen)
+  const views = columnTabViews(counts, chosen, marked)
   const active = views.find((view) => view.active)?.tab ?? chosen
 
   // Selecting and focusing together: with a roving tabindex the tab that was
@@ -124,6 +130,17 @@ export function ColumnTabs({ counts, chosen, onChange }: Props) {
           >
             {NUMBER.format(view.count)}
           </span>
+          {/* «Aquí ha pasado algo»: the send bar no longer prints what a push
+              created, so this is what points at the pestaña that now holds it.
+              A dot rather than another number — the count beside it has already
+              gone up — and it says so out loud too, because a screen reader
+              cannot see the column change under it. */}
+          {view.marked ? (
+            <>
+              <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-accent" />
+              <span className="sr-only">actualizada por el último envío</span>
+            </>
+          ) : null}
         </button>
       ))}
     </div>

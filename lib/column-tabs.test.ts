@@ -9,15 +9,14 @@ import {
   DEFAULT_COLUMN_TAB,
   edgeEnabledTab,
   emptyColumnCounts,
-  historyIssueCount,
   nextEnabledTab,
   tabCount,
   tabEnabled,
   tabLabel,
+  tabMarked,
   tabTitle,
 } from '@/lib/column-tabs'
 import { emptyInsights, type MeetingInsights } from '@/lib/extractors/task'
-import type { HistoryEntry } from '@/lib/store'
 
 /** Insights with `n` of each kind, which is all the count ever looks at. */
 function insights(decisions: number, risks: number, questions: number): MeetingInsights {
@@ -35,22 +34,6 @@ function insights(decisions: number, risks: number, questions: number): MeetingI
     openQuestions: Array.from({ length: questions }, (_, index) => ({
       text: `pregunta ${index}`,
       evidence: '',
-    })),
-  }
-}
-
-/** One push carrying `issues` issues. */
-function push(issues: number): HistoryEntry {
-  return {
-    pushedAt: '2026-06-01T10:00:00.000Z',
-    teamId: 'team',
-    projectId: 'project',
-    issues: Array.from({ length: issues }, (_, index) => ({
-      id: `id-${index}`,
-      identifier: `ENG-${index}`,
-      title: `tarea ${index}`,
-      url: `https://linear.app/issue/ENG-${index}`,
-      mentioned: null,
     })),
   }
 }
@@ -73,23 +56,13 @@ describe('COLUMN_TABS', () => {
   })
 })
 
-describe('historyIssueCount', () => {
-  it('counts issues and not pushes', () => {
-    expect(historyIssueCount([push(3), push(2)])).toBe(5)
-  })
-
-  it('is zero for a note that was never pushed', () => {
-    expect(historyIssueCount([])).toBe(0)
-  })
-})
-
 describe('columnCounts', () => {
   it('takes the table from the rows, whether they are checked or not', () => {
     const result = columnCounts({
       rows: 7,
       insights: emptyInsights(),
       commitments: 0,
-      history: [],
+      sent: 0,
     })
 
     expect(result.tasks).toBe(7)
@@ -100,18 +73,18 @@ describe('columnCounts', () => {
       rows: 0,
       insights: insights(2, 1, 3),
       commitments: 4,
-      history: [],
+      sent: 0,
     })
 
     expect(result.meeting).toBe(10)
   })
 
-  it('counts «Enviadas» in issues across every push', () => {
+  it('takes «Enviadas» from the list the panel draws — see `sentIssueCount`', () => {
     const result = columnCounts({
       rows: 0,
       insights: emptyInsights(),
       commitments: 0,
-      history: [push(2), push(1)],
+      sent: 3,
     })
 
     expect(result.sent).toBe(3)
@@ -125,7 +98,7 @@ describe('columnCounts', () => {
       rows: 0,
       insights: emptyInsights(),
       commitments: 4,
-      history: [],
+      sent: 0,
     })
 
     expect(result.meeting).toBe(4)
@@ -137,7 +110,7 @@ describe('columnCounts', () => {
       rows: 0,
       insights: insights(1, 0, 0),
       commitments: 0,
-      history: [],
+      sent: 0,
     })
 
     expect(result.meeting).toBe(1)
@@ -149,7 +122,7 @@ describe('columnCounts', () => {
       rows: 6,
       insights: emptyInsights(),
       commitments: 0,
-      history: [push(2)],
+      sent: 2,
     })
 
     expect(result.meeting).toBe(0)
@@ -159,7 +132,7 @@ describe('columnCounts', () => {
 
   it('is all zeros for a note with nothing at all', () => {
     expect(
-      columnCounts({ rows: 0, insights: emptyInsights(), commitments: 0, history: [] }),
+      columnCounts({ rows: 0, insights: emptyInsights(), commitments: 0, sent: 0 }),
     ).toEqual(emptyColumnCounts())
   })
 
@@ -238,6 +211,40 @@ describe('activeTab', () => {
   })
 })
 
+describe('tabMarked', () => {
+  it('marks the tab something landed in while another one was open', () => {
+    expect(tabMarked(counts(3, 0, 2), 'tasks', 'sent', 'sent')).toBe(true)
+  })
+
+  it('never marks the tab that is on screen: it has already shown the news', () => {
+    expect(tabMarked(counts(3, 0, 2), 'sent', 'sent', 'sent')).toBe(false)
+  })
+
+  it('never marks a tab that cannot be opened', () => {
+    // The push wrote nothing, so «Enviadas» is still empty and still disabled:
+    // a dot on it would point at a panel the user cannot reach.
+    expect(tabMarked(counts(3, 0, 0), 'tasks', 'sent', 'sent')).toBe(false)
+  })
+
+  it('marks nothing when nothing changed', () => {
+    for (const tab of COLUMN_TABS) {
+      expect(tabMarked(counts(3, 2, 2), 'tasks', null, tab)).toBe(false)
+    }
+  })
+
+  it('marks only the tab it is about', () => {
+    const marked = COLUMN_TABS.filter((tab) => tabMarked(counts(3, 2, 2), 'tasks', 'sent', tab))
+
+    expect(marked).toEqual(['sent'])
+  })
+
+  it('is dropped when the tab it points at becomes the open one by fallback', () => {
+    // «Tareas» is chosen, and it is also where a mark on «Tareas» would sit —
+    // the panel is on screen, so there is nothing to announce.
+    expect(tabMarked(counts(0, 0, 0), 'meeting', 'tasks', 'tasks')).toBe(false)
+  })
+})
+
 describe('columnTabViews', () => {
   it('draws the three tabs with their word, number and state', () => {
     expect(columnTabViews(counts(3, 2, 0), 'tasks')).toEqual([
@@ -248,6 +255,7 @@ describe('columnTabViews', () => {
         count: 3,
         enabled: true,
         active: true,
+        marked: false,
       },
       {
         tab: 'meeting',
@@ -256,6 +264,7 @@ describe('columnTabViews', () => {
         count: 2,
         enabled: true,
         active: false,
+        marked: false,
       },
       {
         tab: 'sent',
@@ -264,8 +273,19 @@ describe('columnTabViews', () => {
         count: 0,
         enabled: false,
         active: false,
+        marked: false,
       },
     ])
+  })
+
+  it('carries the mark of the tab that just changed, and only that one', () => {
+    const views = columnTabViews(counts(3, 0, 2), 'tasks', 'sent')
+
+    expect(views.filter((view) => view.marked).map((view) => view.tab)).toEqual(['sent'])
+  })
+
+  it('marks nothing when no tab is pointed at', () => {
+    expect(columnTabViews(counts(3, 2, 2), 'tasks').some((view) => view.marked)).toBe(false)
   })
 
   it('marks exactly one tab active, and it is one that can be opened', () => {

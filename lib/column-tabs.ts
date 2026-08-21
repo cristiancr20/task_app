@@ -28,7 +28,6 @@
 
 import type { MeetingInsights } from './extractors/task'
 import { insightsCount } from './insights-markdown'
-import type { HistoryEntry } from './store'
 
 /** The three piles the column splits into. */
 export type ColumnTab = 'tasks' | 'meeting' | 'sent'
@@ -57,19 +56,12 @@ export type ColumnContent = {
   insights: MeetingInsights
   /** What previous meetings of this project left open — see `pendingCommitments`. */
   commitments: number
-  /** Every push of this note, as stored. */
-  history: readonly HistoryEntry[]
-}
-
-/**
- * Issues created from a note across every push it ever had.
- *
- * The record is a list of pushes and the tab counts *issues*, which is the
- * unit the user recognises: «12 enviadas» is twelve things in Linear, not
- * twelve times somebody pressed the button.
- */
-export function historyIssueCount(history: readonly HistoryEntry[]): number {
-  return history.reduce((count, entry) => count + entry.issues.length, 0)
+  /**
+   * Issues this note has created in Linear: the pushes on record plus the run
+   * that has just finished — `sentIssueCount`, which is the very list the
+   * pestaña draws, so the number and the panel cannot disagree.
+   */
+  sent: number
 }
 
 /**
@@ -85,7 +77,7 @@ export function columnCounts(content: ColumnContent): ColumnCounts {
   return {
     tasks: content.rows,
     meeting: insightsCount(content.insights) + content.commitments,
-    sent: historyIssueCount(content.history),
+    sent: content.sent,
   }
 }
 
@@ -168,6 +160,26 @@ export function activeTab(counts: ColumnCounts, chosen: ColumnTab): ColumnTab {
   return tabEnabled(counts, chosen) ? chosen : DEFAULT_COLUMN_TAB
 }
 
+/**
+ * Whether the tab has to say that what it holds changed while another one was
+ * open.
+ *
+ * It is what replaces the list of created issues the send bar used to print:
+ * the push no longer answers itself where the button is, so the column has to
+ * point at the pestaña that now holds the answer. The mark is therefore only
+ * ever worn by a tab the user is *not* looking at — an open panel has already
+ * shown the news — and never by a disabled one, which would be a promise of
+ * something behind a tab that cannot be pressed.
+ */
+export function tabMarked(
+  counts: ColumnCounts,
+  chosen: ColumnTab,
+  marked: ColumnTab | null,
+  tab: ColumnTab,
+): boolean {
+  return marked === tab && tabEnabled(counts, tab) && activeTab(counts, chosen) !== tab
+}
+
 /** One tab, as the header draws it. */
 export type ColumnTabView = {
   tab: ColumnTab
@@ -176,15 +188,21 @@ export type ColumnTabView = {
   count: number
   enabled: boolean
   active: boolean
+  /** Something landed in this tab while another was open — see `tabMarked`. */
+  marked: boolean
 }
 
 /**
  * The whole header, in one pass: every tab with its word, its number, whether
- * it can be pressed and whether it is the one open. The component maps over
- * this instead of asking four questions per tab, so «cuál está activa» is
- * decided once rather than per element.
+ * it can be pressed, whether it is the one open and whether it has just
+ * changed. The component maps over this instead of asking five questions per
+ * tab, so «cuál está activa» is decided once rather than per element.
  */
-export function columnTabViews(counts: ColumnCounts, chosen: ColumnTab): ColumnTabView[] {
+export function columnTabViews(
+  counts: ColumnCounts,
+  chosen: ColumnTab,
+  marked: ColumnTab | null = null,
+): ColumnTabView[] {
   const active = activeTab(counts, chosen)
 
   return COLUMN_TABS.map((tab) => ({
@@ -194,6 +212,7 @@ export function columnTabViews(counts: ColumnCounts, chosen: ColumnTab): ColumnT
     count: tabCount(counts, tab),
     enabled: tabEnabled(counts, tab),
     active: tab === active,
+    marked: tabMarked(counts, chosen, marked, tab),
   }))
 }
 

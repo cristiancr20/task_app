@@ -162,6 +162,20 @@ after each iteration and it's included in prompts for context.
 - scroll area that traps the wheel halfway down. The same applies to the rules:
 - a `border-b` and a `border-t` that each separated a block from the table read
 - as one 2 px seam once the two blocks are adjacent.
+- **A number on a tab is counted from the list the panel draws, never from
+  what that list is built out of.** «Enviadas» shows the pushes on record *plus*
+  the run that has just finished, merged by `lib/sent-issues.ts`, so
+  `columnCounts` takes a `sent: number` off `sentIssueCount(sentPushes(...))`
+  rather than counting the stored history it used to. The merge also exists
+  before the deletion it enables: the send bar's list of created issues could
+  only be removed once the pestaña knew about a run the server has not written
+  down yet, which is the whole of «no se pierde nada por el camino».
+- **A mark that can only be cleared by being read needs no clearing code.**
+  `tabMarked` refuses to mark the tab that is open, so opening «Enviadas» *is*
+  dismissing its dot — the render body only tidies the state up afterwards —
+  and it refuses to mark a disabled one, because the run's count reaches the
+  tab before the history does and a dot over `0` points at a panel that cannot
+  be opened.
 - **A count that gates a panel counts everything the panel draws.** «La
   reunión» adds decisions, risks, open questions *and* the pending commitments
   of previous meetings into one number, because they are one panel: counting
@@ -849,4 +863,61 @@ after each iteration and it's included in prompts for context.
     a call site did not move. `onOpenNote={setSelectedFile}` — not `openResult`
     — is the whole answer, and it is worth a comment saying which one and why,
     because the round's opener is sitting three lines away in the same file.
+---
+
+## 2026-08-20 - US-013
+- «Enviadas» is now the only place the column lists issues. The send bar stopped
+  printing what a run created — that list and the push history were the same
+  links read twice, a centimetre apart — and the pestaña holds both, with the
+  state of every issue and the link to Linear.
+- New `lib/sent-issues.ts` (pure): `sentPushes(history, run)` merges the pushes
+  on record with the run on screen — newest first, the un-recorded run leading
+  as `pushedAt: null` — dropping any run issue the history already has, marking
+  the parent wherever it turns up, and `sentIssueCount` / `sentIssueIds` off
+  that same list. 11 tests in `lib/sent-issues.test.ts`.
+- `lib/column-tabs.ts`: `ColumnContent.history` → `sent: number` (the count now
+  comes from the merged list, so `historyIssueCount` and the `HistoryEntry`
+  import are gone), plus `tabMarked` and `ColumnTabView.marked` — «esta pestaña
+  acaba de cambiar», never on the open tab, never on a disabled one.
+  `columnTabViews(counts, chosen, marked?)`. 8 new cases; 38 in the file.
+- `app/column-tabs.tsx`: optional `marked` prop and the dot it draws, with an
+  `sr-only` «actualizada por el último envío» beside it.
+- `app/pushed-history.tsx`: takes `pushes` + `total` instead of `history`. The
+  summary and the state report ride on the wash at the top of the panel, the
+  record below on the plain surface; no `max-h-28` and no inner scroll (the
+  pestaña is the scroll), no `border-b` closing the block, and each line says
+  «(tarea padre)» when it is the issue the rest hang from — the one thing the
+  bar's list said that the record on disk does not.
+- `app/push-panel.tsx`: `PushApi.issues` and the `IssueLink` list are gone;
+  `onShowSent` (null when «Enviadas» is empty) turns the outcome line into
+  «3 tareas creadas bajo la tarea padre · Ver en «Enviadas»».
+- `app/explorer.tsx`: `sent` / `sentCount` / `sentIds` memos, `useIssueStates`
+  moved below them so it asks about every issue the panel draws, `markedTab`
+  set by `onPushed` for the note on screen and cleared in the render body when
+  that pestaña is the open one, and the tab count fed from `sentCount`.
+- `pnpm typecheck`, `pnpm test` (38 files / 1131 tests) and `pnpm build` pass.
+  Smoke-checked `pnpm dev` (HTTP 200, no runtime error); no browser driving —
+  the Playwright MCP is still unavailable in this session, and the part that
+  would need driving (a real push) needs a Linear key besides.
+- **Learnings:**
+  - Two blocks showing the same thing are not deduplicated by deleting one of
+    them. The bar's list knew what the run had just created, the history knew
+    what the server had written down, and each was the other's blind spot: the
+    merge (`sentPushes`) had to exist *before* the deletion, or «lo que acabas
+    de crear» would have disappeared for the length of a round trip — and for
+    good whenever the re-read fails.
+  - The number on a tab must be counted from the list the panel renders, not
+    from the source that list is built out of. `columnCounts` used to count the
+    stored history while the panel was about to draw history *plus* the run;
+    turning `ColumnContent.history` into `sent: number` is what makes «12
+    enviadas» and twelve links the same twelve.
+  - A notification that can only be cleared by being read needs no clearing
+    code. `tabMarked` refuses to mark the open tab, so opening the pestaña
+    *is* dismissing the dot; the one line in the render body only tidies the
+    state up afterwards. A mark with its own «cerrar» would have been a second
+    way to say «ya lo he visto» that could disagree with the first.
+  - A mark on a disabled tab is a promise nothing can keep. The run's count
+    reaches the tab before the history does, so for a moment «Enviadas» could
+    have worn a dot at zero — `tabMarked` checks `tabEnabled` for the same
+    reason `activeTab` does.
 ---

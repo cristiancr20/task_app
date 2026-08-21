@@ -37,11 +37,9 @@ export type PushApi = {
   failed: number
   /** Tasks already created for this note, parent aside. */
   created: number
-  /** The issues created for this note, in the order they were created. Parent aside. */
-  issues: PushedIssue[]
   /**
    * The parent issue, once it exists: this run hangs its tasks from it instead
-   * of creating another, and the summary links to it like any other issue.
+   * of creating another, and «Enviadas» links to it like any other issue.
    */
   parentIssue: PushedIssue | null
   /** Which issue of how many is being created, 1-based. Null when not running. */
@@ -49,6 +47,12 @@ export type PushApi = {
   /** Why the run stopped early, or why it never started. */
   error: string | null
   onPush: () => void
+  /**
+   * Opens «Enviadas», where what this note created is listed. Null when there
+   * is nothing there yet, since that pestaña is then disabled — the bar must
+   * not offer a door that does not open.
+   */
+  onShowSent: (() => void) | null
 }
 
 /**
@@ -325,6 +329,12 @@ type FooterProps = {
  * does not have to move — and the destination above is not editable, which is
  * enforced there rather than here: every field of the form is disabled by the
  * same `running`.
+ *
+ * What the run created is *not* listed here: it is in «Enviadas», together with
+ * every earlier push of the note and with what Linear says about each issue
+ * today. The bar keeps only what is about this run and this button — how it
+ * went, why it stopped — and a link to that pestaña, so the bar can stay a bar
+ * and the column stops holding the same list of issues twice.
  */
 export function PushFooter({ target, parent, push }: FooterProps) {
   const destination = destinationOf(target, parent, push)
@@ -348,30 +358,31 @@ export function PushFooter({ target, parent, push }: FooterProps) {
         </p>
       ) : null}
 
+      {/* How it went, in one line, and the way to what it produced. The bar
+          used to print the created issues here as well, so the same links were
+          read twice in the same column — once under the button and once in the
+          push history above it. «Enviadas» holds them now: this says what
+          happened, that pestaña says what exists, and the link is what joins
+          the two for somebody whose eyes are on the button. */}
       {finished ? (
-        <p aria-live="polite" className="text-xs text-content">
-          {pushOutcome({
-            created: push.created,
-            failed: push.failed,
-            underParent: push.parentIssue !== null,
-          })}
+        <p aria-live="polite" className="flex items-baseline gap-1.5 text-xs text-content">
+          <span className="min-w-0 flex-1">
+            {pushOutcome({
+              created: push.created,
+              failed: push.failed,
+              underParent: push.parentIssue !== null,
+            })}
+          </span>
+          {push.onShowSent ? (
+            <button
+              type="button"
+              onClick={push.onShowSent}
+              className="shrink-0 font-medium underline underline-offset-2 hover:text-accent"
+            >
+              Ver en «Enviadas»
+            </button>
+          ) : null}
         </p>
-      ) : null}
-
-      {/* Once it is over the summary lists what was created, linked: the table
-          says which row became which issue, but the point of finishing a push
-          is to open the issues, and hunting for them column by column is not
-          that. It scrolls inside a bounded box — a dozen links must not push
-          the button they came from off the bottom of the column.
-          The parent goes first and says so: it is the issue the others hang
-          from, and the one the user opens to see the meeting as a whole. */}
-      {finished && (push.parentIssue || push.issues.length > 0) ? (
-        <ul className="flex max-h-24 flex-col gap-1 overflow-y-auto">
-          {push.parentIssue ? <IssueLink issue={push.parentIssue} label="tarea padre" /> : null}
-          {push.issues.map((issue) => (
-            <IssueLink key={issue.id} issue={issue} />
-          ))}
-        </ul>
       ) : null}
 
       {running ? (
@@ -434,28 +445,6 @@ function Chevron({ open }: { open: boolean }) {
     >
       <polyline points="6,3.5 10.5,8 6,12.5" />
     </svg>
-  )
-}
-
-/** One created issue: its identifier, its title, and a link to Linear. */
-function IssueLink({ issue, label }: { issue: PushedIssue; label?: string }) {
-  return (
-    <li className="text-xs">
-      <a
-        href={issue.url}
-        target="_blank"
-        rel="noreferrer noopener"
-        className="group flex items-baseline gap-1.5 text-content transition-colors hover:text-accent"
-      >
-        <span className="shrink-0 rounded border border-line px-1 font-mono text-[0.6875rem] text-muted group-hover:border-accent/40 group-hover:text-accent">
-          {issue.identifier}
-        </span>
-        <span className="truncate underline decoration-transparent underline-offset-2 transition-colors group-hover:decoration-current">
-          {issue.title}
-        </span>
-        {label ? <span className="shrink-0 text-muted">({label})</span> : null}
-      </a>
-    </li>
   )
 }
 

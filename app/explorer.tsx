@@ -16,6 +16,7 @@ import { nextToReview, reviewPosition, reviewQueue } from '@/lib/inbox-review'
 import { issueStatesById } from '@/lib/issue-state-summary'
 import { ancestorFolders, folderLabel, folderName, folderOfNote } from '@/lib/note-paths'
 import { pendingCommitments } from '@/lib/pending-commitments'
+import { sentIssueCount, sentIssueIds, sentPushes } from '@/lib/sent-issues'
 
 import { ColumnTabs, columnPanelId, columnTabId } from './column-tabs'
 import { FileList } from './file-list'
@@ -121,9 +122,20 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
   // anyway, not the folder on disk — and it is what keeps the round below in
   // step: the note just sent leaves «Por revisar» the moment the answer lands.
   const { refresh: refreshInbox } = inbox
+  // Which pestaña has just changed under the user — «Enviadas», when a run of
+  // the note on screen created something. It is declared here, above the
+  // callback that sets it, and read down where the tabs are drawn.
+  const [markedTab, setMarkedTab] = useState<ColumnTab | null>(null)
   const onPushed = useCallback(
     (path: string) => {
-      if (path === selectedFile) refreshTranscript()
+      if (path === selectedFile) {
+        refreshTranscript()
+        // The push used to answer itself in the send bar; now the answer is in
+        // «Enviadas», so the end of a run has to point at it. Only for the note
+        // on screen: a run that finishes after the user moved on has nothing to
+        // mark in a column that is about another meeting.
+        setMarkedTab('sent')
+      }
       refreshFolder(folderOfNote(path))
       refreshInbox()
     },
@@ -173,24 +185,12 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
   // The parent issue stands for the meeting, so its title starts as the note's
   // own — and only until the user types, which is what the null means.
   const meetingTitle = transcript?.status === 'ready' ? transcript.transcript.meta.title : ''
-  // The push history travels with the note, and is reported in the Linear
-  // column: what this file already produced belongs next to what it is about
-  // to produce, not on top of the text it came from.
+  // The push history travels with the note, and is reported in «Enviadas»:
+  // what this file already produced belongs next to what it is about to
+  // produce, not on top of the text it came from. It is half of that pestaña —
+  // the other half is the run below, and `sentPushes` is where they meet.
   const history = transcript?.status === 'ready' ? transcript.transcript.history : []
   const parentTitle = pushOptions.options.parentTitle ?? meetingTitle
-
-  // What the state report is about. A note with no history has no ids, which is
-  // how the hook knows there is nothing to ask — the block is not rendered
-  // either way, and no request is made for it.
-  const historyIssueIds = useMemo(
-    () => history.flatMap((entry) => entry.issues.map((issue) => issue.id)),
-    [history],
-  )
-  const issueStates = useIssueStates({
-    relPath: selectedFile,
-    issueIds: historyIssueIds,
-    hasLinearApiKey,
-  })
 
   // The badges of the list read from one query for the whole folder on screen,
   // not one per row — see `useFolderIssueStates`. It is about the *selected*
@@ -247,7 +247,32 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
   const failed = rows.filter((row) => row.include && results[row.id]?.state === 'failed').length
   const created = rows.filter((row) => results[row.id]?.state === 'created').length
   const parentIssue = parentIssueOf(run.state)
-  const createdIssues = createdIssuesOf(run.state)
+  const createdIssues = useMemo(() => createdIssuesOf(run.state), [run.state])
+
+  // «Enviadas», as the one list it is: the pushes on record plus the run that
+  // has just finished, merged before either reaches the panel — see
+  // `sentPushes`. The route writes the history and the note re-reads it, so
+  // without this the issues just created would be missing from the only place
+  // that shows them now, for as long as that round trip takes and for good if
+  // it fails. The count comes off the same list, which is what keeps the
+  // number on the pestaña and the links under it from disagreeing.
+  const sent = useMemo(
+    () => sentPushes(history, { parentIssue, issues: createdIssues }),
+    [createdIssues, history, parentIssue],
+  )
+  const sentCount = useMemo(() => sentIssueCount(sent), [sent])
+
+  // What the state report is about: every issue the panel draws, the ones just
+  // created included, so a push that has landed shows its states without
+  // waiting for the history to be re-read. A note that has sent nothing has no
+  // ids, which is how the hook knows there is nothing to ask — the panel is
+  // not reachable either way, and no request is made for it.
+  const sentIds = useMemo(() => sentIssueIds(sent), [sent])
+  const issueStates = useIssueStates({
+    relPath: selectedFile,
+    issueIds: sentIds,
+    hasLinearApiKey,
+  })
 
   // The three piles the column splits into — the table, what the meeting knew,
   // what it already produced — and which of them is on screen.
@@ -267,6 +292,7 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
   if (tabbedFile !== selectedFile) {
     setTabbedFile(selectedFile)
     setChosenTab(DEFAULT_COLUMN_TAB)
+    setMarkedTab(null)
   }
   const tabCounts = useMemo(
     () =>
@@ -274,11 +300,18 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
         rows: rows.length,
         insights: drafts.state ?? NO_INSIGHTS,
         commitments: previousCommitments.length,
-        history,
+        sent: sentCount,
       }),
-    [drafts.state, history, previousCommitments.length, rows.length],
+    [drafts.state, previousCommitments.length, rows.length, sentCount],
   )
   const tab = activeTab(tabCounts, chosenTab)
+
+  // «Aquí ha pasado algo»: the send bar no longer prints what a push created,
+  // so the end of a run has to be visible on the pestaña that now holds it.
+  // The mark is dropped the moment that pestaña is the one on screen — which
+  // is the only way it is ever cleared, and why `tabMarked` refuses to mark
+  // the open tab: seeing the panel *is* reading the news.
+  if (markedTab === tab) setMarkedTab(null)
 
   // What the duplicate check is aimed at. Only a chosen project counts: the
   // whole team is a far wider net than the user asked for, and a check against
@@ -354,11 +387,14 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
     pending: pending.length,
     failed,
     created,
-    issues: createdIssues,
     parentIssue,
     progress: run.state.progress,
     error: run.state.error,
     onPush: startPush,
+    // The way to what the run created, since the bar no longer lists it. Null
+    // when «Enviadas» holds nothing, so the bar cannot offer a pestaña that is
+    // disabled.
+    onShowSent: sentCount > 0 ? () => setChosenTab('sent') : null,
   }
 
   function startPush() {
@@ -577,7 +613,12 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
                 same time, instead of five blocks stacked on one another. What
                 each of them holds, which can be opened and which is open is
                 `lib/column-tabs.ts` — see `ColumnTabs`. */}
-            <ColumnTabs counts={tabCounts} chosen={chosenTab} onChange={setChosenTab} />
+            <ColumnTabs
+              counts={tabCounts}
+              chosen={chosenTab}
+              marked={markedTab}
+              onChange={setChosenTab}
+            />
 
             {/* The open pile, filling everything between the tabs and the
                 action bar. Only one is mounted: they are alternatives, and a
@@ -636,8 +677,13 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
                 {drafts.state ? <MeetingInsights insights={drafts.state} /> : null}
               </div>
             ) : (
-              // What this note already produced in Linear. The tab is disabled
-              // without a single push, so this is never an empty panel.
+              // What this note already produced in Linear, record and last run
+              // in one list: the issues, their state today and a link to each.
+              // It is the only place the column says this — the send bar used
+              // to repeat it when a run finished — and it is drawn from the
+              // very list `tabCounts.sent` counts, so «la pestaña deshabilitada»
+              // and «no hay panel que dibujar» are the same fact and this
+              // branch is unreachable at zero.
               <div
                 role="tabpanel"
                 id={columnPanelId('sent')}
@@ -645,7 +691,7 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
                 tabIndex={0}
                 className="flex min-h-0 flex-1 flex-col overflow-y-auto"
               >
-                <PushedHistory history={history} states={issueStates} />
+                <PushedHistory pushes={sent} total={sentCount} states={issueStates} />
               </div>
             )}
 

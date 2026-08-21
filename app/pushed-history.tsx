@@ -5,14 +5,16 @@ import {
   ISSUE_STATE_GROUPS,
   type IssueStateGroup,
 } from '@/lib/issue-state-summary'
-import type { HistoryEntry } from '@/lib/store'
+import type { SentIssue, SentPush } from '@/lib/sent-issues'
 
 import { StateDot } from './issue-state-dot'
 import type { IssueStatesApi } from './use-issue-states'
 
 type Props = {
-  /** Every push of this note, oldest first. Never rendered when empty. */
-  history: HistoryEntry[]
+  /** Every push of this note, newest first — see `sentPushes`. Never empty. */
+  pushes: SentPush[]
+  /** How many issues that is, counted once — see `sentIssueCount`. */
+  total: number
   /** What Linear says about those issues today — see `useIssueStates`. */
   states: IssueStatesApi
 }
@@ -30,88 +32,107 @@ const GROUP_LABELS: Record<IssueStateGroup, string> = {
 }
 
 /**
- * «Ya creaste tareas desde este archivo»: how many, when, what became of them,
- * and a link to each issue.
+ * «Enviadas»: everything this note has produced in Linear — how many, when,
+ * what became of each one, and a link to it.
  *
- * It lives in the Linear column rather than over the transcript, because it is
- * about what this note produced in Linear — the same subject as the panel it
- * now sits in — and above the text it cost the reader the top of every note
- * that had ever been pushed.
+ * It is the whole of the pestaña, and it is the only place the column says
+ * this. The send bar used to print its own list of created issues when a run
+ * finished, so the same links were read twice in the same column and the two
+ * lists disagreed about what «lo que produjo esta nota» meant: one knew only
+ * about the last run, the other only about what had been written to disk.
+ * `sentPushes` merges them before they get here — a run that has just finished
+ * leads the list as «hace un momento» until the note re-reads its history —
+ * so what the bar had to say is in this panel and nowhere else.
  *
- * Entries are stored oldest first and shown newest first, since the last push
- * is the one that explains the current state of the file. The list scrolls
- * inside a fixed height: a note pushed five times must not take the column
- * away from the tasks being prepared in it.
+ * Pushes are shown newest first, since the last one explains the current state
+ * of the file. Nothing caps or scrolls inside: the pestaña is one scrolling
+ * panel and a second scroll area halfway down it would only trap the wheel.
  *
- * The states are an addition to that history and never a replacement for it:
+ * The states are an addition to the record and never a replacement for it:
  * while they load, when there is no key to load them with, and when the query
  * fails, every line below is exactly what it was before — the report is what
- * is missing, not the record of the push.
+ * is missing, not the fact that the issues were created.
  */
-export function PushedHistory({ history, states }: Props) {
-  const entries = [...history].reverse()
-  const total = history.reduce((count, entry) => count + entry.issues.length, 0)
-  const latest = entries[0]
+export function PushedHistory({ pushes, total, states }: Props) {
+  const latest = pushes[0]
 
   return (
-    <div role="note" className="border-b border-line bg-warn-wash px-3 py-2.5">
-      <p className="flex items-center gap-1.5 text-xs font-semibold text-warn">
-        <Tick />
-        {total === 1 ? '1 tarea ya creada' : `${NUMBER.format(total)} tareas ya creadas`}
-        <span className="font-normal text-muted">
-          {history.length > 1
-            ? `· ${history.length} envíos, el último el ${formatPushedAt(latest.pushedAt)}`
-            : `· ${formatPushedAt(latest.pushedAt)}`}
-        </span>
-      </p>
+    <div className="flex min-h-0 flex-col">
+      {/* The summary rides at the top of the panel, on the wash that has always
+          meant «esto ya está hecho», with the record itself below it on the
+          plain surface where the links are read. */}
+      <div className="shrink-0 border-b border-line bg-warn-wash px-3 py-2.5">
+        <p className="flex items-center gap-1.5 text-xs font-semibold text-warn">
+          <Tick />
+          {total === 1 ? '1 tarea ya creada' : `${NUMBER.format(total)} tareas ya creadas`}
+          <span className="font-normal text-muted">
+            {pushes.length > 1
+              ? `· ${pushes.length} envíos, el último, ${whenLabel(latest?.pushedAt ?? null)}`
+              : `· ${whenLabel(latest?.pushedAt ?? null)}`}
+          </span>
+        </p>
 
-      <StateReport states={states} />
+        <StateReport states={states} />
+      </div>
 
-      <div className="mt-1.5 max-h-28 overflow-y-auto">
-        {entries.map((entry, key) => (
-          <div key={key} className={key > 0 ? 'mt-2' : ''}>
+      <div className="flex flex-col gap-2 px-3 py-2.5">
+        {pushes.map((push, key) => (
+          <div key={key}>
             {/* With a single push the date is already in the line above. */}
-            {history.length > 1 ? (
-              <p className="text-[0.6875rem] text-muted">{formatPushedAt(entry.pushedAt)}</p>
+            {pushes.length > 1 ? (
+              <p className="text-[0.6875rem] text-muted">{capitalise(whenLabel(push.pushedAt))}</p>
             ) : null}
             <ul className="flex flex-col gap-1">
-              {entry.issues.map((issue) => {
-                const state = states.byId[issue.id]
-                return (
-                  <li key={issue.id}>
-                    <a
-                      href={issue.url}
-                      target="_blank"
-                      rel="noreferrer noopener"
-                      title={`${issue.identifier} · ${issue.title}${
-                        state ? ` · ${state.stateName}` : ''
-                      }`}
-                      className="group flex items-baseline gap-1.5 text-xs text-content transition-colors hover:text-warn"
-                    >
-                      <span className="shrink-0 rounded border border-warn/30 px-1 font-mono text-[0.6875rem] text-warn">
-                        {issue.identifier}
-                      </span>
-                      <span className="truncate underline decoration-transparent underline-offset-2 transition-colors group-hover:decoration-current">
-                        {issue.title}
-                      </span>
-                      {/* Linear's own wording for the state, not ours: the
-                          workspace named its columns, and «Listo para QA» says
-                          more to whoever runs the meeting than «en curso». */}
-                      {state ? (
-                        <span className="ml-auto flex shrink-0 items-center gap-1 text-[0.6875rem] text-muted">
-                          <StateDot group={groupOfStateType(state.stateType)} />
-                          {state.stateName}
-                        </span>
-                      ) : null}
-                    </a>
-                  </li>
-                )
-              })}
+              {push.issues.map((issue) => (
+                <IssueLine key={issue.id} issue={issue} states={states} />
+              ))}
             </ul>
           </div>
         ))}
       </div>
     </div>
+  )
+}
+
+/**
+ * One created issue: its identifier, its title, its state in Linear and a link
+ * to it.
+ *
+ * The parent says so. It is the issue that stands for the meeting and the one
+ * the rest hang from, so «cuál abro para ver la reunión entera» has to be
+ * answerable here — it was the one thing the send bar's list said that the
+ * record on disk does not, since a parent is stored like any other issue.
+ */
+function IssueLine({ issue, states }: { issue: SentIssue; states: IssueStatesApi }) {
+  const state = states.byId[issue.id]
+
+  return (
+    <li>
+      <a
+        href={issue.url}
+        target="_blank"
+        rel="noreferrer noopener"
+        title={`${issue.identifier} · ${issue.title}${state ? ` · ${state.stateName}` : ''}`}
+        className="group flex items-baseline gap-1.5 text-xs text-content transition-colors hover:text-warn"
+      >
+        <span className="shrink-0 rounded border border-warn/30 px-1 font-mono text-[0.6875rem] text-warn">
+          {issue.identifier}
+        </span>
+        <span className="truncate underline decoration-transparent underline-offset-2 transition-colors group-hover:decoration-current">
+          {issue.title}
+        </span>
+        {issue.parent ? <span className="shrink-0 text-muted">(tarea padre)</span> : null}
+        {/* Linear's own wording for the state, not ours: the workspace named
+            its columns, and «Listo para QA» says more to whoever runs the
+            meeting than «en curso». */}
+        {state ? (
+          <span className="ml-auto flex shrink-0 items-center gap-1 text-[0.6875rem] text-muted">
+            <StateDot group={groupOfStateType(state.stateType)} />
+            {state.stateName}
+          </span>
+        ) : null}
+      </a>
+    </li>
   )
 }
 
@@ -218,11 +239,20 @@ function Tick() {
 }
 
 /**
- * `pushedAt` is a full timestamp, so — unlike a date-only string — it is safe
- * to let `Date` parse it and render it in the user's own timezone.
+ * When a push happened. A run that has just finished has no timestamp yet —
+ * the server writes one when it records the issues — and «hace un momento» is
+ * the honest answer rather than a clock this page would have to invent.
  */
-function formatPushedAt(pushedAt: string): string {
+function whenLabel(pushedAt: string | null): string {
+  if (!pushedAt) return 'hace un momento'
   const date = new Date(pushedAt)
+  // `pushedAt` is a full timestamp, so — unlike a date-only string — it is safe
+  // to let `Date` parse it and render it in the user's own timezone.
   if (Number.isNaN(date.getTime())) return pushedAt
   return `${DAY.format(date)} a las ${TIME.format(date)}`
+}
+
+/** The date opening a group is a line of its own, so it starts as one. */
+function capitalise(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1)
 }
