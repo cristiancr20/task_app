@@ -1,14 +1,25 @@
 'use client'
 
 import Link from 'next/link'
+import { useState } from 'react'
 
+import {
+  type Destination,
+  destinationSettled,
+  destinationSummary,
+  excludedSummary,
+  pendingSummary,
+  pushBlockedBy,
+  pushButtonLabel,
+  pushOutcome,
+} from '@/lib/push-destination'
 import type { PushedIssue } from '@/lib/push-events'
 
 import { PushProgress } from './progress'
 import type { DuplicateCheckStatus } from './use-duplicate-check'
 import type { PushTargetApi } from './use-push-target'
 
-type ParentApi = {
+export type ParentApi = {
   /** «Crear tarea padre» is checked. */
   create: boolean
   /** What the input shows: the user's text, or the transcript's title. */
@@ -18,7 +29,7 @@ type ParentApi = {
 }
 
 /** The run, as the panel needs to see it: what is left to do and how it is going. */
-type PushApi = {
+export type PushApi = {
   status: 'idle' | 'running' | 'finished'
   /** Rows the button would send now: checked and not created yet. */
   pending: number
@@ -45,7 +56,7 @@ type PushApi = {
  * all, whether it is running, and why it could not — never enough to stop a
  * push, only enough to read before starting one.
  */
-type DuplicateApi = {
+export type DuplicateApi = {
   status: DuplicateCheckStatus
   /** The destination's issues are loading, or a re-check is about to run. */
   checking: boolean
@@ -61,6 +72,32 @@ type DuplicateApi = {
   onCheck: () => void
 }
 
+const FIELD =
+  'rounded-lg border border-line-strong bg-surface px-2.5 py-1.5 text-sm text-content shadow-panel outline-none transition-colors placeholder:text-muted focus:border-accent disabled:opacity-50'
+const LABEL = 'text-xs font-medium text-muted'
+
+/**
+ * The head and the foot of the Linear column are two halves of one control, and
+ * both are computed from this: the form's answer, rather than the form.
+ *
+ * The parent is created once per note, so a run that already made one turns the
+ * checkbox into a fact — `existing` — and the title stops being something the
+ * user can still get wrong.
+ */
+export function destinationOf(
+  target: PushTargetApi,
+  parent: ParentApi,
+  push: PushApi,
+): Destination {
+  const project = target.projects.find((candidate) => candidate.id === target.projectId)
+  return {
+    status: target.status,
+    project: project ? { id: project.id, name: project.name } : null,
+    parent: !parent.create ? 'none' : push.parentIssue ? 'existing' : 'new',
+    parentTitle: parent.title,
+  }
+}
+
 type Props = {
   target: PushTargetApi
   parent: ParentApi
@@ -68,44 +105,60 @@ type Props = {
   push: PushApi
 }
 
-const FIELD =
-  'rounded-lg border border-line-strong bg-surface px-2.5 py-1.5 text-sm text-content shadow-panel outline-none transition-colors placeholder:text-muted focus:border-accent disabled:opacity-50'
-const LABEL = 'text-xs font-medium text-muted'
-
 /**
  * Where the tasks are going: the Linear team and project, whether they hang
- * from one parent issue — and, once the button is pressed, how the run is going.
+ * from one parent issue — folded, most of the time, into the single line that
+ * says both.
  *
  * The destination is chosen here rather than in the settings because it is a
  * per-push decision, and it is remembered in the config because it rarely
- * changes — the dropdown starts on the project used last.
+ * changes — the dropdown starts on the project used last. That is precisely why
+ * the form is folded: a set of fields the user touches once a week was costing
+ * a third of the column's height on every note, above a table that is the thing
+ * being read. The line it folds into is not a heading, it is the answer — «A
+ * Plataforma · bajo «Comité semanal»» — so folding hides the controls, never
+ * the decision.
  *
- * The button is the last gate before something is created in a real workspace,
- * so it never sits enabled over an incomplete form: `pushBlockedBy` returns the
- * one reason it is disabled and that reason is what the user reads next to it.
- * After a run with failures the same button becomes «Reintentar N fallidas»,
- * because retrying is not a different action — it is the same push over what is
- * left, and what was created is no longer part of it.
+ * It unfolds itself while anything is still missing and folds once the
+ * destination is complete, so the form appears exactly when it has to be used;
+ * after that the user's own click wins, until something goes missing again.
+ *
+ * The two chips ride in the panel head, outside the fold: how many tasks are
+ * about to be created, and how many the duplicate check took out. Those are
+ * about the table, they change on every keystroke in it, and they must not
+ * depend on a fold being open.
  */
 export function PushPanel({ target, parent, duplicates, push }: Props) {
-  const reason = pushBlockedBy(target, parent, push)
-  const severalTeams = target.teams.length > 1
+  const destination = destinationOf(target, parent, push)
+  const settled = destinationSettled(destination)
   const running = push.status === 'running'
-  // The parent is created once per note; a retry hangs its tasks from the one
-  // that already exists, so the checkbox stops describing this run.
-  const willCreateParent = parent.create && !push.parentIssue
+  const severalTeams = target.teams.length > 1
+
+  // «Reset this state when that changed» in the render body, as in `FileList`:
+  // the fold follows completeness until the user disagrees, and their click is
+  // forgotten the moment completeness flips — a destination that has just lost
+  // its project has to show the field that lost it, whatever was clicked before.
+  const [choice, setChoice] = useState<boolean | null>(null)
+  const [decidedFor, setDecidedFor] = useState(settled)
+  if (decidedFor !== settled) {
+    setDecidedFor(settled)
+    setChoice(null)
+  }
+  const open = choice ?? !settled
 
   return (
     // Header of the tasks column, so it stacks instead of spreading: at this
     // width a row of side-by-side fields wraps into an unreadable staircase.
     // The whole block is recessed: it is the panel's controls, and the rows it
     // acts on are what should stay on the light surface below.
-    <div className="flex flex-col border-b border-line bg-surface-2">
+    <div className="flex shrink-0 flex-col border-b border-line bg-surface-2">
       <div className="panel-head justify-between">
         <h2 className="panel-title">Enviar a Linear</h2>
         {target.status === 'ready' ? (
           <div className="flex min-w-0 items-center gap-1.5">
-            <span className="chip tabular-nums">{summary(willCreateParent, push.pending)}</span>
+            <span className="chip tabular-nums">
+              {pendingSummary(push.pending, destination.parent)}
+            </span>
             {/* Why the count is lower than the table's: without this the button
                 and the list of rows disagree by however many the check took
                 out, and nothing on screen would account for the difference. */}
@@ -118,174 +171,201 @@ export function PushPanel({ target, parent, duplicates, push }: Props) {
         ) : null}
       </div>
 
-      <div className="flex flex-col gap-2.5 px-3 py-3">
-        {/* One team is not a choice: it is used silently, and only a workspace
-            with several ever shows this. */}
-        {severalTeams ? (
+      {/* The fold. It is a button over the whole line rather than a chevron in
+          the corner: the line *is* the control, and a 12-pixel target for the
+          thing the user opens once per meeting is a worse trade than the row. */}
+      <button
+        type="button"
+        onClick={() => setChoice(!open)}
+        aria-expanded={open}
+        aria-controls="push-destination"
+        className="flex items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-line/40"
+      >
+        <Chevron open={open} />
+        <span className="min-w-0 flex-1 truncate text-xs text-content">
+          {destinationSummary(destination)}
+        </span>
+        <span className="shrink-0 text-xs font-medium text-muted">
+          {open ? 'Ocultar' : 'Cambiar'}
+        </span>
+      </button>
+
+      {open ? (
+        <div id="push-destination" className="flex flex-col gap-2.5 border-t border-line px-3 py-3">
+          {/* One team is not a choice: it is used silently, and only a workspace
+              with several ever shows this. */}
+          {severalTeams ? (
+            <div className="flex items-center gap-3">
+              <label htmlFor="push-team" className={`${LABEL} w-20 shrink-0`}>
+                Equipo
+              </label>
+              <select
+                id="push-team"
+                value={target.teamId}
+                onChange={(event) => target.selectTeam(event.target.value)}
+                disabled={running}
+                className={`${FIELD} min-w-0 flex-1`}
+              >
+                <option value="">Selecciona un equipo</option>
+                {target.teams.map((team) => (
+                  <option key={team.id} value={team.id}>
+                    {team.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+
           <div className="flex items-center gap-3">
-            <label htmlFor="push-team" className={`${LABEL} w-20 shrink-0`}>
-              Equipo
+            <label htmlFor="push-project" className={`${LABEL} w-20 shrink-0`}>
+              Proyecto
             </label>
             <select
-              id="push-team"
-              value={target.teamId}
-              onChange={(event) => target.selectTeam(event.target.value)}
-              disabled={running}
+              id="push-project"
+              value={target.projectId}
+              onChange={(event) => target.selectProject(event.target.value)}
+              disabled={running || target.status !== 'ready' || target.projects.length === 0}
               className={`${FIELD} min-w-0 flex-1`}
             >
-              <option value="">Selecciona un equipo</option>
-              {target.teams.map((team) => (
-                <option key={team.id} value={team.id}>
-                  {team.name}
+              <option value="">{projectPlaceholder(target, severalTeams)}</option>
+              {target.projects.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.name}
                 </option>
               ))}
             </select>
           </div>
-        ) : null}
 
-        <div className="flex items-center gap-3">
-          <label htmlFor="push-project" className={`${LABEL} w-20 shrink-0`}>
-            Proyecto
-          </label>
-          <select
-            id="push-project"
-            value={target.projectId}
-            onChange={(event) => target.selectProject(event.target.value)}
-            disabled={running || target.status !== 'ready' || target.projects.length === 0}
-            className={`${FIELD} min-w-0 flex-1`}
-          >
-            <option value="">{projectPlaceholder(target, severalTeams)}</option>
-            {target.projects.map((project) => (
-              <option key={project.id} value={project.id}>
-                {project.name}
-              </option>
-            ))}
-          </select>
+          <div className="flex items-center gap-2 pt-0.5">
+            <input
+              id="push-parent"
+              type="checkbox"
+              checked={parent.create}
+              onChange={(event) => parent.onToggle(event.target.checked)}
+              disabled={running}
+              className="size-4 accent-accent"
+            />
+            <label htmlFor="push-parent" className="text-sm text-content">
+              Agrupar bajo una tarea padre
+            </label>
+          </div>
+
+          {/* Only worth showing once there is going to be a parent to name — and
+              not once it exists, when the title can no longer change anything. */}
+          {destination.parent === 'new' ? (
+            <input
+              id="push-parent-title"
+              type="text"
+              value={parent.title}
+              onChange={(event) => parent.onTitleChange(event.target.value)}
+              disabled={running}
+              placeholder="Título de la tarea padre"
+              aria-label="Título de la tarea padre"
+              className={`${FIELD} w-full`}
+            />
+          ) : null}
+
+          {/* The check runs on its own — after an extraction, and whenever the
+              destination changes — so the button is for asking again once
+              somebody else has filed something in Linear. It never gates the
+              push: what it knows is shown in the table, and what it does not
+              know is shown here. */}
+          <div className="flex items-start justify-between gap-2 pt-0.5">
+            <button
+              type="button"
+              onClick={duplicates.onCheck}
+              disabled={duplicates.status === 'unavailable' || duplicates.checking || running}
+              className="rounded-lg border border-line-strong bg-surface px-2.5 py-1 text-xs font-medium shadow-panel transition-colors hover:bg-surface-2 disabled:opacity-50"
+            >
+              {duplicates.checking ? 'Buscando duplicados…' : 'Buscar duplicados'}
+            </button>
+            {/* A notice, not a dialog: a check that could not run is information
+                about the check, and interrupting the curating over it would cost
+                more than it is worth. */}
+            <p
+              aria-live="polite"
+              className={`min-w-0 flex-1 pt-1 text-right text-xs ${
+                duplicates.status === 'error' ? 'text-warn' : 'text-muted'
+              }`}
+            >
+              {duplicateNote(duplicates)}
+            </p>
+          </div>
         </div>
-
-        <div className="flex items-center gap-2 pt-0.5">
-          <input
-            id="push-parent"
-            type="checkbox"
-            checked={parent.create}
-            onChange={(event) => parent.onToggle(event.target.checked)}
-            disabled={running}
-            className="size-4 accent-accent"
-          />
-          <label htmlFor="push-parent" className="text-sm text-content">
-            Agrupar bajo una tarea padre
-          </label>
-        </div>
-
-        {/* Only worth showing once there is going to be a parent to name — and
-            not once it exists, when the title can no longer change anything. */}
-        {willCreateParent ? (
-          <input
-            id="push-parent-title"
-            type="text"
-            value={parent.title}
-            onChange={(event) => parent.onTitleChange(event.target.value)}
-            disabled={running}
-            placeholder="Título de la tarea padre"
-            aria-label="Título de la tarea padre"
-            className={`${FIELD} w-full`}
-          />
-        ) : null}
-
-        {/* The check runs on its own — after an extraction, and whenever the
-            destination changes — so the button is for asking again once
-            somebody else has filed something in Linear. It never gates the
-            push: what it knows is shown in the table, and what it does not
-            know is shown here. */}
-        <div className="flex items-start justify-between gap-2 pt-0.5">
-          <button
-            type="button"
-            onClick={duplicates.onCheck}
-            disabled={duplicates.status === 'unavailable' || duplicates.checking || running}
-            className="rounded-lg border border-line-strong bg-surface px-2.5 py-1 text-xs font-medium shadow-panel transition-colors hover:bg-surface-2 disabled:opacity-50"
-          >
-            {duplicates.checking ? 'Buscando duplicados…' : 'Buscar duplicados'}
-          </button>
-          {/* A notice, not a dialog: a check that could not run is information
-              about the check, and interrupting the curating over it would cost
-              more than it is worth. */}
-          <p
-            aria-live="polite"
-            className={`min-w-0 flex-1 pt-1 text-right text-xs ${
-              duplicates.status === 'error' ? 'text-warn' : 'text-muted'
-            }`}
-          >
-            {duplicateNote(duplicates)}
-          </p>
-        </div>
-
-        {reason ? (
-          <p className="text-xs text-muted">
-            {reason}{' '}
-            {target.status === 'no-key' ? (
-              <Link href="/settings" className="underline hover:text-content">
-                Ir a ajustes
-              </Link>
-            ) : null}
-            {target.status === 'error' ? (
-              <button
-                type="button"
-                onClick={target.reload}
-                className="underline hover:text-content"
-              >
-                Reintentar
-              </button>
-            ) : null}
-          </p>
-        ) : null}
-
-        <button
-          type="button"
-          onClick={push.onPush}
-          disabled={reason !== null}
-          title={reason ?? undefined}
-          className="w-full rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-on-accent shadow-panel transition-colors hover:bg-accent-soft disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
-        >
-          {buttonLabel(push)}
-        </button>
-      </div>
-
-      {push.status !== 'idle' ? <RunStatus push={push} /> : null}
+      ) : null}
     </div>
   )
 }
 
+type FooterProps = {
+  target: PushTargetApi
+  parent: ParentApi
+  push: PushApi
+}
+
 /**
- * What the run is doing, under the controls that started it.
+ * The foot of the Linear column: the button, why it is disabled, and — while
+ * the run is on — what it is doing.
  *
- * The progress line is the whole reason the route streams: a push is a dozen
- * round trips to a remote API, and «Creando 4 de 12» is the difference between
- * a slow run and a hung one. The row-by-row outcome is in the table above —
- * this says what happened overall, and why it stopped when it stopped.
+ * It is a sibling of the table rather than something drawn above it, and the
+ * table is the only part of the column that grows, so this stays on screen
+ * whatever the meeting produced. That is the whole point: the button is the
+ * last gate before something is created in a real workspace, and a gate you
+ * have to scroll to find is one you press without reading the rows.
  *
- * Once it is over the summary lists what was created, linked: the table says
- * which row became which issue, but the point of finishing a push is to open
- * the issues, and hunting for them column by column is not that.
+ * It never sits enabled over an incomplete form: `pushBlockedBy` returns the
+ * one reason and that reason is what the user reads next to it — one reason,
+ * the first one to fix, rather than a list of everything that is missing. After
+ * a run with failures the same button becomes «Reintentar N fallidas», because
+ * retrying is not a different action: it is the same push over what is left,
+ * and what was created is no longer part of it.
+ *
+ * While it runs, the progress takes the button's place — same spot, so the eye
+ * does not have to move — and the destination above is not editable, which is
+ * enforced there rather than here: every field of the form is disabled by the
+ * same `running`.
  */
-function RunStatus({ push }: { push: PushApi }) {
+export function PushFooter({ target, parent, push }: FooterProps) {
+  const destination = destinationOf(target, parent, push)
+  const running = push.status === 'running'
   const finished = push.status === 'finished'
+  const reason = pushBlockedBy({
+    destination,
+    error: target.error,
+    running,
+    pending: push.pending,
+    created: push.created,
+  })
 
   return (
-    <div className="flex flex-col gap-2 border-t border-line bg-surface px-3 py-2.5">
-      {push.progress && push.status === 'running' ? (
-        <PushProgress index={push.progress.index} total={push.progress.total} />
+    <div className="flex shrink-0 flex-col gap-2 border-t border-line bg-surface-2 px-3 py-2.5">
+      {/* Why the run stopped short: the parent failed, or too many tasks failed
+          in a row. The per-row messages are in the table. */}
+      {push.error ? (
+        <p role="alert" className="rounded-md bg-danger-wash px-3 py-2 text-xs text-danger">
+          {push.error}
+        </p>
       ) : null}
 
       {finished ? (
         <p aria-live="polite" className="text-xs text-content">
-          {outcome(push)}
+          {pushOutcome({
+            created: push.created,
+            failed: push.failed,
+            underParent: push.parentIssue !== null,
+          })}
         </p>
       ) : null}
 
-      {/* The parent goes first and says so: it is the issue the others hang
+      {/* Once it is over the summary lists what was created, linked: the table
+          says which row became which issue, but the point of finishing a push
+          is to open the issues, and hunting for them column by column is not
+          that. It scrolls inside a bounded box — a dozen links must not push
+          the button they came from off the bottom of the column.
+          The parent goes first and says so: it is the issue the others hang
           from, and the one the user opens to see the meeting as a whole. */}
       {finished && (push.parentIssue || push.issues.length > 0) ? (
-        <ul className="flex flex-col gap-1 pb-1">
+        <ul className="flex max-h-24 flex-col gap-1 overflow-y-auto">
           {push.parentIssue ? <IssueLink issue={push.parentIssue} label="tarea padre" /> : null}
           {push.issues.map((issue) => (
             <IssueLink key={issue.id} issue={issue} />
@@ -293,17 +373,66 @@ function RunStatus({ push }: { push: PushApi }) {
         </ul>
       ) : null}
 
-      {/* Why the run stopped short: the parent failed, or too many tasks failed
-          in a row. The per-row messages are in the table. */}
-      {push.error ? (
-        <p
-          role="alert"
-          className="rounded-md bg-danger-wash px-3 py-2 text-xs text-danger"
-        >
-          {push.error}
-        </p>
-      ) : null}
+      {running ? (
+        push.progress ? (
+          <PushProgress index={push.progress.index} total={push.progress.total} />
+        ) : (
+          <p role="status" aria-live="polite" className="text-sm text-content">
+            Creando las tareas en Linear…
+          </p>
+        )
+      ) : (
+        <>
+          {reason ? (
+            <p className="text-xs text-muted">
+              {reason}{' '}
+              {target.status === 'no-key' ? (
+                <Link href="/settings" className="underline hover:text-content">
+                  Ir a ajustes
+                </Link>
+              ) : null}
+              {target.status === 'error' ? (
+                <button
+                  type="button"
+                  onClick={target.reload}
+                  className="underline hover:text-content"
+                >
+                  Reintentar
+                </button>
+              ) : null}
+            </p>
+          ) : null}
+
+          <button
+            type="button"
+            onClick={push.onPush}
+            disabled={reason !== null}
+            title={reason ?? undefined}
+            className="w-full rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-on-accent shadow-panel transition-colors hover:bg-accent-soft disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
+          >
+            {pushButtonLabel({ running, pending: push.pending, failed: push.failed })}
+          </button>
+        </>
+      )}
     </div>
+  )
+}
+
+/** The fold's only ornament: pointing down when the form is open. */
+function Chevron({ open }: { open: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      aria-hidden="true"
+      className={`h-3 w-3 shrink-0 text-muted transition-transform ${open ? 'rotate-90' : ''}`}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <polyline points="6,3.5 10.5,8 6,12.5" />
+    </svg>
   )
 }
 
@@ -342,49 +471,6 @@ function duplicateNote(duplicates: DuplicateApi): string {
   return 'Comparado con los issues del proyecto.'
 }
 
-/**
- * Why the push cannot run, or null when it can. Ordered by what the user has to
- * fix first: there is no point asking for a project while the key is missing,
- * and the project dropdown is empty until the listing lands.
- */
-function pushBlockedBy(target: PushTargetApi, parent: ParentApi, push: PushApi): string | null {
-  if (target.status === 'no-key') return 'No hay ninguna API key de Linear guardada.'
-  if (target.status === 'loading') return 'Cargando los proyectos de Linear…'
-  if (target.status === 'error')
-    return target.error ?? 'No se pudieron cargar los proyectos de Linear.'
-  if (!target.projectId) return 'Selecciona el proyecto de destino.'
-  if (push.status === 'running') return 'Creando las tareas en Linear…'
-  if (push.pending === 0) {
-    // Nothing left is not the same as nothing chosen: after a clean run every
-    // checked row exists in Linear, and offering to create them again is how
-    // duplicates happen.
-    return push.created > 0
-      ? 'Todas las tareas seleccionadas ya se han creado en Linear.'
-      : 'Marca al menos una tarea para crearla.'
-  }
-  // Linear rejects an empty title, so the push would fail on the parent and
-  // never reach the tasks. Once the parent exists this no longer applies.
-  if (parent.create && !push.parentIssue && !parent.title.trim())
-    return 'Escribe un título para la tarea padre.'
-  return null
-}
-
-/**
- * «Reintentar 2 fallidas» once a run left failures behind, «Crear en Linear»
- * otherwise. The number is always what the button is about to send, which is
- * not always the failures: a run that aborted left rows it never attempted, and
- * those go out too — naming only the failures would undercount the run the user
- * is starting.
- */
-function buttonLabel(push: PushApi): string {
-  if (push.status === 'running') return 'Creando…'
-  if (push.failed === 0) return 'Crear en Linear'
-  if (push.pending > push.failed) {
-    return `Reintentar ${push.pending} pendientes`
-  }
-  return `Reintentar ${push.failed} fallida${push.failed === 1 ? '' : 's'}`
-}
-
 /** What the dropdown says when it has nothing to offer, and why. */
 function projectPlaceholder(target: PushTargetApi, severalTeams: boolean): string {
   if (target.status === 'loading') return 'Cargando…'
@@ -393,27 +479,4 @@ function projectPlaceholder(target: PushTargetApi, severalTeams: boolean): strin
   if (severalTeams && !target.teamId) return 'Elige un equipo primero'
   if (target.projects.length === 0) return 'El equipo no tiene proyectos'
   return 'Selecciona un proyecto'
-}
-
-/** «3 tareas bajo una tarea padre», so the button says what it is about to do. */
-function summary(willCreateParent: boolean, pending: number): string {
-  const tasks = `${pending} tarea${pending === 1 ? '' : 's'}`
-  return willCreateParent ? `${tasks} bajo una tarea padre` : tasks
-}
-
-/** «2 duplicadas excluidas», next to what the button is about to create. */
-function excludedSummary(excluded: number): string {
-  return excluded === 1 ? '1 duplicada excluida' : `${excluded} duplicadas excluidas`
-}
-
-/** «3 tareas creadas bajo la tarea padre · 1 fallida», once the run is over. */
-function outcome(push: PushApi): string {
-  const one = push.created === 1
-  // With nothing created, the parent is not what the sentence is about.
-  const created = `${push.created} tarea${one ? '' : 's'} creada${one ? '' : 's'}${
-    push.parentIssue && push.created > 0 ? ' bajo la tarea padre' : ''
-  }`
-  return push.failed > 0
-    ? `${created} · ${push.failed} fallida${push.failed === 1 ? '' : 's'}`
-    : created
 }

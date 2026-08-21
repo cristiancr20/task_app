@@ -16,7 +16,7 @@ import { useInboxApi } from './inbox-provider'
 import { InboxView } from './inbox-view'
 import { MeetingInsights } from './meeting-insights'
 import { PendingCommitments } from './pending-commitments'
-import { PushPanel } from './push-panel'
+import { type ParentApi, PushFooter, PushPanel, type PushApi } from './push-panel'
 import { PushedHistory } from './pushed-history'
 import { ReviewNav } from './review-nav'
 import { useSearchApi } from './search-provider'
@@ -297,6 +297,28 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
     })
   }, [duplicateScopeKey, excludeRows, toExclude])
 
+  // The head of the Linear column and its foot are two views of one push: the
+  // destination folds up top, the button lives at the bottom, and both are
+  // drawn from these — so «3 tareas bajo una tarea padre» in the head and
+  // «Reintentar 2 fallidas» at the foot cannot be about different runs.
+  const parentApi: ParentApi = {
+    create: pushOptions.options.createParent,
+    title: parentTitle,
+    onToggle: pushOptions.setCreateParent,
+    onTitleChange: pushOptions.setParentTitle,
+  }
+  const pushApi: PushApi = {
+    status: run.state.status,
+    pending: pending.length,
+    failed,
+    created,
+    issues: createdIssues,
+    parentIssue,
+    progress: run.state.progress,
+    error: run.state.error,
+    onPush: startPush,
+  }
+
   function startPush() {
     run.push({
       teamId: target.teamId,
@@ -511,12 +533,7 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
 
             <PushPanel
               target={target}
-              parent={{
-                create: pushOptions.options.createParent,
-                title: parentTitle,
-                onToggle: pushOptions.setCreateParent,
-                onTitleChange: pushOptions.setParentTitle,
-              }}
+              parent={parentApi}
               duplicates={{
                 status: duplicates.status,
                 checking: duplicates.checking,
@@ -524,52 +541,56 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
                 excluded: decisions.excluded,
                 onCheck: duplicates.recheck,
               }}
-              push={{
-                status: run.state.status,
-                pending: pending.length,
-                failed,
-                created,
-                issues: createdIssues,
-                parentIssue,
-                progress: run.state.progress,
-                error: run.state.error,
-                onPush: startPush,
-              }}
+              push={pushApi}
             />
 
-            {history.length > 0 ? (
-              <PushedHistory history={history} states={issueStates} />
-            ) : null}
+            {/* Everything that grows with the meeting, between the two fixed
+                strips: the record, the reminders, the table and the insights.
+                It is one shrinkable box (`min-h-0`) so that a column with no
+                room left takes it out of *this* — the table keeps a floor and
+                the rest scrolls — instead of pushing the button below the
+                bottom edge, which is where `overflow-hidden` would eat it. */}
+            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+              {history.length > 0 ? (
+                <PushedHistory history={history} states={issueStates} />
+              ) : null}
 
-            {/* What the *other* meetings of this project left open, under what
-                this one already produced: the note's own record first, then
-                what it should be asked about. */}
-            <PendingCommitments commitments={previousCommitments} onOpenNote={setSelectedFile} />
+              {/* What the *other* meetings of this project left open, under what
+                  this one already produced: the note's own record first, then
+                  what it should be asked about. */}
+              <PendingCommitments commitments={previousCommitments} onOpenNote={setSelectedFile} />
 
-            <div className="flex min-h-0 flex-1">
-              <TaskTable
-                state={drafts.state}
-                results={results}
-                busy={run.state.status === 'running'}
-                matches={duplicates.matches}
-                forcedRows={decisions.forced}
-                showDuplicates={duplicates.status !== 'unavailable'}
-                checkingDuplicates={duplicates.checking}
-                onGenerate={drafts.generate}
-                onConfirmGenerate={drafts.confirmGenerate}
-                onCancelGenerate={drafts.cancelGenerate}
-                onUpdateRow={drafts.updateRow}
-                onRemoveRow={drafts.removeRow}
-                onAddRow={drafts.addRow}
-                onRetryLoad={drafts.retryLoad}
-              />
+              <div className="flex min-h-40 flex-1">
+                <TaskTable
+                  state={drafts.state}
+                  results={results}
+                  busy={run.state.status === 'running'}
+                  matches={duplicates.matches}
+                  forcedRows={decisions.forced}
+                  showDuplicates={duplicates.status !== 'unavailable'}
+                  checkingDuplicates={duplicates.checking}
+                  onGenerate={drafts.generate}
+                  onConfirmGenerate={drafts.confirmGenerate}
+                  onCancelGenerate={drafts.cancelGenerate}
+                  onUpdateRow={drafts.updateRow}
+                  onRemoveRow={drafts.removeRow}
+                  onAddRow={drafts.addRow}
+                  onRetryLoad={drafts.retryLoad}
+                />
+              </div>
+
+              {/* What the same extraction found that is not work: below the
+                  table, outside it, and explicitly not going anywhere. It draws
+                  nothing at all until a meeting has decided, risked or asked
+                  something. */}
+              {drafts.state ? <MeetingInsights insights={drafts.state} /> : null}
             </div>
 
-            {/* What the same extraction found that is not work: below the
-                table, outside it, and explicitly not going anywhere. It draws
-                nothing at all until a meeting has decided, risked or asked
-                something. */}
-            {drafts.state ? <MeetingInsights insights={drafts.state} /> : null}
+            {/* The action, at the bottom of the column and outside the box
+                above that scrolls: the button keeps its height whatever the
+                meeting produced, so reviewing a long table never means losing
+                the way to send it. */}
+            <PushFooter target={target} parent={parentApi} push={pushApi} />
           </section>
         ) : null}
       </div>

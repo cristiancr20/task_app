@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import type { LinearProject, LinearTeam } from '@/lib/linear'
 import { fetchLinearTeams } from '@/lib/linear-client'
+import type { DestinationStatus } from '@/lib/push-destination'
 
 import { saveLastProject } from './actions'
 
@@ -11,8 +12,12 @@ import { saveLastProject } from './actions'
  * Where the workspace listing stands. `no-key` is not a failure: nothing was
  * ever requested, because there is no key to request it with, and the panel
  * says so instead of showing an error the user cannot act on from here.
+ *
+ * It is `DestinationStatus` under another name so that the module deciding what
+ * the column says about its destination and the hook loading it cannot end up
+ * with two different lists of the states it can be in.
  */
-export type PushTargetStatus = 'no-key' | 'loading' | 'ready' | 'error'
+export type PushTargetStatus = DestinationStatus
 
 export type PushTargetApi = {
   status: PushTargetStatus

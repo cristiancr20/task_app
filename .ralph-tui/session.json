@@ -3,10 +3,10 @@
   "sessionId": "cc46fd1f-52ab-4e92-909d-16490d72d99a",
   "status": "running",
   "startedAt": "2026-08-21T01:44:47.724Z",
-  "updatedAt": "2026-08-21T02:32:08.676Z",
-  "currentIteration": 3,
+  "updatedAt": "2026-08-21T02:54:56.434Z",
+  "currentIteration": 4,
   "maxIterations": 0,
-  "tasksCompleted": 3,
+  "tasksCompleted": 4,
   "isPaused": false,
   "agentPlugin": "claude",
   "trackerState": {
@@ -66,8 +66,8 @@
       {
         "id": "US-009",
         "title": "Revisar y enviar lo extraído",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       }
     ]
   },
@@ -101,6 +101,16 @@
       "durationMs": 1029019,
       "startedAt": "2026-08-21T02:01:29.250Z",
       "endedAt": "2026-08-21T02:18:38.269Z"
+    },
+    {
+      "iteration": 4,
+      "status": "completed",
+      "taskId": "US-009",
+      "taskTitle": "Revisar y enviar lo extraído",
+      "taskCompleted": true,
+      "durationMs": 809313,
+      "startedAt": "2026-08-21T02:18:39.361Z",
+      "endedAt": "2026-08-21T02:32:08.674Z"
     }
   ],
   "skippedTaskIds": [],

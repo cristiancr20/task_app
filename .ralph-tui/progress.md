@@ -125,6 +125,19 @@ after each iteration and it's included in prompts for context.
   what is left or about its order — and every event that moves the bandeja
   (extract, push, reload) moves the round with it, because there is only one
   list.
+- **A fold hides the controls, never the decision.** The destination of a push
+- collapses into `destinationSummary` — «A Plataforma · bajo «Comité de junio»»
+- — and unfolds itself while `destinationSettled` is false, which is
+- `pushBlockedBy` minus the rows: the form can never fold away the field the
+- button is about to refuse over. The user's own click wins until completeness
+- *flips*, decided in the render body like `FileList`'s filter, so a
+- destination that has just lost its project comes back on screen by itself.
+- **A footer is fixed by what is above it, not by being last.** The Linear
+- column clips its last child when it runs out of room (`panel` is
+- `overflow-hidden`), so the send button stays on screen because everything
+- that grows — history, commitments, table, insights — is wrapped in one
+- `min-h-0 flex-1 overflow-y-auto` box that takes the squeeze, with the table
+- on a `min-h-40` floor so it is not the thing that vanishes instead.
 - **A queue over a shrinking list wraps, and «where am I» is allowed to be
   nowhere.** `nextToReview` cycles: the round loses a note on every push, so
   its end is a moving target and a strict «last one» would strand whatever was
@@ -637,4 +650,71 @@ after each iteration and it's included in prompts for context.
     request against the cached index, and it is what keeps the round and the
     bandeja in step the moment a note is sent — the same reasoning US-008 wrote
     down for the queue.
+---
+
+## 2026-08-20 - US-010
+- The Linear column became a fixed frame around a scrolling middle: the
+  destination folds into one line at the top, the button sits in a foot at the
+  bottom, and everything that grows with the meeting is between them.
+- New `lib/push-destination.ts` (pure): `Destination` (status, chosen project,
+  `ParentPlan` and the parent title), `destinationSettled` — the rule the fold
+  follows — `destinationSummary` («A Plataforma · bajo «Comité de junio»»), plus
+  `pushBlockedBy`, `pushButtonLabel`, `pendingSummary`, `excludedSummary` and
+  `pushOutcome`, all moved out of the panel where nothing could test them.
+  `app/use-push-target.ts` now names its `PushTargetStatus` after
+  `DestinationStatus`, so there is one list of the states the column can be in.
+- `app/push-panel.tsx`: `PushPanel` keeps the head (title + the two chips, which
+  are outside the fold on purpose) and the folding form; the new `PushFooter`
+  holds the error, the outcome, the created issues (bounded, `max-h-24`), the
+  single blocked reason and the button — replaced by `PushProgress` while the
+  run is on. `destinationOf` is exported so both halves are drawn from the same
+  answer instead of each deriving one.
+- `app/explorer.tsx`: `parentApi`/`pushApi` built once and handed to both halves;
+  history, commitments, table and insights wrapped in one
+  `flex min-h-0 flex-1 flex-col overflow-y-auto` box with the table on a
+  `min-h-40` floor, and `<PushFooter>` after it.
+- `pnpm typecheck`, `pnpm test` (36 files / 1082 tests) and `pnpm build` pass.
+  Also driven in a real browser against the configured root with Linear stubbed
+  (`LINEAR_API_URL` at a local script: one team, two projects, a parent that
+  takes 2,5 s and succeeds, a task that fails) and `.data/` backed up and
+  restored byte-for-byte afterwards. Observed: the column opens folded on «A
+  Plataforma · bajo «12June2026 next steps»» with the chip «1 tarea bajo una
+  tarea padre» beside the title and the button 11 px off the bottom edge;
+  emptying the parent title unfolds the form and the foot reads «Escribe un
+  título para la tarea padre.»; clearing the project unfolds it again on «Sin
+  proyecto elegido» / «Selecciona el proyecto de destino.»; during the run the
+  foot reads «Creando 1 de 2…» with no button and the destination's `<select>`
+  and checkbox carry `disabled`; after it, «0 tareas creadas · 1 fallida», the
+  parent linked, «Reintentar 1 fallida», and the folded line switched to «bajo
+  la tarea padre ya creada». At a 380 px viewport the button is still 11 px off
+  the bottom and inside the viewport.
+- **Learnings:**
+  - A fold that hides a decision has to *be* the decision. The line is not
+    «Destino» with a chevron, it is the answer — project and parent — so folding
+    removes the controls and never the fact. That is also why the module answers
+    «falta el título de la tarea padre» instead of leaving the line looking
+    complete: an incomplete destination is exactly the one that must not fold.
+  - «Empieza desplegada mientras falte algo» is one condition shared with the
+    button, not a second opinion about it. `destinationSettled` is
+    `pushBlockedBy` minus the rows, so the form can never fold away the very
+    field the push is about to refuse over.
+  - The fold follows completeness, and the user's click wins until completeness
+    *flips* — the same render-body reset `FileList` uses for the folder filter.
+    Remembering the click across a flip would leave a destination that just lost
+    its project showing a folded line and no way to fix it.
+  - A foot pinned by DOM order is not pinned. The section is `overflow-hidden`,
+    so a column with no room left clips its *last* child — the button. What
+    makes it fixed is that everything above it is one flex item with `min-h-0`:
+    the squeeze is taken out of the middle, which scrolls, and the foot keeps
+    its height. The table then needs a floor (`min-h-40`) or it is the part that
+    disappears.
+  - Two halves of one control must be computed from one value. `destinationOf`
+    is called by the head and by the foot; without it the chip would say «bajo
+    una tarea padre» while the button retried under a parent that already
+    existed, because each would have re-derived «¿hay padre?» on its own.
+  - Playwright's `isDisabled()` on an element that is not in the DOM waits the
+    full timeout instead of failing fast, and a `.catch()` around it hides the
+    30 s. Every assertion after it in the script is then about a run that
+    finished long ago — the markup (`disabled=""` in `outerHTML`) is what
+    actually answered «¿editable durante el envío?».
 ---
