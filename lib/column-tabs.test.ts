@@ -117,6 +117,46 @@ describe('columnCounts', () => {
     expect(result.sent).toBe(3)
   })
 
+  it('opens «La reunión» on the commitments alone', () => {
+    // The meeting itself left no decisions, risks or questions, but previous
+    // ones left four issues open: the panel has something in it, so the tab
+    // that opens onto it must not be the disabled one.
+    const result = columnCounts({
+      rows: 0,
+      insights: emptyInsights(),
+      commitments: 4,
+      history: [],
+    })
+
+    expect(result.meeting).toBe(4)
+    expect(tabEnabled(result, 'meeting')).toBe(true)
+  })
+
+  it('opens «La reunión» on the insights alone', () => {
+    const result = columnCounts({
+      rows: 0,
+      insights: insights(1, 0, 0),
+      commitments: 0,
+      history: [],
+    })
+
+    expect(result.meeting).toBe(1)
+    expect(tabEnabled(result, 'meeting')).toBe(true)
+  })
+
+  it('closes «La reunión» only when all four are empty', () => {
+    const result = columnCounts({
+      rows: 6,
+      insights: emptyInsights(),
+      commitments: 0,
+      history: [push(2)],
+    })
+
+    expect(result.meeting).toBe(0)
+    expect(tabEnabled(result, 'meeting')).toBe(false)
+    expect(activeTab(result, 'meeting')).toBe('tasks')
+  })
+
   it('is all zeros for a note with nothing at all', () => {
     expect(
       columnCounts({ rows: 0, insights: emptyInsights(), commitments: 0, history: [] }),

@@ -154,6 +154,14 @@ after each iteration and it's included in prompts for context.
   an effect. The default tab is the exception that is never disabled: an empty
   table still carries «Generar tareas», so it is a panel with something to do
   rather than an empty one.
+- **A block moved into a panel loses the caps it wore as a neighbour.** The
+- insights and the pending commitments each capped and scrolled themselves
+- (`max-h-64`, `max-h-56`) because the task table was directly below them and
+- had to keep its height. Inside «La reunión» the table is in another pestaña,
+- the panel is `overflow-y-auto`, and those caps become a scroll area inside a
+- scroll area that traps the wheel halfway down. The same applies to the rules:
+- a `border-b` and a `border-t` that each separated a block from the table read
+- as one 2 px seam once the two blocks are adjacent.
 - **A count that gates a panel counts everything the panel draws.** «La
   reunión» adds decisions, risks, open questions *and* the pending commitments
   of previous meetings into one number, because they are one panel: counting
@@ -789,4 +797,56 @@ after each iteration and it's included in prompts for context.
     «Tareas» and labels the panel, the table's own `<h2>Tareas</h2>` is the
     heading twice within a centimetre; what the tab cannot say — how many of the
     rows are actually going — is what earns the space instead.
+---
+
+## 2026-08-20 - US-012
+- «La reunión» finished as a panel rather than as two blocks that happen to be
+  in one. US-011 had already moved `PendingCommitments` and `MeetingInsights`
+  into the pestaña and made `columnCounts` add the four things they draw, so
+  this story was the panel itself plus the verification the criteria ask for.
+- `app/meeting-insights.tsx`: dropped `border-t` (the commitments' `border-b`
+  above it was already the separator, and the two together were a double rule)
+  and the `max-h-64 overflow-y-auto` around the three lists — the pestaña
+  scrolls now, so a second scroll area only steals the wheel. Docstring rewritten:
+  the block is no longer «under the table», and its emptiness is half of what
+  disables the tab.
+- `app/pending-commitments.tsx`: `shrink-0` added (a flex child in a scrolling
+  column was free to be squeezed), the `<ul>`'s `max-h-56 overflow-y-auto`
+  removed for the same reason as above. `PREVIEW = 5` and «Ver todas» kept —
+  they are still what stops thirty rows of old debt sitting between the user
+  and this note's own decisions — but the comment no longer claims it is about
+  the task table. `onOpenNote` untouched: `setSelectedFile`, exactly as before.
+- `app/explorer.tsx`: the meeting panel's comment states the three facts the
+  criteria are about — drawn here and nowhere else in the column, one scroll,
+  and «tab deshabilitada» ≡ «no se dibuja panel» because `tabCounts.meeting`
+  adds exactly the two blocks, so the branch is unreachable at zero.
+- `lib/column-tabs.test.ts`: three cases for the gate — commitments alone open
+  the tab, insights alone open it, and only all four empty close it (and
+  `activeTab` falls back). 1114 tests.
+- Verified read-only structurally: `grep` for `decisions|risks|openQuestions|
+  insights` across `lib/linear-push.ts`, `lib/push-client.ts`,
+  `app/use-push-run.ts` and `app/push-panel.tsx` returns nothing — the push
+  counts `rows`, and nothing in this panel is a row. `MeetingInsights` /
+  `PendingCommitments` have exactly one call site each, both in the meeting
+  panel.
+- `pnpm typecheck`, `pnpm test` (37 files / 1114 tests) and `pnpm build` pass.
+  No browser driving: the Playwright MCP is still unavailable in this session,
+  so the layout claims rest on the frame US-010 verified and on the markup, not
+  on a screenshot.
+- **Learnings:**
+  - A block carries its neighbours in its CSS. Both of these were designed
+    against the task table — a rule facing it, a cap so as not to push it — and
+    moving them into a pestaña of their own left the countermeasures behind
+    with nothing to counter. The tell is the pair: `border-b` on one and
+    `border-t` on the other were each right alone and wrong together.
+  - «La pestaña está deshabilitada y no se dibuja panel alguno» is not two
+    checks. It is one identity — the count that gates the tab is the sum of
+    exactly what the panel renders — and it holds because both components
+    already returned `null` when empty. Anything drawn in that panel that does
+    *not* return `null` when empty (a heading, an «aún no hay…» line) would
+    break it silently, by making the disabled tab hide something.
+  - A criterion phrased «sigue funcionando igual que hoy» is a request to prove
+    a call site did not move. `onOpenNote={setSelectedFile}` — not `openResult`
+    — is the whole answer, and it is worth a comment saying which one and why,
+    because the round's opener is sitting three lines away in the same file.
 ---

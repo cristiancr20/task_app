@@ -25,18 +25,22 @@ const FEEDBACK_MS = 2000
 
 /**
  * «Lo que la reunión supo»: the decisions, the risks and the open questions,
- * under the table and outside it.
+ * inside the «La reunión» pestaña and nowhere else in the column.
  *
  * The whole design of this block is the sentence «sin que se mezcle con las
  * tareas que voy a enviar»:
  *
- * - It is *below* the table and on the recessed fill, with its own rule above
- *   it, so nothing here can be mistaken for a row that is about to be pushed.
+ * - It is not in the same panel as the table at all. It used to sit under it
+ *   on a recessed fill, which is why it still carries one — the fill now
+ *   separates it from the commitments above rather than from rows below.
  * - It says so out loud, once, in the header: «No se envía a Linear». Nothing
  *   in it has a checkbox, a state or a destination, because nothing in it has
  *   one — the push counts `rows`, and these lists are not rows.
  * - It disappears entirely when the extraction found none of the three, and
  *   each list disappears on its own, so an empty one never costs a heading.
+ *   That is what lets the pestaña be *disabled* rather than opening onto a
+ *   panel with two invisible blocks in it: `columnCounts` adds these three
+ *   lists to the commitments, and zero is zero on both sides.
  *
  * The only thing that can be done with these lists is to take them somewhere
  * else, so every list carries its own «Copiar» and the header carries the one
@@ -55,7 +59,7 @@ export function MeetingInsights({ insights }: Props) {
   return (
     <section
       aria-label="Decisiones, riesgos y preguntas"
-      className="shrink-0 border-t border-line bg-surface-2 px-3 py-2.5"
+      className="shrink-0 bg-surface-2 px-3 py-2.5"
     >
       <div className="flex items-center justify-between gap-2">
         <button
@@ -86,12 +90,11 @@ export function MeetingInsights({ insights }: Props) {
       </div>
 
       {open ? (
-        // Capped and scrollable: three long lists must not push the task table
-        // — the thing being prepared — off the column.
-        <div
-          id="meeting-insights-lists"
-          className="mt-2 flex max-h-64 flex-col gap-3 overflow-y-auto"
-        >
+        // Uncapped, and scrolled by the panel rather than by itself. The cap
+        // was here to stop three long lists pushing the task table off the
+        // column; the table is in another pestaña now, so a second scroll area
+        // inside one that already scrolls would only steal the wheel.
+        <div id="meeting-insights-lists" className="mt-2 flex flex-col gap-3">
           {kinds.map((kind) => (
             <List key={kind} insights={insights} kind={kind} />
           ))}

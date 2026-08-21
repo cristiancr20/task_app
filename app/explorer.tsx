@@ -608,9 +608,20 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
                 />
               </div>
             ) : tab === 'meeting' ? (
-              // What the meeting knew and what the previous ones left open:
+              // What the previous meetings left open and what this one knew:
               // read once, before or during the review, and never edited — so
               // it scrolls in its own panel instead of pushing the table down.
+              // Both blocks are drawn *here and nowhere else in the column*,
+              // and this is the only scroll between them: each of them used to
+              // cap itself because the table was underneath, and the caps are
+              // gone with the reason for them.
+              //
+              // The commitments come first because they are the older debt —
+              // what to ask about today — and the note's own decisions read as
+              // the answer to them. Neither draws anything when it is empty,
+              // which is what makes «la pestaña deshabilitada» and «no se
+              // dibuja panel alguno» the same fact: `tabCounts.meeting` adds
+              // exactly these two, so at zero this branch is unreachable.
               <div
                 role="tabpanel"
                 id={columnPanelId('meeting')}
@@ -618,6 +629,9 @@ export function Explorer({ contextRoot, hasLinearApiKey, lastProjectId }: Props)
                 tabIndex={0}
                 className="flex min-h-0 flex-1 flex-col overflow-y-auto"
               >
+                {/* `setSelectedFile` and not `openResult`: opening the note a
+                    commitment came from is the plain selection it always was,
+                    with no round and no scroll of the transcript behind it. */}
                 <PendingCommitments commitments={previousCommitments} onOpenNote={setSelectedFile} />
                 {drafts.state ? <MeetingInsights insights={drafts.state} /> : null}
               </div>

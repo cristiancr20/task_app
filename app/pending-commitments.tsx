@@ -18,11 +18,10 @@ type Props = {
 /**
  * How many rows are shown before «Ver todas».
  *
- * Five is about as much as can be read without deciding to read it: the panel
- * sits above the tasks of the meeting being prepared, and a client with thirty
- * open commitments would otherwise push the actual work off the screen. The
- * list is sorted oldest first, so the five that are shown are the five worth
- * asking about.
+ * Five is about as much as can be read without deciding to read it. The list
+ * is sorted oldest first, so the five that are shown are the five worth asking
+ * about — and the rest are one click away rather than thirty rows of scrolling
+ * between the commitments and the decisions of the note actually open.
  */
 const PREVIEW = 5
 
@@ -32,21 +31,25 @@ const DAY = new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'short', y
  * «Pendiente de reuniones anteriores»: what previous meetings of this same
  * project promised and nobody has closed yet.
  *
- * It is the one block on the page that is not about the note being read. Its
- * whole purpose is to be seen *before* the meeting starts — the things somebody
- * should be asked about today — so it sits with the note's own history rather
- * than in a screen of its own, and every row says who it belongs to and how
+ * It is the one block on the page that is not about the note being read, and
+ * it is read at the same moment as the note's own decisions and open questions
+ * — before the meeting starts, to know what somebody should be asked about
+ * today. That is why it shares the «La reunión» pestaña with them instead of
+ * having a screen of its own, and every row says who it belongs to and how
  * long it has been waiting.
  *
  * Everything that could make it noise is designed out:
  *
  * - It disappears when there is nothing pending. An empty «no hay pendientes»
  *   block would be a permanent fixture that says nothing, on a page where the
- *   room belongs to the transcript and the tasks.
+ *   room belongs to the transcript and the tasks. Its count is half of what
+ *   decides whether the pestaña can be opened at all (`columnCounts`), so
+ *   «nada pendiente y nada extraído» is a disabled tab and no panel, not an
+ *   empty one.
  * - It folds. Somebody who has already read it, or who is not running this
- *   meeting, gets one line back.
- * - It shows the five oldest and offers the rest behind «Ver todas», so a
- *   long-running project cannot bury the tasks below it.
+ *   meeting, gets one line back — and the fold is now what skips past it to
+ *   the insights below rather than what gives the task table its height back.
+ * - It shows the five oldest and offers the rest behind «Ver todas».
  *
  * The selection itself — which commitments, in what order, and why an old entry
  * or an unknown state is left out — is `lib/pendingCommitments`, where it is
@@ -70,7 +73,7 @@ export function PendingCommitments({ commitments, onOpenNote }: Props) {
   return (
     <section
       aria-label="Pendiente de reuniones anteriores"
-      className="border-b border-line bg-info-wash px-3 py-2.5"
+      className="shrink-0 border-b border-line bg-info-wash px-3 py-2.5"
     >
       <button
         type="button"
@@ -86,11 +89,10 @@ export function PendingCommitments({ commitments, onOpenNote }: Props) {
 
       {open ? (
         <div id="pending-commitments-list" className="mt-1.5">
-          {/* «Ver todas» can turn five rows into thirty, and the tasks being
-              prepared below must not be pushed off the column for it — the same
-              bargain the note's own history makes. The control stays outside
-              the scroll area, so it is still there to fold the list back. */}
-          <ul className="flex max-h-56 flex-col gap-1.5 overflow-y-auto">
+          {/* Scrolled by the pestaña, not by itself: «Ver todas» can turn five
+              rows into thirty, and a scroll area inside one that already
+              scrolls would trap the wheel halfway down the panel. */}
+          <ul className="flex flex-col gap-1.5">
             {shown.map((commitment) => (
               <Row key={commitment.issue.id} commitment={commitment} now={now} onOpenNote={onOpenNote} />
             ))}
