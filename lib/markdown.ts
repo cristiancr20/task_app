@@ -229,6 +229,25 @@ const BARE_URL = /^https?:\/\/[^\s<>[\]()]+[^\s<>[\]().,;:!?'"]/
 
 /** Parse the inline markup of one paragraph, heading or list item. */
 export function parseInline(source: string): InlineNode[] {
+  return parseInlineNodes(source, false)
+}
+
+/**
+ * `insideLink` is what keeps a link out of a link.
+ *
+ * HTML forbids an `<a>` inside an `<a>`; React renders the nesting anyway and
+ * hydration then fails on it, taking the whole preview down. The label of a
+ * link is inline markup like any other text, so `[https://x](https://x)` —
+ * which is how Granola writes every transcript link it exports — autolinked
+ * its own label into a second anchor inside the first.
+ *
+ * Inside a label the three branches that can produce a link are off and their
+ * characters stay as text; emphasis and code still work, which is also what
+ * CommonMark says («links may not contain other links, at any level of
+ * nesting»). A nested `[text](url)` therefore reads as its own source rather
+ * than becoming an anchor the browser would refuse to nest.
+ */
+function parseInlineNodes(source: string, insideLink: boolean): InlineNode[] {
   const nodes: InlineNode[] = []
   let text = ''
   let i = 0
@@ -259,7 +278,7 @@ export function parseInline(source: string): InlineNode[] {
       }
     }
 
-    if (char === '[' || (char === '!' && source[i + 1] === '[')) {
+    if (!insideLink && (char === '[' || (char === '!' && source[i + 1] === '['))) {
       const link = matchLink(source, i)
       if (link) {
         flush()
@@ -269,7 +288,7 @@ export function parseInline(source: string): InlineNode[] {
       }
     }
 
-    if (char === '<') {
+    if (!insideLink && char === '<') {
       const autolink = /^<((?:https?:\/\/|mailto:)[^\s>]+)>/.exec(rest)
       if (autolink) {
         flush()
@@ -279,7 +298,7 @@ export function parseInline(source: string): InlineNode[] {
       }
     }
 
-    if (char === 'h' && isBoundary(source[i - 1])) {
+    if (!insideLink && char === 'h' && isBoundary(source[i - 1])) {
       const url = BARE_URL.exec(rest)
       if (url) {
         flush()
@@ -362,7 +381,9 @@ function matchLink(source: string, start: number): { node: InlineNode; end: numb
   }
 
   // An image has no place in a text preview; its alt text becomes the link label.
-  const children = image ? [{ type: 'text' as const, value: label || href }] : parseInline(label)
+  const children = image
+    ? [{ type: 'text' as const, value: label || href }]
+    : parseInlineNodes(label, true)
 
   return { node: { type: 'link', href, children }, end: targetEnd + 1 }
 }
